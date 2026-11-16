@@ -32,7 +32,7 @@ impl BundleSender {
     }
 
     pub async fn send(&self, bundle_path: &Path, upload_id: &str) -> Result<FinalizeResponse> {
-        upload_file(bundle_path, upload_id, &self.api_url).await
+        send_file_to_elastic_upload_service(bundle_path, upload_id, &self.api_url).await
     }
 }
 
@@ -58,20 +58,24 @@ pub struct FinalizeResponse {
     pub token: String,
 }
 
-pub async fn upload_file(file_path: &Path, upload_id: &str, api_url: &str) -> Result<FinalizeResponse> {
+async fn send_file_to_elastic_upload_service(
+    file_path: &Path,
+    upload_id: &str,
+    api_url: &str,
+) -> Result<FinalizeResponse> {
     let client = build_http_client()?;
     let upload_id = normalize_upload_id(upload_id);
     let filename = file_path
         .file_name()
         .and_then(|name| name.to_str())
-        .ok_or_else(|| eyre!("Invalid upload file name"))?
+        .ok_or_else(|| eyre!("Invalid archive file name"))?
         .to_string();
 
-    ensure_upload_exists(&client, &upload_id, api_url).await?;
+    ensure_target_exists(&client, &upload_id, api_url).await?;
 
     let file_digest = digest_file(file_path).await?;
-    upload_parts(&client, file_path, &filename, &upload_id, &file_digest, api_url).await?;
-    finalize_upload(&client, &upload_id, &file_digest, api_url).await
+    send_parts(&client, file_path, &filename, &upload_id, &file_digest, api_url).await?;
+    finalize_send(&client, &upload_id, &file_digest, api_url).await
 }
 
 pub fn normalize_upload_id(upload_id: &str) -> String {
@@ -90,14 +94,14 @@ fn build_http_client() -> Result<Client> {
         .build()?)
 }
 
-async fn ensure_upload_exists(client: &Client, upload_id: &str, api_url: &str) -> Result<()> {
+async fn ensure_target_exists(client: &Client, upload_id: &str, api_url: &str) -> Result<()> {
     let response = client.head(format!("{api_url}/api/uploads/{upload_id}")).send().await?;
 
     if response.status() == StatusCode::OK {
         Ok(())
     } else {
         Err(eyre!(
-            "Upload id '{}' does not exist (status {})",
+            "Elastic Upload Service ID '{}' does not exist (status {})",
             upload_id,
             response.status()
         ))
@@ -120,7 +124,7 @@ async fn digest_file(path: &Path) -> Result<String> {
     Ok(hex_digest(hasher.finalize()))
 }
 
-async fn upload_parts(
+async fn send_parts(
     client: &Client,
     file_path: &Path,
     filename: &str,
@@ -157,7 +161,11 @@ async fn upload_parts(
             .await?;
 
         if response.status() != StatusCode::CREATED && response.status() != StatusCode::CONFLICT {
-            return Err(eyre!("Failed to upload part {}: {}", part_number, response.status()));
+            return Err(eyre!(
+                "Elastic Upload Service rejected part {} with status {}",
+                part_number,
+                response.status()
+            ));
         }
 
         part_number += 1;
@@ -166,12 +174,7 @@ async fn upload_parts(
     Ok(())
 }
 
-async fn finalize_upload(
-    client: &Client,
-    upload_id: &str,
-    file_digest: &str,
-    api_url: &str,
-) -> Result<FinalizeResponse> {
+async fn finalize_send(client: &Client, upload_id: &str, file_digest: &str, api_url: &str) -> Result<FinalizeResponse> {
     let response = client
         .post(format!("{api_url}/api/uploads/{upload_id}/{file_digest}/_finalize"))
         .send()
@@ -179,7 +182,7 @@ async fn finalize_upload(
 
     if response.status() != StatusCode::OK {
         return Err(eyre!(
-            "Failed to finalize upload '{}': {}",
+            "Failed to finalize Elastic Upload Service send '{}': {}",
             upload_id,
             response.status()
         ));
@@ -198,7 +201,9 @@ pub fn default_upload_path(file_name: &str) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULT_UPLOAD_API_URL, default_upload_path, normalize_upload_id, upload_file};
+    use super::{
+        DEFAULT_UPLOAD_API_URL, default_upload_path, normalize_upload_id, send_file_to_elastic_upload_service,
+    };
     use axum::{
         Router,
         extract::{Path as AxumPath, Query, State},
@@ -279,7 +284,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upload_file_uses_expected_service_protocol() {
+    async fn send_uses_expected_elastic_upload_service_protocol() {
         let state = TestState::default();
         let app = Router::new()
             .route("/api/uploads/{upload_id}", head(head_upload).put(put_upload))
@@ -292,7 +297,9 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind test listener");
         let addr = listener.local_addr().expect("listener addr");
         let server = tokio::spawn(async move {
-            axum::serve(listener, app).await.expect("serve uploader stub");
+            axum::serve(listener, app)
+                .await
+                .expect("serve Elastic Upload Service stub");
         });
 
         let mut file = tempfile::Builder::new()
@@ -302,13 +309,13 @@ mod tests {
             .expect("temp file");
         std::io::Write::write_all(&mut file, b"diagnostic payload").expect("write payload");
 
-        let response = upload_file(
+        let response = send_file_to_elastic_upload_service(
             file.path(),
             "https://upload.elastic.co/g/abc123",
             &format!("http://{}", addr),
         )
         .await
-        .expect("upload succeeds");
+        .expect("send succeeds");
 
         assert_eq!(response.slug, "abc123");
         assert_eq!(response.token, "secret-token");

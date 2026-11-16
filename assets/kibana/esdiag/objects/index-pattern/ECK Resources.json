@@ -1,0 +1,18 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fieldAttrs": {},
+    "fieldFormatMap": {},
+    "fields": "[]",
+    "name": "ECK Resources",
+    "runtimeFieldMap": "{}",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "settings-eck.resource-esdiag"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "cab5c85e-e296-56a8-a8db-ae3af0d095f3",
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

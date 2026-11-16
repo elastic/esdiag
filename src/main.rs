@@ -5,7 +5,10 @@ mod local;
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use clap::{ArgAction, Args, Parser, Subcommand, builder::BoolishValueParser, builder::styling};
+use clap::{
+    ArgAction, Args, CommandFactory, FromArgMatches, Parser, Subcommand, builder::BoolishValueParser, builder::styling,
+    error::ErrorKind,
+};
 #[cfg(feature = "agent")]
 use esdiag::cli_output::{AgentRecovery, AgentSkillTargetResult, AgentSkillsFailureContext, AgentUsageResult};
 use esdiag::cli_output::{
@@ -20,21 +23,20 @@ use esdiag::server::{AuthProvider, RuntimeMode, Server, ServerStartOptions};
 use esdiag::setup;
 #[cfg(feature = "agent")]
 use esdiag::{
-    agent::{
-        builder::{AgentBuilderClient, AgentBuilderLocation, AgentFailure, AgentProgress, AgentRequest},
-        skills::{EmbeddedSkill, SkillEnvironment, SkillTarget, detected_targets, install},
-    },
+    agent::builder::{AgentBuilderClient, AgentBuilderLocation, AgentFailure, AgentProgress, AgentRequest},
     client::KibanaClient,
+    setup::skills::{EmbeddedSkill, SkillEnvironment, SkillTarget, detected_targets, install},
 };
 use esdiag::{
     client::Client,
     data::{
-        Application, HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate, OnboardingWorkflow, OutputDeployment,
-        SecretAuth, Settings, Uri, add_secret, clear_unlock_lease, collect_application, create_keystore,
-        default_unlock_ttl, get_keystore_path, get_password_for_secret_commands, get_unlock_status, keystore_exists,
-        list_secret_names, parse_unlock_ttl, remove_secret, resolve_secret_auth, rotate_keystore_password,
-        update_secret, validate_existing_keystore_password, write_unlock_lease,
+        Application, Auth, HostReference, HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate,
+        OnboardingWorkflow, OutputDeployment, SecretAuth, Settings, Uri, add_secret, clear_unlock_lease,
+        collect_application, create_keystore, default_unlock_ttl, get_keystore_path, get_password_for_secret_commands,
+        get_unlock_status, keystore_exists, list_secret_names, parse_unlock_ttl, remove_secret, resolve_secret_auth,
+        rotate_keystore_password, update_secret, validate_existing_keystore_password, write_unlock_lease,
     },
+    elastic_upload_service,
     env::LOG_LEVEL,
     exporter::Exporter,
     onboarding::{
@@ -46,7 +48,6 @@ use esdiag::{
     receiver::{
         ElasticCloudAdminRequestError, ElasticsearchRequestError, KibanaRequestError, LogstashRequestError, Receiver,
     },
-    uploader,
 };
 use eyre::{Result, eyre};
 use redact::Secret;
@@ -129,18 +130,18 @@ enum Commands {
         /// Diagnostic report user
         #[arg(help = "Diagnostic report user", long = "user", short, value_name = "USER")]
         user: Option<String>,
-        /// Elastic Upload Service upload id or URL for immediate upload after collection
+        /// Elastic Upload Service ID or URL for sending after collection
         #[arg(
-            help = "Elastic Upload Service upload id or URL for immediate upload after collection",
-            long = "upload"
+            help = "Elastic Upload Service ID or URL for sending after collection",
+            long = "send"
         )]
-        upload_id: Option<String>,
+        send_id: Option<String>,
         /// Save the effective invocation as a named job before continuing execution
         #[cfg(feature = "keystore")]
         #[arg(long = "save-job", value_name = "NAME")]
         save_job: Option<String>,
     },
-    /// Start a web server to receive diagnostic bundle uploads
+    /// Start a web server to receive diagnostic bundle submissions
     #[cfg(feature = "server")]
     Serve {
         /// IPv4 address to bind the server to
@@ -208,7 +209,9 @@ enum Commands {
     /// Receives a diagnostic from the input, processes it, and sends processed docs to the output
     Process {
         /// Source to read diagnostic data from
-        #[arg(help = "Source to read diagnostic data from (archive, directory, known host or Elastic uploader URL)")]
+        #[arg(
+            help = "Source to read diagnostic data from (archive, directory, known host, or Elastic Upload Service URL)"
+        )]
         input: String,
 
         /// Target to send processed diagnostic documents to
@@ -246,33 +249,30 @@ enum Commands {
         #[arg(long = "save-job", value_name = "NAME")]
         save_job: Option<String>,
     },
-    /// Upload a raw diagnostic archive to Elastic Upload Service
-    Upload {
-        /// Local diagnostic archive to upload
+    /// Send a raw diagnostic archive to Elastic Upload Service
+    Send {
+        /// Local diagnostic archive to send
         #[arg(help = "Local diagnostic archive file path")]
         file_name: String,
-        /// Elastic Upload Service upload id or URL
-        #[arg(help = "Upload id or Elastic Upload Service URL")]
+        /// Elastic Upload Service ID or URL
+        #[arg(help = "Elastic Upload Service ID or URL")]
         upload_id: String,
-        /// Upload API base URL
+        /// Elastic Upload Service API base URL
         #[arg(
             long,
-            default_value = uploader::DEFAULT_UPLOAD_API_URL,
+            default_value = elastic_upload_service::DEFAULT_UPLOAD_API_URL,
             help = "Elastic Upload Service base URL"
         )]
         api_url: String,
     },
-    #[cfg(feature = "setup")]
-    /// Import assets (templates, ingest pipelines, etc.) to a known Elasticsearch host
+    /// Configure external systems for ESDiag: Elastic Stack assets, agent skills, and shell completions
+    #[command(subcommand_required = true, arg_required_else_help = true)]
     Setup {
-        /// Known Elasticsearch host to import assets into; if omitted the ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, ESDIAG_OUTPUT_PASSWORD variables will be checked.
-        #[arg(
-            help = "Known Elasticsearch host to import assets into; if omitted the ESDIAG_OUTPUT_URL, ESDIAG_OUTPUT_APIKEY, ESDIAG_OUTPUT_USERNAME, ESDIAG_OUTPUT_PASSWORD variables will be checked."
-        )]
-        host: Option<String>,
+        #[command(subcommand)]
+        command: SetupCommands,
     },
     #[cfg(feature = "agent")]
-    /// Ask Kibana Agent Builder or install the local ESDiag skill
+    /// Ask Kibana Agent Builder about diagnostics
     Agent {
         #[command(subcommand)]
         command: AgentCommands,
@@ -283,29 +283,97 @@ enum Commands {
         #[command(subcommand)]
         command: JobCommands,
     },
-    /// Generate or install shell completion scripts
-    Completions {
+    /// Manage the named Elastic CLI output context
+    Output {
         #[command(subcommand)]
-        command: CompletionsCommands,
+        command: OutputCommands,
     },
+    /// Print the ESDiag version
+    Version,
 }
 
 #[derive(Debug, Subcommand)]
-enum CompletionsCommands {
-    /// Print bash completion script to stdout
-    Bash,
-    /// Print zsh completion script to stdout
-    Zsh,
-    /// Print fish completion script to stdout
-    Fish,
-    /// Print PowerShell completion script to stdout
-    Powershell,
-    /// Install a completion script for the given shell without editing shell rc files
-    Install {
+enum OutputCommands {
+    /// Validate and persist a named Elastic CLI context as the default output
+    Set {
+        /// Elastic CLI context name
+        context: String,
+    },
+    /// Show the configured Elastic CLI output context
+    Show,
+    /// Clear the configured Elastic CLI output context
+    Clear,
+}
+
+#[derive(Debug, Subcommand)]
+enum SetupCommands {
+    /// Install Elasticsearch assets into a saved Elasticsearch host
+    #[cfg(feature = "setup")]
+    Elasticsearch {
+        /// Saved Elasticsearch host; defaults to the persisted output
+        host: Option<String>,
+    },
+    /// Install Kibana assets into a saved Kibana host
+    #[cfg(feature = "setup")]
+    Kibana {
+        /// Saved Kibana host; defaults to the persisted output's viewer
+        host: Option<String>,
+    },
+    /// Install assets into a saved output and its linked Kibana viewer
+    #[cfg(feature = "setup")]
+    Output {
+        /// Saved output host with role `send`; defaults to the persisted output
+        name: Option<String>,
+        #[command(flatten)]
+        trial: TrialArgs,
+    },
+    /// Install assets into the deployment declared by ESDIAG_OUTPUT_* and ESDIAG_KIBANA_* variables
+    #[cfg(feature = "setup")]
+    Env {
+        /// Read the variables from this file; the process environment takes precedence
+        #[arg(long, value_name = "PATH")]
+        env_file: Option<PathBuf>,
+        #[command(flatten)]
+        trial: TrialArgs,
+    },
+    /// Install assets into the services of an Elastic CLI (.elasticrc.yml) context
+    #[cfg(feature = "setup")]
+    Context {
+        /// Context name; defaults to the current context
+        name: Option<String>,
+        /// Elastic CLI configuration file; defaults to ELASTIC_CLI_CONFIG_FILE, then home discovery
+        #[arg(long, value_name = "PATH")]
+        config: Option<PathBuf>,
+        #[command(flatten)]
+        trial: TrialArgs,
+    },
+    /// Install the embedded ESDiag skill into coding agents
+    #[cfg(feature = "agent")]
+    Skills {
+        /// Coding agents to install into; defaults to every detected agent
+        #[arg(value_enum)]
+        agents: Vec<AgentSkillTarget>,
+        /// Replace locally modified or unrecognized ESDiag skill directories
+        #[arg(long)]
+        force: bool,
+    },
+    /// Install a shell completion script without editing shell rc files
+    Completions {
         /// Shell to install completions for
         #[arg(value_enum)]
-        shell: esdiag::completions::CompletionShell,
+        shell: esdiag::setup::completions::CompletionShell,
+        /// Print the script to stdout instead of installing it
+        #[arg(long)]
+        print: bool,
     },
+}
+
+#[cfg(feature = "setup")]
+#[derive(Debug, clap::Args)]
+struct TrialArgs {
+    /// Start an Elasticsearch trial license when Agent Builder is not licensed (or set ESDIAG_SETUP_ACTIVATE_TRIAL=true)
+    #[arg(long)]
+    activate_trial: bool,
 }
 
 #[cfg(feature = "agent")]
@@ -324,15 +392,6 @@ enum AgentCommands {
         /// Explicitly start a new Kibana Agent Builder conversation
         #[arg(long, conflicts_with = "conversation")]
         new: bool,
-    },
-    /// Install the embedded ESDiag skill into supported coding agents
-    Skills {
-        /// Install into this user-scoped coding agent target
-        #[arg(long, value_enum)]
-        target: Vec<AgentSkillTarget>,
-        /// Replace locally modified or unrecognized ESDiag skill directories
-        #[arg(long)]
-        force: bool,
     },
 }
 
@@ -600,10 +659,15 @@ fn main() -> ExitCode {
 
 async fn async_main() -> Result<ExitCode> {
     // Parse CLI early to configure execution mode and logging.
-    let cli = Cli::parse();
+    let Some(cli) = parse_cli()? else {
+        return Ok(ExitCode::SUCCESS);
+    };
     init_tracing(resolve_tracing_filter(&cli), resolve_log_file_filter(&cli));
     let stdout_owned = command_owns_stdout(&cli);
     let no_command = cli.command.is_none();
+    if !no_command && !logs_to_terminal(&cli) {
+        esdiag::data::enable_keystore_password_prompt();
+    }
 
     std::panic::set_hook(Box::new(|panic| {
         // Log any panics as errors
@@ -614,6 +678,7 @@ async fn async_main() -> Result<ExitCode> {
     clear_last_run_files()?;
 
     let format = cli.format;
+    let setup_command = matches!(cli.command, Some(Commands::Setup { .. }));
     match run(cli, format).await {
         Ok(result) => {
             if let Some(outcome) = result.outcome {
@@ -624,13 +689,180 @@ async fn async_main() -> Result<ExitCode> {
         Err(e) => {
             tracing::error!("{}", e);
             if !stdout_owned && !no_command {
-                let failure = structured_failure(&e);
+                let failure = command_failure(&e, setup_command);
                 write_terminal_outcome(format, &failure)?;
                 return Ok(ExitCode::FAILURE);
             }
             Err(eyre!(e))
         }
     }
+}
+
+fn parse_cli() -> Result<Option<Cli>> {
+    let args = std::env::args_os().collect::<Vec<_>>();
+    let extension_profile = args
+        .first()
+        .is_some_and(|name| esdiag::env::is_elastic_cli_executable(name))
+        || esdiag::env::is_elastic_cli_invocation();
+    let mut command = cli_command(extension_profile);
+    let parsed = if extension_profile && let Some(command_name) = unsupported_extension_command(&args) {
+        Err(clap::Error::raw(
+            ErrorKind::InvalidSubcommand,
+            format!(
+                "'{command_name}' is available through standalone 'esdiag' and is not part of the 'elastic diag' profile"
+            ),
+        ))
+    } else if extension_profile && missing_extension_process_input(&args) {
+        Err(clap::Error::raw(
+            ErrorKind::MissingRequiredArgument,
+            "elastic diag process requires an explicit application-bearing input such as '.es', '.kb', or '.context.es'",
+        ))
+    } else {
+        command
+            .clone()
+            .try_get_matches_from(args)
+            .and_then(|matches| Cli::from_arg_matches(&matches))
+            .and_then(|cli| validate_extension_profile(cli, extension_profile))
+    };
+
+    match parsed {
+        Ok(cli) if extension_profile && cli.command.is_none() => {
+            command.print_help()?;
+            println!("\n{}", elastic_cli_help_text());
+            Ok(None)
+        }
+        Ok(cli) => Ok(Some(cli)),
+        Err(err) if err.kind() == ErrorKind::DisplayHelp => {
+            err.print()?;
+            if extension_profile {
+                println!("\n{}", elastic_cli_help_text());
+            }
+            Ok(None)
+        }
+        Err(err) if err.kind() == ErrorKind::DisplayVersion => {
+            err.print()?;
+            Ok(None)
+        }
+        Err(err) => err.exit(),
+    }
+}
+
+fn cli_command(extension_profile: bool) -> clap::Command {
+    let command = Cli::command();
+    if !extension_profile {
+        return command;
+    }
+
+    let mut command = command
+        .bin_name("elastic diag")
+        .mut_arg("agent", |argument| argument.hide(true))
+        .mut_subcommand("host", |subcommand| subcommand.hide(true))
+        .mut_subcommand("init", |subcommand| subcommand.hide(true))
+        .mut_subcommand("local", |subcommand| subcommand.hide(true))
+        .mut_subcommand("keystore", |subcommand| subcommand.hide(true));
+    #[cfg(feature = "server")]
+    {
+        command = command.mut_subcommand("serve", |subcommand| subcommand.hide(true));
+    }
+    #[cfg(feature = "agent")]
+    {
+        command = command.mut_subcommand("agent", |subcommand| subcommand.hide(true));
+    }
+    command
+}
+
+fn validate_extension_profile(cli: Cli, extension_profile: bool) -> Result<Cli, clap::Error> {
+    if !extension_profile {
+        return Ok(cli);
+    }
+    let supported_command = match &cli.command {
+        None
+        | Some(Commands::Collect { .. })
+        | Some(Commands::Process { .. })
+        | Some(Commands::Send { .. })
+        | Some(Commands::Output { .. })
+        | Some(Commands::Version) => true,
+        #[cfg(feature = "setup")]
+        Some(Commands::Setup { .. }) => true,
+        #[cfg(feature = "keystore")]
+        Some(Commands::Job { .. }) => true,
+        _ => false,
+    };
+    let supported = !cli.agent && supported_command;
+    if supported {
+        Ok(cli)
+    } else {
+        Err(clap::Error::raw(
+            ErrorKind::InvalidSubcommand,
+            "This command is available through standalone 'esdiag' and is not part of the 'elastic diag' profile",
+        ))
+    }
+}
+
+fn unsupported_extension_command(args: &[OsString]) -> Option<String> {
+    let mut positional = Vec::new();
+    let mut arguments = args.iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        let argument = argument.to_string_lossy();
+        if argument == "--format" {
+            let _ = arguments.next();
+            continue;
+        }
+        if argument.starts_with("--format=") || argument.starts_with('-') {
+            continue;
+        }
+        positional.push(argument.into_owned());
+        if positional.len() == 2 || positional.first().is_some_and(|command| command != "help") {
+            break;
+        }
+    }
+    let command = match positional.as_slice() {
+        [command] => command,
+        [help, command] if help == "help" => command,
+        _ => return None,
+    };
+    matches!(
+        command.as_str(),
+        "agent" | "host" | "init" | "keystore" | "local" | "secret" | "serve"
+    )
+    .then(|| command.clone())
+}
+
+fn missing_extension_process_input(args: &[OsString]) -> bool {
+    let mut arguments = args.iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        if argument == "--format" {
+            let _ = arguments.next();
+            continue;
+        }
+        let argument = argument.to_string_lossy();
+        if argument.starts_with('-') {
+            continue;
+        }
+        return argument == "process" && arguments.next().is_none();
+    }
+    false
+}
+
+fn elastic_cli_help_text() -> &'static str {
+    r#"Elastic CLI extension commands:
+  collect, process, send, setup, job, output, help, version
+
+Elastic CLI extension examples:
+  elastic diag collect .es ./out
+  elastic diag process .prod.es .diag.es
+  elastic diag output set monitoring
+  elastic diag send diagnostic.zip <upload-id>
+
+Elastic CLI target references:
+  .es, .elasticsearch  Use the active Elasticsearch context
+  .kb, .kibana         Use the active Kibana context
+  .context.service     Use a named application context
+  .context.cloud/<deployment-id>/es
+                       Use an Elasticsearch Cloud admin proxy target
+
+Named contexts are read from .elasticrc, .elasticrc.json, .elasticrc.yaml,
+.elasticrc.yml, or ELASTIC_CLI_CONFIG_FILE."#
 }
 
 fn init_tracing(terminal_filter: EnvFilter, file_filter: Option<EnvFilter>) {
@@ -743,14 +975,12 @@ fn command_owns_stdout(cli: &Cli) -> bool {
     );
     let completions_script_stdout = matches!(
         &cli.command,
-        Some(Commands::Completions {
-            command: CompletionsCommands::Bash
-                | CompletionsCommands::Zsh
-                | CompletionsCommands::Fish
-                | CompletionsCommands::Powershell
+        Some(Commands::Setup {
+            command: SetupCommands::Completions { print: true, .. }
         })
     );
-    direct_process_stream || saved_job_stream || local_raw_stdout || completions_script_stdout
+    let version_stdout = matches!(&cli.command, Some(Commands::Version));
+    direct_process_stream || saved_job_stream || local_raw_stdout || completions_script_stdout || version_stdout
 }
 
 fn resolve_tracing_filter(cli: &Cli) -> EnvFilter {
@@ -826,7 +1056,7 @@ fn classify_failure(error: &eyre::Report) -> CliFailureCategory {
         CliFailureCategory::CollectionFailed
     } else if message.contains("process") {
         CliFailureCategory::ProcessingFailed
-    } else if message.contains("upload") || message.contains("send") {
+    } else if message.contains("Elastic Upload Service") || message.contains("send") {
         CliFailureCategory::SendFailed
     } else if message.contains("keystore") || message.contains("secret") {
         CliFailureCategory::KeystoreFailed
@@ -854,7 +1084,7 @@ fn safe_failure_message(error: &eyre::Report) -> String {
         CliFailureCategory::AuthenticationFailed => "authentication failed",
         CliFailureCategory::CollectionFailed => "diagnostic collection failed",
         CliFailureCategory::ProcessingFailed => "diagnostic processing failed",
-        CliFailureCategory::SendFailed => "diagnostic upload failed",
+        CliFailureCategory::SendFailed => "diagnostic send failed",
         CliFailureCategory::KeystoreFailed => "keystore operation failed",
         CliFailureCategory::SetupFailed => "setup failed",
         CliFailureCategory::Internal | CliFailureCategory::InvalidInput => "command execution failed",
@@ -909,6 +1139,18 @@ fn http_response_details(error: &eyre::Report) -> Option<HttpResponseDetails> {
         }
     }
     None
+}
+
+/// `esdiag setup` reports `setup_failed` unless an HTTP response or skill installation supplies the category.
+fn command_failure(error: &eyre::Report, setup_command: bool) -> CliFailure {
+    #[cfg(feature = "agent")]
+    let skill_failure = error.downcast_ref::<SkillInstallationFailure>().is_some();
+    #[cfg(not(feature = "agent"))]
+    let skill_failure = false;
+    if setup_command && !skill_failure && http_response_details(error).is_none() {
+        return CliFailure::new(CliFailureCategory::SetupFailed, "setup failed");
+    }
+    structured_failure(error)
 }
 
 fn structured_failure(error: &eyre::Report) -> CliFailure {
@@ -984,7 +1226,7 @@ fn structured_failure(error: &eyre::Report) -> CliFailure {
                 path: path.display().to_string(),
             }),
         process: outcome.execution.as_ref().and_then(execution_process_result),
-        send: outcome.upload_slug.as_ref().map(|slug| SendResult {
+        send: outcome.send_slug.as_ref().map(|slug| SendResult {
             destination: format!("https://upload.elastic.co/g/{slug}"),
         }),
     };
@@ -997,7 +1239,7 @@ fn structured_failure(error: &eyre::Report) -> CliFailure {
     failure
 }
 
-fn collection_outcome(result: CollectionResult, upload_destination: Option<String>) -> CliOutcome {
+fn collection_outcome(result: CollectionResult, send_destination: Option<String>) -> CliOutcome {
     CliOutcome::ArchiveCollected {
         path: result.path,
         files: FileCounts {
@@ -1005,7 +1247,7 @@ fn collection_outcome(result: CollectionResult, upload_destination: Option<Strin
             total: result.total,
         },
         duration_ms: Some(result.duration_ms),
-        upload_destination,
+        send_destination,
     }
 }
 
@@ -1115,7 +1357,7 @@ fn job_outcome(name: String, outcome: JobOutcome) -> CliOutcome {
                 path: path.display().to_string(),
             }),
         process: outcome.execution.as_ref().and_then(execution_process_result),
-        send: outcome.upload_slug.map(|slug| SendResult {
+        send: outcome.send_slug.map(|slug| SendResult {
             destination: format!("https://upload.elastic.co/g/{slug}"),
         }),
     }
@@ -1290,7 +1532,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                 case,
                 opportunity,
                 user,
-                upload_id,
+                send_id,
                 #[cfg(feature = "keystore")]
                 save_job,
             } => {
@@ -1298,10 +1540,10 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                 if let Some(name) = save_job.as_deref() {
                     let identifiers =
                         Identifiers::new(account.clone(), case.clone(), None, opportunity.clone(), user.clone());
-                    let job = derive_collect_job(&host, &output, &r#type, upload_id.as_deref(), identifiers)?;
+                    let job = derive_collect_job(&host, &output, &r#type, send_id.as_deref(), identifiers)?;
                     esdiag::job::save_job(name, job)?;
                 }
-                let known_host = Uri::try_from(host)?;
+                let known_host = Uri::try_from(host.as_str())?;
                 let output = Uri::try_from(output)?;
                 match known_host {
                     Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
@@ -1336,7 +1578,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                             },
                             Some(esdiag::job::model::SaveTarget::retained(output_dir)),
                             None,
-                            upload_id.map(|upload_id| esdiag::job::model::SendTarget { upload_id }),
+                            send_id.map(|upload_id| esdiag::job::model::SendTarget { upload_id }),
                         )?;
                         let outcome = esdiag::job::executor::execute_with_context(job, context).await;
                         if !outcome.succeeded() {
@@ -1345,11 +1587,11 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                         let result = outcome
                             .collection
                             .ok_or_else(|| eyre!("Collection completed without a collection result"))?;
-                        let upload_destination = outcome
-                            .upload
+                        let send_destination = outcome
+                            .send
                             .as_ref()
-                            .map(|upload| format!("https://upload.elastic.co/g/{}", upload.slug));
-                        Ok(CommandResult::outcome(collection_outcome(result, upload_destination)))
+                            .map(|send| format!("https://upload.elastic.co/g/{}", send.slug));
+                        Ok(CommandResult::outcome(collection_outcome(result, send_destination)))
                     }
                     Uri::ElasticCloud(_) => Err(eyre!("Elastic Cloud API collection not yet implemented")),
                     _ => Err(eyre!("Collect requires a known host")),
@@ -1368,7 +1610,6 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     let _ = new;
                     run_agent_ask(prompt, agent_id, conversation).await
                 }
-                AgentCommands::Skills { target, force } => run_agent_skills(target, force),
             },
             Commands::Host { command } => match command {
                 HostCommands::Add {
@@ -1405,7 +1646,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                         ));
                     }
                     let existing = KnownHost::get_known(&name).ok_or_else(|| eyre!("Host '{name}' not found"))?;
-                    let secret_auth = if update.secret.is_some() {
+                    let secret_auth = if update.secret.as_deref().is_some() {
                         resolve_host_secret_auth(update.secret.as_deref())?
                     } else {
                         None
@@ -1463,7 +1704,13 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                 } => {
                     let keystore_password = get_password_for_secret_commands()?;
                     let (username, password, apikey) = resolve_secret_input(username, password, apikey)?;
-                    let path = add_secret(&secret_id, username, password, apikey, &keystore_password)?;
+                    let path = add_secret(
+                        &secret_id,
+                        username,
+                        password,
+                        apikey,
+                        keystore_password.expose_secret(),
+                    )?;
                     tracing::info!("Secret '{secret_id}' saved to {path}");
                     Ok(CommandResult::outcome(CliOutcome::KeystoreChanged {
                         operation: KeystoreOperation::Added,
@@ -1479,7 +1726,13 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                 } => {
                     let keystore_password = get_password_for_secret_commands()?;
                     let (username, password, apikey) = resolve_secret_input(username, password, apikey)?;
-                    let path = update_secret(&secret_id, username, password, apikey, &keystore_password)?;
+                    let path = update_secret(
+                        &secret_id,
+                        username,
+                        password,
+                        apikey,
+                        keystore_password.expose_secret(),
+                    )?;
                     tracing::info!("Secret '{secret_id}' updated in {path}");
                     Ok(CommandResult::outcome(CliOutcome::KeystoreChanged {
                         operation: KeystoreOperation::Updated,
@@ -1495,7 +1748,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                 } => {
                     let keystore_password = get_password_for_secret_commands()?;
                     let expected = expected_secret_auth(username, password, apikey)?;
-                    let path = remove_secret(&secret_id, expected, &keystore_password)?;
+                    let path = remove_secret(&secret_id, expected, keystore_password.expose_secret())?;
                     tracing::info!("Secret '{secret_id}' deleted from {path}");
                     Ok(CommandResult::outcome(CliOutcome::KeystoreChanged {
                         operation: KeystoreOperation::Removed,
@@ -1564,9 +1817,10 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                         return Err(eyre!("No keystore exists to update the password."));
                     }
                     let current_password = get_password_for_secret_commands()?;
-                    validate_existing_keystore_password(&current_password)?;
+                    validate_existing_keystore_password(current_password.expose_secret())?;
                     let new_password = prompt_new_keystore_password()?;
-                    let path = rotate_keystore_password(&current_password, &new_password)?;
+                    let path =
+                        rotate_keystore_password(current_password.expose_secret(), new_password.expose_secret())?;
                     tracing::info!("Keystore password updated for {path}");
                     Ok(CommandResult::outcome(CliOutcome::KeystoreChanged {
                         operation: KeystoreOperation::PasswordChanged,
@@ -1576,7 +1830,8 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                 }
                 KeystoreCommands::Migrate => {
                     let keystore_password = get_password_for_secret_commands()?;
-                    let (migrated, unchanged) = KnownHost::migrate_hosts_to_keystore(&keystore_password)?;
+                    let (migrated, unchanged) =
+                        KnownHost::migrate_hosts_to_keystore(keystore_password.expose_secret())?;
                     tracing::info!(
                         "Keystore migration complete: migrated {migrated} host(s), unchanged {unchanged} host(s)."
                     );
@@ -1601,6 +1856,29 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                 save_job,
             } => {
                 let has_explicit_output = output.is_some();
+                #[cfg(feature = "agent")]
+                if ask.is_some() && output.as_deref() == Some("-") {
+                    return Err(eyre!(ProcessAskStdoutConflict));
+                }
+                let input_uri = Uri::try_from(input.as_str())?;
+                #[cfg(feature = "agent")]
+                let (output_uri, ask_deployment) = if ask.is_some() {
+                    let deployment = OutputDeployment::resolve(output.as_deref(), true)?;
+                    let uri = Uri::try_from(deployment.elasticsearch.clone())?;
+                    (uri, Some(deployment))
+                } else {
+                    (Uri::try_from(output.clone())?, None)
+                };
+                #[cfg(not(feature = "agent"))]
+                let output_uri = Uri::try_from(output.clone())?;
+                if let Uri::KnownHost(host) = &output_uri
+                    && host.app().is_some_and(|app| app != Application::Elasticsearch)
+                {
+                    return Err(eyre!(
+                        "Output host '{}' must be an Elasticsearch host",
+                        output.as_deref().unwrap_or_default()
+                    ));
+                }
                 #[cfg(feature = "keystore")]
                 if let Some(name) = save_job.as_deref() {
                     let identifiers =
@@ -1608,10 +1886,8 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     let job = derive_process_job(&input, output.as_deref(), identifiers)?;
                     esdiag::job::save_job(name, job)?;
                 }
-                let input_uri = Uri::try_from(input)?;
-                let output_uri = Uri::try_from(output.clone())?;
                 let output_display = match output.as_deref() {
-                    Some(name) if KnownHost::get_known(&name.to_string()).is_some() => name.to_string(),
+                    Some(name) if matches!(HostReference::parse(name), Ok(Some(_))) => name.to_string(),
                     None if std::env::var_os("ESDIAG_OUTPUT_URL").is_none() => esdiag::data::ApplicationConfig::load()?
                         .output
                         .default
@@ -1626,11 +1902,6 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                 if ask.is_some() && stdout_owned {
                     return Err(eyre!(ProcessAskStdoutConflict));
                 }
-                #[cfg(feature = "agent")]
-                if ask.is_some() {
-                    OutputDeployment::resolve(output.as_deref(), true)?;
-                }
-
                 tracing::info!("input: {}", input_uri);
 
                 let receiver = Receiver::try_from(input_uri.clone())?;
@@ -1644,25 +1915,33 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     Uri::File(_) | Uri::Directory(_) => esdiag::job::model::Input::Load { uri: input_uri.clone() },
                     _ => {
                         let binding = esdiag::job::model::BindingKey::try_new("cli-process-input")?;
-                        let application = match &input_uri {
+                        let live_application = match &input_uri {
                             Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
-                                host.app()
+                                Some(host.app())
                             }
                             _ => None,
                         };
-                        context.inputs.bind_receiver(binding.clone(), receiver, application);
-                        esdiag::job::model::Input::LoadBinding { binding }
+                        context
+                            .inputs
+                            .bind_receiver(binding.clone(), receiver, live_application.flatten());
+                        if live_application.is_some() {
+                            esdiag::job::model::Input::CollectBinding {
+                                binding,
+                                diagnostic_type: "standard".to_string(),
+                                include: None,
+                                exclude: None,
+                            }
+                        } else {
+                            esdiag::job::model::Input::LoadBinding { binding }
+                        }
                     }
                 };
-                let export_target = match (&output, &output_uri) {
-                    (Some(name), Uri::KnownHost(_)) => {
-                        esdiag::job::model::ExportTarget::KnownHost { name: name.clone() }
-                    }
-                    (_, Uri::File(path)) => esdiag::job::model::ExportTarget::File { path: path.clone() },
-                    (_, Uri::Directory(output_dir)) => esdiag::job::model::ExportTarget::Directory {
+                let export_target = match &output_uri {
+                    Uri::File(path) => esdiag::job::model::ExportTarget::File { path: path.clone() },
+                    Uri::Directory(output_dir) => esdiag::job::model::ExportTarget::Directory {
                         output_dir: output_dir.clone(),
                     },
-                    (_, Uri::Stream) => esdiag::job::model::ExportTarget::Stdout,
+                    Uri::Stream => esdiag::job::model::ExportTarget::Stdout,
                     _ => {
                         let binding = esdiag::job::model::BindingKey::try_new("cli-process-output")?;
                         context.bind_document_exporter(
@@ -1706,64 +1985,70 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     diagnostic.output = output_display;
                     #[cfg(feature = "agent")]
                     if let Some(prompt) = ask {
-                        return run_agent_ask_for_output(
+                        return run_agent_ask_with_deployment(
                             process_ask_prompt(&diagnostic.id, &prompt),
                             DEFAULT_AGENT_BUILDER_AGENT.to_string(),
                             None,
-                            output.as_deref(),
+                            ask_deployment.expect("ask deployment resolved"),
                         )
                         .await;
                     }
                     Ok(CommandResult::outcome(CliOutcome::DiagnosticProcessed { diagnostic }))
                 }
             }
-            Commands::Upload {
+            Commands::Send {
                 file_name,
                 upload_id,
                 api_url,
             } => {
-                let file_path = uploader::default_upload_path(&file_name);
+                let file_path = elastic_upload_service::default_upload_path(&file_name);
                 tracing::info!(
-                    "Uploading raw diagnostic archive {} to {}",
+                    "Sending raw diagnostic archive {} to Elastic Upload Service target {}",
                     file_path.display(),
                     upload_id
                 );
-                let response = uploader::upload_file(&file_path, &upload_id, &api_url).await?;
-                tracing::info!("Upload complete for slug {}", response.slug);
-                Ok(CommandResult::outcome(CliOutcome::DiagnosticUploaded {
+                let response = elastic_upload_service::BundleSender::new(api_url.clone())
+                    .send(&file_path, &upload_id)
+                    .await?;
+                tracing::info!("Elastic Upload Service send complete for slug {}", response.slug);
+                Ok(CommandResult::outcome(CliOutcome::DiagnosticSent {
                     destination: format!("{}/g/{}", api_url.trim_end_matches('/'), response.slug),
                 }))
             }
-            #[cfg(feature = "setup")]
-            Commands::Setup { host } => {
-                if let Some(host) = host {
-                    let uri = Uri::try_from(host)?;
-                    let client = Client::try_from(uri)?;
-                    tracing::info!("Setting up assets in {client}");
-                    let report = setup::assets_report(&client).await?;
-                    Ok(CommandResult::outcome(setup_outcome(vec![client.to_string()], report)))
-                } else {
-                    tracing::debug!("Setting up assets with the resolved output deployment");
-                    let deployment = OutputDeployment::resolve(None, true)?;
-                    let es_uri = Uri::try_from(deployment.elasticsearch)?;
-                    let es_client = Client::try_from(es_uri)?;
-                    tracing::info!("Setting up assets in {es_client}");
-                    let mut report = setup::assets_report(&es_client).await?;
-                    setup::ensure_agent_builder_license(&es_client).await?;
-                    let kibana = deployment
-                        .kibana
-                        .ok_or_else(|| eyre!("Resolved output deployment is missing a Kibana viewer"))?;
-                    let kb_uri = Uri::try_from(kibana)?;
-                    let kb_client = Client::try_from(kb_uri)?;
-                    tracing::info!("Setting up Kibana assets in {kb_client}");
-                    let kb_report = setup::assets_report(&kb_client).await?;
-                    report.failed_indices.extend(kb_report.failed_indices);
-                    report.warnings.extend(kb_report.warnings);
-                    Ok(CommandResult::outcome(setup_outcome(
-                        vec![es_client.to_string(), kb_client.to_string()],
-                        report,
-                    )))
+            Commands::Setup { command } => run_setup(command).await,
+            Commands::Output { command } => {
+                let mut config = esdiag::data::ApplicationConfig::load()?;
+                match command {
+                    OutputCommands::Set { context } => {
+                        let reference = esdiag::data::ElasticOutputContext::new(context)?;
+                        OutputDeployment::from_elastic_context(&reference, false)?;
+                        config.output.elastic_context = Some(reference.clone());
+                        config.save()?;
+                        Ok(CommandResult::outcome(CliOutcome::OutputContext {
+                            operation: "set".to_string(),
+                            context: Some(reference.context),
+                        }))
+                    }
+                    OutputCommands::Show => {
+                        let reference = config.output.elastic_context;
+                        Ok(CommandResult::outcome(CliOutcome::OutputContext {
+                            operation: "show".to_string(),
+                            context: reference.map(|value| value.context),
+                        }))
+                    }
+                    OutputCommands::Clear => {
+                        config.output.elastic_context = None;
+                        config.save()?;
+                        Ok(CommandResult::outcome(CliOutcome::OutputContext {
+                            operation: "clear".to_string(),
+                            context: None,
+                        }))
+                    }
                 }
+            }
+            Commands::Version => {
+                println!("{}", env!("CARGO_PKG_VERSION"));
+                Ok(CommandResult::stream())
             }
             #[cfg(feature = "keystore")]
             Commands::Job { command } => match command {
@@ -1791,36 +2076,6 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     Ok(CommandResult::outcome(CliOutcome::JobDeleted { name }))
                 }
             },
-            Commands::Completions { command } => {
-                use clap::CommandFactory;
-                use esdiag::completions::{CompletionShell, install_completion, user_home, write_completion_script};
-
-                match command {
-                    CompletionsCommands::Install { shell } => {
-                        let home = user_home()?;
-                        let mut cmd = Cli::command();
-                        let (path, instruction) = install_completion(shell, &mut cmd, &home)?;
-                        Ok(CommandResult::outcome(CliOutcome::CompletionInstalled {
-                            shell: shell.as_str().to_string(),
-                            path: path.display().to_string(),
-                            instruction,
-                        }))
-                    }
-                    print_shell => {
-                        let shell = match print_shell {
-                            CompletionsCommands::Bash => CompletionShell::Bash,
-                            CompletionsCommands::Zsh => CompletionShell::Zsh,
-                            CompletionsCommands::Fish => CompletionShell::Fish,
-                            CompletionsCommands::Powershell => CompletionShell::Powershell,
-                            CompletionsCommands::Install { .. } => unreachable!("install handled above"),
-                        };
-                        let mut cmd = Cli::command();
-                        let mut stdout = std::io::stdout().lock();
-                        write_completion_script(shell, &mut cmd, &mut stdout)?;
-                        Ok(CommandResult::stream())
-                    }
-                }
-            }
         }
     } else {
         #[cfg(all(feature = "server", feature = "desktop"))]
@@ -1923,7 +2178,7 @@ fn derive_collect_job(
     host: &str,
     output: &str,
     diagnostic_type: &str,
-    upload_id: Option<&str>,
+    send_id: Option<&str>,
     identifiers: Identifiers,
 ) -> Result<esdiag::data::Job> {
     let builder = esdiag::data::Job::builder()
@@ -1931,18 +2186,31 @@ fn derive_collect_job(
         .collect_from(host)?
         .diagnostic_type(diagnostic_type);
 
-    match upload_id {
-        Some(upload_id) => builder.upload_to(upload_id),
+    match send_id {
+        Some(send_id) => builder.send_to(send_id),
         None => builder.collect_to(output),
     }
 }
 
 #[cfg(feature = "keystore")]
 fn derive_process_job(input: &str, output: Option<&str>, identifiers: Identifiers) -> Result<esdiag::data::Job> {
-    let output = output.ok_or_else(|| eyre!("Saved jobs require an explicit process output target"))?;
-    let output_uri = Uri::try_from(output.to_string())?;
-    ensure_uri_role(&output_uri, HostRole::Send, "save-job output")?;
-    let output = esdiag::data::JobOutput::from_cli_target(output)?;
+    let output = match output {
+        Some(output) => esdiag::data::JobOutput::from_cli_target(output)?,
+        None => {
+            let config = esdiag::data::ApplicationConfig::load()?;
+            if let Some(context) = config.output.elastic_context {
+                esdiag::data::JobOutput::KnownHost {
+                    name: context.host_reference()?,
+                }
+            } else if let Some(name) = config.output.default {
+                esdiag::data::JobOutput::KnownHost { name }
+            } else {
+                return Err(eyre!(
+                    "Saved jobs require an explicit or configured process output target"
+                ));
+            }
+        }
+    };
     esdiag::data::Job::builder()
         .identifiers(identifiers)
         .collect_from(input)?
@@ -2056,7 +2324,10 @@ fn build_host_from_definition(
         KnownHostBuilder::new(url).application(app)
     }
     .accept_invalid_certs(update.accept_invalid_certs.unwrap_or(false))
-    .legacy_credentials(update.apikey.clone(), update.username.clone(), update.password.clone())
+    .auth(
+        Auth::from_parts(update.apikey.clone(), update.username.clone(), update.password.clone())
+            .map_err(|err| eyre!("Invalid KnownHost configuration: {err}"))?,
+    )
     .secret(update.secret.clone());
     if let Some(app) = app {
         builder = builder.application(app);
@@ -2269,17 +2540,17 @@ fn prompt_confirm_default_yes(message: &str) -> Result<bool> {
     prompt_confirmation(message, true)
 }
 
-fn prompt_new_keystore_password() -> Result<String> {
+fn prompt_new_keystore_password() -> Result<Secret<String>> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         return Err(eyre!("A new keystore password requires an interactive terminal."));
     }
-    prompt_new_password_with(|prompt| Ok(rpassword::prompt_password(prompt)?))
+    prompt_new_password_with(|prompt| Ok(Secret::new(rpassword::prompt_password(prompt)?)))
 }
 
-fn prompt_new_password_with(mut prompt: impl FnMut(&str) -> Result<String>) -> Result<String> {
+fn prompt_new_password_with(mut prompt: impl FnMut(&str) -> Result<Secret<String>>) -> Result<Secret<String>> {
     loop {
         let password = prompt("Enter new keystore password: ")?;
-        if password.is_empty() {
+        if password.expose_secret().is_empty() {
             eprintln!("Keystore password cannot be empty. Try again.");
             continue;
         }
@@ -2293,8 +2564,8 @@ fn prompt_new_password_with(mut prompt: impl FnMut(&str) -> Result<String>) -> R
 fn unlock_keystore(ttl: Duration) -> Result<std::path::PathBuf> {
     if keystore_exists()? {
         let keystore_password = get_password_for_secret_commands()?;
-        validate_existing_keystore_password(&keystore_password)?;
-        return write_unlock_lease(&keystore_password, ttl);
+        validate_existing_keystore_password(keystore_password.expose_secret())?;
+        return write_unlock_lease(keystore_password.expose_secret(), ttl);
     }
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         return Err(eyre!(
@@ -2305,8 +2576,8 @@ fn unlock_keystore(ttl: Duration) -> Result<std::path::PathBuf> {
         return Err(eyre!("Keystore unlock cancelled."));
     }
     let keystore_password = prompt_new_keystore_password()?;
-    create_keystore(&keystore_password)?;
-    write_unlock_lease(&keystore_password, ttl)
+    create_keystore(keystore_password.expose_secret())?;
+    write_unlock_lease(keystore_password.expose_secret(), ttl)
 }
 
 async fn run_init_wizard() -> Result<CommandResult> {
@@ -2504,7 +2775,12 @@ async fn run_init_wizard() -> Result<CommandResult> {
                     }
                     return Err(eyre!("Output validation failed. Run `esdiag init` again to resume."));
                 }
-                if !confirm_output_replacement(&output_name, &viewer_name, &secret_id, &keystore_password)? {
+                if !confirm_output_replacement(
+                    &output_name,
+                    &viewer_name,
+                    &secret_id,
+                    keystore_password.expose_secret(),
+                )? {
                     println!("Existing output configuration was not changed. Choose an output deployment.");
                     continue;
                 }
@@ -2521,6 +2797,8 @@ async fn run_init_wizard() -> Result<CommandResult> {
             };
             output_name_for_defaults = Some(output_name.clone());
             output_url_for_defaults = Some(output_url.to_string());
+            #[cfg(feature = "setup")]
+            let viewer_space = esdiag::env::kibana_space_setting(process_kibana_space().as_deref());
             save_output_deployment(
                 OutputDeploymentInput {
                     output_name,
@@ -2530,7 +2808,7 @@ async fn run_init_wizard() -> Result<CommandResult> {
                     secret_id,
                     auth,
                 },
-                &keystore_password,
+                keystore_password.expose_secret(),
             )?;
 
             let mut output_config = esdiag::data::ApplicationConfig::load()?;
@@ -2543,14 +2821,42 @@ async fn run_init_wizard() -> Result<CommandResult> {
             if started_local_stack {
                 output_config.output.assets_version = Some(env!("CARGO_PKG_VERSION").to_string());
             } else if run_output_setup {
+                let output_name = output_config
+                    .output
+                    .default
+                    .clone()
+                    .unwrap_or_else(|| "diagnostics".to_string());
+                let activate_trial = setup::agent_builder_license_status(&output_client).await?
+                    == setup::AgentBuilderLicense::Inactive
+                    && prompt_confirm(&format!(
+                        "Start a 30-day Elasticsearch trial license on {output_name} for Agent Builder? [y/N]: "
+                    ))?;
                 eprintln!("Installing ESDiag assets...");
-                setup::assets(&output_client).await?;
-                setup::ensure_agent_builder_license(&output_client).await?;
-                setup::assets(&viewer_client).await?;
-                output_config.output.assets_version = Some(env!("CARGO_PKG_VERSION").to_string());
+                let targets = setup::pipeline::StackTargets {
+                    elasticsearch: Some(output_client),
+                    kibana: Some(setup::pipeline::KibanaTarget {
+                        client: viewer_client,
+                        space: viewer_space,
+                    }),
+                };
+                let report = setup::pipeline::stack(&targets, activate_trial).await?.report;
+                if report.is_complete() {
+                    output_config.output.assets_version = Some(env!("CARGO_PKG_VERSION").to_string());
+                } else {
+                    let rerun = output_setup_rerun_command(&output_name, &report);
+                    for warning in report
+                        .failed_indices
+                        .iter()
+                        .map(|index| format!("Could not update {index}."))
+                        .chain(report.warnings)
+                    {
+                        eprintln!("{warning}");
+                    }
+                    eprintln!("Rerun `{rerun}` to finish installing ESDiag assets.");
+                }
             } else {
                 eprintln!(
-                    "ESDiag assets were not installed. Processing and Agent Builder are unavailable until you run `esdiag setup {}`.",
+                    "ESDiag assets were not installed. Processing and Agent Builder are unavailable until you run `esdiag setup output {}`.",
                     output_config.output.default.as_deref().unwrap_or("diagnostics")
                 );
             }
@@ -2578,7 +2884,7 @@ async fn run_init_wizard() -> Result<CommandResult> {
                     .output
                     .default
                     .and_then(|output| KnownHost::get_known(&output))
-                    .and_then(|host| host.secret)
+                    .and_then(|host| host.secret_reference().map(str::to_string))
             } else {
                 Some(prompt_with_default("Collection credential name", &name)?)
             };
@@ -2615,7 +2921,9 @@ async fn run_init_wizard() -> Result<CommandResult> {
                     secret_id,
                     auth,
                 },
-                keystore_password.as_deref(),
+                keystore_password
+                    .as_ref()
+                    .map(|password| password.expose_secret().as_str()),
             )?;
             most_recent_collect_host = Some(name);
         }
@@ -2933,7 +3241,7 @@ fn initialization_skill_installation() -> Result<Option<AgentSkillsResult>> {
 fn run_optional_agent_skill_stage() -> Result<AgentSkillsResult> {
     let environment = SkillEnvironment::current();
     let detected = detected_targets(&environment);
-    let recovery_command = "esdiag agent skills [--target <claude|codex|opencode>]...";
+    let recovery_command = "esdiag setup skills [claude|codex|opencode]...";
     let detected_names = detected.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ");
     let prompt = if detected_names.is_empty() {
         "No supported coding-agent home was detected. Install the embedded ESDiag skill now? [y/N]: ".to_string()
@@ -3268,6 +3576,16 @@ async fn run_agent_ask_for_output(
     output_target: Option<&str>,
 ) -> Result<CommandResult> {
     let deployment = OutputDeployment::resolve(output_target, true)?;
+    run_agent_ask_with_deployment(prompt, agent, conversation, deployment).await
+}
+
+#[cfg(feature = "agent")]
+async fn run_agent_ask_with_deployment(
+    prompt: String,
+    agent: String,
+    conversation: Option<String>,
+    deployment: OutputDeployment,
+) -> Result<CommandResult> {
     let viewer = deployment
         .kibana
         .ok_or_else(|| eyre!("The configured output deployment has no Kibana viewer"))?;
@@ -3607,13 +3925,13 @@ fn resolve_host_secret_auth(secret_id: Option<&str>) -> Result<Option<SecretAuth
     };
 
     let keystore_password = get_password_for_secret_commands()?;
-    let secret_auth = resolve_secret_auth(secret_id, &keystore_password)?
+    let secret_auth = resolve_secret_auth(secret_id, keystore_password.expose_secret())?
         .ok_or_else(|| eyre!("Secret '{secret_id}' was not found in keystore"))?;
     Ok(Some(secret_auth))
 }
 
 fn resolve_add_host_secret_auth(host_name: &str, update: &mut KnownHostCliUpdate) -> Result<Option<SecretAuth>> {
-    if update.secret.is_some() {
+    if update.secret.as_deref().is_some() {
         return resolve_host_secret_auth(update.secret.as_deref());
     }
     if update.apikey.is_some() || update.username.is_some() || update.password.is_some() {
@@ -3634,7 +3952,7 @@ fn resolve_same_name_host_secret_auth(host_name: &str) -> Result<Option<SecretAu
     let Ok(keystore_password) = get_password_for_secret_commands() else {
         return Ok(None);
     };
-    resolve_secret_auth(host_name, &keystore_password)
+    resolve_secret_auth(host_name, keystore_password.expose_secret())
 }
 
 fn host_connection_uses_receiver(uri: &Uri) -> bool {
@@ -3727,12 +4045,172 @@ fn resolve_serve_exporter(output: Option<String>) -> Result<Exporter> {
 
 #[cfg(feature = "setup")]
 fn setup_outcome(targets: Vec<String>, report: setup::SetupReport) -> CliOutcome {
+    let outcome = if report.is_complete() { "complete" } else { "partial" }.to_string();
     CliOutcome::SetupCompleted {
         targets,
-        outcome: if report.is_complete() { "complete" } else { "partial" }.to_string(),
+        outcome,
         failed_indices: report.failed_indices,
-        warnings: report.warnings,
+        warnings: report.warnings.into_iter().chain(report.notices).collect(),
     }
+}
+
+async fn run_setup(command: SetupCommands) -> Result<CommandResult> {
+    match command {
+        #[cfg(feature = "setup")]
+        SetupCommands::Elasticsearch { host } => {
+            let host = setup_service_host(host.as_deref(), Application::Elasticsearch)?;
+            let client = Client::try_from(Uri::try_from(host)?)?;
+            tracing::info!("Setting up assets in {client}");
+            let report = setup::assets_report(&client).await?;
+            Ok(CommandResult::outcome(setup_outcome(vec![client.to_string()], report)))
+        }
+        #[cfg(feature = "setup")]
+        SetupCommands::Kibana { host } => {
+            let host = setup_service_host(host.as_deref(), Application::Kibana)?;
+            let kibana = setup::pipeline::KibanaTarget::from_host(host, process_kibana_space().as_deref())?;
+            tracing::info!("Setting up Kibana assets in {}", kibana.client);
+            let report = setup::kibana_assets_report(&kibana.client, kibana.space).await?;
+            Ok(CommandResult::outcome(setup_outcome(
+                vec![kibana.client.to_string()],
+                report,
+            )))
+        }
+        #[cfg(feature = "setup")]
+        SetupCommands::Output { name, trial } => {
+            let activate_trial = trial.resolve(None)?;
+            let deployment = OutputDeployment::resolve_saved(name.as_deref(), true)?;
+            let output_name = name
+                .or_else(|| esdiag::data::ApplicationConfig::load().ok()?.output.default)
+                .unwrap_or_else(|| "output".to_string());
+            let kibana = deployment
+                .kibana
+                .map(|host| setup::pipeline::KibanaTarget::from_host(host, process_kibana_space().as_deref()))
+                .transpose()?;
+            let notice = kibana.is_none().then(|| {
+                format!("Kibana setup was skipped because output '{output_name}' has no linked Kibana viewer.")
+            });
+            let targets = setup::pipeline::StackTargets {
+                elasticsearch: Some(Client::try_from(Uri::try_from(deployment.elasticsearch)?)?),
+                kibana,
+            };
+            run_stack_setup(targets, notice.into_iter().collect(), activate_trial).await
+        }
+        #[cfg(feature = "setup")]
+        SetupCommands::Env { env_file, trial } => {
+            let declared = setup::env::EnvSetup::load(env_file.as_deref())?;
+            let activate_trial = trial.resolve(declared.activate_trial.as_deref())?;
+            run_stack_setup(declared.targets, declared.notices, activate_trial).await
+        }
+        #[cfg(feature = "setup")]
+        SetupCommands::Context { name, config, trial } => {
+            let activate_trial = trial.resolve(None)?;
+            let declared = setup::context::ContextSetup::load(name.as_deref(), config.as_deref())?;
+            run_stack_setup(declared.targets, declared.notices, activate_trial).await
+        }
+        #[cfg(feature = "agent")]
+        SetupCommands::Skills { agents, force } => run_agent_skills(agents, force),
+        SetupCommands::Completions { shell, print } => {
+            use clap::CommandFactory;
+            use esdiag::setup::completions::{install_completion, user_home, write_completion_script};
+
+            let mut cmd = Cli::command();
+            if print {
+                let mut stdout = std::io::stdout().lock();
+                write_completion_script(shell, &mut cmd, &mut stdout)?;
+                return Ok(CommandResult::stream());
+            }
+            let home = user_home()?;
+            let (path, instruction) = install_completion(shell, &mut cmd, &home)?;
+            Ok(CommandResult::outcome(CliOutcome::CompletionInstalled {
+                shell: shell.as_str().to_string(),
+                path: path.display().to_string(),
+                instruction,
+            }))
+        }
+    }
+}
+
+#[cfg(feature = "setup")]
+impl TrialArgs {
+    /// The flag wins; otherwise the process environment, then a value declared by the setup source.
+    fn resolve(&self, declared: Option<&str>) -> Result<bool> {
+        if self.activate_trial {
+            return Ok(true);
+        }
+        match std::env::var("ESDIAG_SETUP_ACTIVATE_TRIAL")
+            .ok()
+            .as_deref()
+            .or(declared)
+        {
+            None => Ok(false),
+            Some(value) => match value.trim().to_ascii_lowercase().as_str() {
+                "1" | "true" | "yes" | "y" | "on" => Ok(true),
+                "0" | "false" | "no" | "n" | "off" | "" => Ok(false),
+                _ => Err(eyre!(
+                    "ESDIAG_SETUP_ACTIVATE_TRIAL must be true or false, got {value:?}"
+                )),
+            },
+        }
+    }
+}
+
+/// The command that finishes an incomplete `esdiag init` asset setup, opting into the trial when the license blocked Kibana.
+#[cfg(feature = "setup")]
+fn output_setup_rerun_command(output_name: &str, report: &setup::SetupReport) -> String {
+    let needs_trial = report
+        .warnings
+        .iter()
+        .any(|warning| warning == setup::pipeline::TRIAL_OPT_IN_WARNING);
+    let flag = if needs_trial { " --activate-trial" } else { "" };
+    format!("esdiag setup output {output_name}{flag}")
+}
+
+#[cfg(feature = "setup")]
+fn process_kibana_space() -> Option<String> {
+    std::env::var("ESDIAG_KIBANA_SPACE").ok()
+}
+
+/// A saved host for single-service setup, or the persisted output's matching service.
+#[cfg(feature = "setup")]
+fn setup_service_host(name: Option<&str>, app: Application) -> Result<KnownHost> {
+    let subcommand = app.to_string().to_ascii_lowercase();
+    let Some(name) = name else {
+        return match app {
+            Application::Kibana => OutputDeployment::persisted_viewer()?.ok_or_else(|| {
+                eyre!(
+                    "The persisted output has no linked Kibana viewer. Run `esdiag setup kibana <HOST>` with a saved Kibana host."
+                )
+            }),
+            _ => Ok(OutputDeployment::resolve_saved(None, false)?.elasticsearch),
+        };
+    };
+    let host = KnownHost::get_known(&name.to_string()).ok_or_else(|| {
+        eyre!("No saved host is named '{name}'. Add it with `esdiag host add`, then run `esdiag setup {subcommand} {name}`.")
+    })?;
+    match host.app() {
+        Some(found) if found == app => Ok(host),
+        Some(found @ (Application::Elasticsearch | Application::Kibana)) => Err(eyre!(
+            "Saved host '{name}' is a {found} host, not {app}. Run `esdiag setup {} {name}`.",
+            found.to_string().to_ascii_lowercase()
+        )),
+        Some(found) => Err(eyre!(
+            "Saved host '{name}' is a {found} host; `esdiag setup {subcommand}` needs a {app} host."
+        )),
+        None => Err(eyre!(
+            "Saved host '{name}' has no application; `esdiag setup {subcommand}` needs a {app} host."
+        )),
+    }
+}
+
+#[cfg(feature = "setup")]
+async fn run_stack_setup(
+    targets: setup::pipeline::StackTargets,
+    notices: Vec<String>,
+    activate_trial: bool,
+) -> Result<CommandResult> {
+    let mut setup = setup::pipeline::stack(&targets, activate_trial).await?;
+    setup.report.notices.extend(notices);
+    Ok(CommandResult::outcome(setup_outcome(setup.targets, setup.report)))
 }
 
 fn safe_output_display(uri: &Uri) -> String {
@@ -3777,11 +4255,11 @@ mod tests {
 
         let password = super::prompt_new_password_with(|prompt| {
             prompts.push(prompt.to_string());
-            Ok(answers.next().expect("unexpected prompt").to_string())
+            Ok(Secret::new(answers.next().expect("unexpected prompt").to_string()))
         })
         .expect("password");
 
-        assert_eq!(password, "second");
+        assert_eq!(password.expose_secret(), "second");
         assert_eq!(prompts.len(), 5);
         assert!(answers.next().is_none());
     }
@@ -3844,33 +4322,37 @@ mod tests {
             esdiag::setup::SetupReport {
                 failed_indices: vec!["metrics-test-esdiag".into()],
                 warnings: vec!["Raise index.mapping.total_fields.limit".into()],
+                notices: Vec::new(),
             },
         );
         let value = serde_json::to_value(outcome).unwrap();
         assert_eq!(value["outcome"], "partial");
         assert_eq!(value["failed_indices"][0], "metrics-test-esdiag");
     }
+    #[cfg(feature = "setup")]
+    use super::TrialArgs;
     #[cfg(feature = "agent")]
     use super::{
         AgentCommands, AgentSkillTarget, SkillInstallationFailure, agent_builder_space, agent_failure_report,
         install_skill_targets, process_ask_prompt, readable_agent_name,
     };
     use super::{
-        Cli, Commands, ConfiguredDefaultJob, HostCommands, KeystoreCommands, classify_failure,
-        colorize_keystore_lock_status, command_owns_stdout, configured_default_job, default_diagnostic_user_from,
-        detected_esdiag_local_preset, ensure_output_deployment_valid, format_keystore_lock_status,
-        format_keystore_lock_status_at, format_remaining_duration_from, host_connection_uses_receiver, is_agent_mode,
-        keep_default_job, local_core_stack_start_args, local_stack_outcome, needs_processing_default_job,
-        resolve_add_host_secret_auth, resolve_host_secret_auth, resolve_log_file_filter,
+        Cli, Commands, ConfiguredDefaultJob, HostCommands, KeystoreCommands, SetupCommands, classify_failure,
+        cli_command, colorize_keystore_lock_status, command_owns_stdout, configured_default_job,
+        default_diagnostic_user_from, detected_esdiag_local_preset, elastic_cli_help_text,
+        ensure_output_deployment_valid, format_keystore_lock_status, format_keystore_lock_status_at,
+        format_remaining_duration_from, host_connection_uses_receiver, is_agent_mode, keep_default_job,
+        local_core_stack_start_args, local_stack_outcome, missing_extension_process_input,
+        needs_processing_default_job, resolve_add_host_secret_auth, resolve_host_secret_auth, resolve_log_file_filter,
         resolve_secret_input_with_prompt, resolve_tracing_filter, saved_job_fits_workflow,
         should_error_for_missing_subcommand, should_run_output_setup, should_start_local_core_stack,
-        structured_failure,
+        structured_failure, validate_extension_profile,
     };
     #[cfg(feature = "keystore")]
     use super::{derive_collect_job, derive_process_job};
     #[cfg(feature = "server")]
     use super::{resolve_serve_bind, resolve_serve_exporter, resolve_serve_runtime_mode};
-    use clap::Parser;
+    use clap::{FromArgMatches, Parser, error::ErrorKind};
     use esdiag::data::{
         Application, HostRole, KnownHost, KnownHostCliUpdate, SecretAuth, UnlockStatus, Uri, upsert_secret_auth,
     };
@@ -3878,11 +4360,9 @@ mod tests {
     use esdiag::server::RuntimeMode;
     #[cfg(feature = "agent")]
     use esdiag::{
-        agent::{
-            builder::AgentFailure,
-            skills::{SkillEnvironment, SkillTarget},
-        },
+        agent::builder::AgentFailure,
         cli_output::{AgentSkillTargetResult, AgentSkillsFailureContext},
+        setup::skills::{SkillEnvironment, SkillTarget},
     };
     use esdiag::{
         cli_output::{CliFailureCategory, OutputFormat},
@@ -3914,6 +4394,12 @@ mod tests {
         _guard: std::sync::MutexGuard<'static, ()>,
         previous: Vec<(&'static str, Option<OsString>)>,
         tmp: TempDir,
+    }
+
+    fn parse_extension(args: &[&str]) -> Result<Cli, clap::Error> {
+        let matches = cli_command(true).try_get_matches_from(args)?;
+        let cli = Cli::from_arg_matches(&matches)?;
+        validate_extension_profile(cli, true)
     }
 
     impl TestEnv {
@@ -4143,7 +4629,7 @@ mod tests {
             report: None,
             children: Vec::new(),
             retained_bundle: None,
-            upload: None,
+            send: None,
         };
         let child = esdiag::job::outcome::ChildExecutionOutcome {
             path: "child-es".to_string(),
@@ -4178,19 +4664,294 @@ mod tests {
 
     #[cfg(feature = "agent")]
     #[test]
-    fn agent_skills_allows_repeatable_explicit_targets() {
-        let cli = Cli::parse_from([
-            "esdiag", "agent", "skills", "--target", "claude", "--target", "opencode", "--force",
-        ]);
+    fn setup_skills_allows_repeatable_positional_agents() {
+        let cli = Cli::parse_from(["esdiag", "setup", "skills", "claude", "opencode", "--force"]);
         assert!(matches!(
             cli.command,
-            Some(Commands::Agent {
-                command: AgentCommands::Skills {
-                    target,
+            Some(Commands::Setup {
+                command: SetupCommands::Skills {
+                    agents,
                     force: true,
                 }
-            }) if matches!(target.as_slice(), [AgentSkillTarget::Claude, AgentSkillTarget::OpenCode])
+            }) if matches!(agents.as_slice(), [AgentSkillTarget::Claude, AgentSkillTarget::OpenCode])
         ));
+    }
+
+    #[test]
+    fn setup_requires_a_subcommand() {
+        let error = Cli::try_parse_from(["esdiag", "setup"]).unwrap_err();
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+        );
+        assert_ne!(error.exit_code(), 0);
+        let help = error.to_string();
+        for subcommand in ["completions"] {
+            assert!(help.contains(subcommand), "{help}");
+        }
+        #[cfg(feature = "setup")]
+        for subcommand in ["elasticsearch", "kibana", "output", "env", "context"] {
+            assert!(help.contains(subcommand), "{help}");
+        }
+        #[cfg(feature = "agent")]
+        assert!(help.contains("skills"), "{help}");
+    }
+
+    #[test]
+    fn removed_setup_spellings_are_usage_errors() {
+        for args in [
+            &["esdiag", "setup", "diagnostics-output"][..],
+            &["esdiag", "agent", "skills"],
+            &["esdiag", "completions", "zsh"],
+            &["esdiag", "completions", "install", "zsh"],
+            &["esdiag", "setup", "completions", "install", "zsh"],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err(), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn setup_completions_prints_only_with_the_flag() {
+        let cli = Cli::parse_from(["esdiag", "setup", "completions", "zsh", "--print"]);
+        assert!(command_owns_stdout(&cli));
+        let cli = Cli::parse_from(["esdiag", "setup", "completions", "zsh"]);
+        assert!(!command_owns_stdout(&cli));
+    }
+
+    #[test]
+    fn generated_completions_cover_the_setup_tree() {
+        use clap::CommandFactory;
+        let mut script = Vec::new();
+        esdiag::setup::completions::write_completion_script(
+            esdiag::setup::completions::CompletionShell::Zsh,
+            &mut Cli::command(),
+            &mut script,
+        )
+        .unwrap();
+        let script = String::from_utf8(script).unwrap();
+        let root = Cli::command();
+        let setup = root.find_subcommand("setup").expect("setup command");
+        for subcommand in setup.get_subcommands().map(|command| command.get_name()) {
+            assert!(script.contains(&format!("'{subcommand}:")), "{subcommand}");
+        }
+        assert!(root.find_subcommand("completions").is_none());
+        #[cfg(feature = "agent")]
+        assert!(
+            root.find_subcommand("agent")
+                .expect("agent command")
+                .find_subcommand("skills")
+                .is_none()
+        );
+    }
+
+    #[cfg(feature = "setup")]
+    #[test]
+    fn setup_service_and_stack_forms_parse() {
+        let parse = |args: &[&str]| Cli::try_parse_from(args).map(|cli| cli.command);
+        assert!(matches!(
+            parse(&["esdiag", "setup", "kibana", "kibana"]).unwrap(),
+            Some(Commands::Setup { command: SetupCommands::Kibana { host: Some(host) } }) if host == "kibana"
+        ));
+        assert!(matches!(
+            parse(&["esdiag", "setup", "elasticsearch"]).unwrap(),
+            Some(Commands::Setup {
+                command: SetupCommands::Elasticsearch { host: None }
+            })
+        ));
+        assert!(matches!(
+            parse(&["esdiag", "setup", "output", "prod", "--activate-trial"]).unwrap(),
+            Some(Commands::Setup {
+                command: SetupCommands::Output { name: Some(name), trial: TrialArgs { activate_trial: true } }
+            }) if name == "prod"
+        ));
+        assert!(matches!(
+            parse(&["esdiag", "setup", "env", "--env-file", "deploy.env"]).unwrap(),
+            Some(Commands::Setup {
+                command: SetupCommands::Env { env_file: Some(path), trial: TrialArgs { activate_trial: false } }
+            }) if path == std::path::Path::new("deploy.env")
+        ));
+        assert!(matches!(
+            parse(&["esdiag", "setup", "context", "prod", "--config", "rc.yml"]).unwrap(),
+            Some(Commands::Setup {
+                command: SetupCommands::Context {
+                    name: Some(_),
+                    config: Some(_),
+                    ..
+                }
+            })
+        ));
+        for single in ["elasticsearch", "kibana"] {
+            assert!(
+                parse(&["esdiag", "setup", single, "--activate-trial"]).is_err(),
+                "{single}"
+            );
+        }
+    }
+
+    #[cfg(feature = "setup")]
+    #[test]
+    fn trial_opt_in_prefers_the_flag_then_the_process_environment() {
+        let mut env = TestEnv::new();
+        env.remove("ESDIAG_SETUP_ACTIVATE_TRIAL");
+        let off = TrialArgs { activate_trial: false };
+        assert!(!off.resolve(None).unwrap());
+        assert!(off.resolve(Some("true")).unwrap());
+        assert!(TrialArgs { activate_trial: true }.resolve(Some("false")).unwrap());
+        env.set("ESDIAG_SETUP_ACTIVATE_TRIAL", "false");
+        assert!(!off.resolve(Some("true")).unwrap());
+        env.set("ESDIAG_SETUP_ACTIVATE_TRIAL", "sometimes");
+        assert!(off.resolve(None).is_err());
+    }
+
+    #[cfg(feature = "setup")]
+    #[test]
+    fn setup_service_host_checks_the_saved_application() {
+        let _env = TestEnv::new();
+        let kibana = esdiag::data::KnownHostBuilder::new(Url::parse("https://kb.example:5601").unwrap())
+            .application(Application::Kibana)
+            .roles(vec![esdiag::data::HostRole::View])
+            .build()
+            .unwrap();
+        KnownHost::write_hosts_yml(&std::collections::BTreeMap::from([(
+            "diagnostics-kb".to_string(),
+            kibana,
+        )]))
+        .unwrap();
+        let error = super::setup_service_host(Some("diagnostics-kb"), Application::Elasticsearch)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("esdiag setup kibana diagnostics-kb"), "{error}");
+        assert!(super::setup_service_host(Some("diagnostics-kb"), Application::Kibana).is_ok());
+        assert!(super::setup_service_host(Some("missing"), Application::Kibana).is_err());
+    }
+
+    #[cfg(feature = "setup")]
+    #[test]
+    fn setup_kibana_fails_when_the_persisted_output_has_no_viewer() {
+        let _env = TestEnv::new();
+        let output = esdiag::data::KnownHostBuilder::new(Url::parse("https://es.example:9200").unwrap())
+            .application(Application::Elasticsearch)
+            .roles(vec![esdiag::data::HostRole::Send])
+            .build()
+            .unwrap();
+        KnownHost::write_hosts_yml(&std::collections::BTreeMap::from([("out".to_string(), output)])).unwrap();
+        let mut config = esdiag::data::ApplicationConfig::new();
+        config.output.default = Some("out".to_string());
+        config.save().unwrap();
+
+        let error = super::setup_service_host(None, Application::Kibana)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("no linked Kibana viewer"), "{error}");
+        assert!(super::setup_service_host(None, Application::Elasticsearch).is_ok());
+    }
+
+    #[cfg(feature = "setup")]
+    #[test]
+    fn setup_elasticsearch_ignores_an_unavailable_viewer_credential() {
+        let _env = TestEnv::new();
+        let output = esdiag::data::KnownHostBuilder::new(Url::parse("https://es.example:9200").unwrap())
+            .application(Application::Elasticsearch)
+            .roles(vec![esdiag::data::HostRole::Send])
+            .viewer(Some("locked-kb".to_string()))
+            .build()
+            .unwrap();
+        let viewer = esdiag::data::KnownHostBuilder::new(Url::parse("https://kb.example:5601").unwrap())
+            .application(Application::Kibana)
+            .roles(vec![esdiag::data::HostRole::View])
+            .secret(Some("missing-secret".to_string()))
+            .build()
+            .unwrap();
+        KnownHost::write_hosts_yml(&std::collections::BTreeMap::from([
+            ("out".to_string(), output),
+            ("locked-kb".to_string(), viewer),
+        ]))
+        .unwrap();
+        let mut config = esdiag::data::ApplicationConfig::new();
+        config.output.default = Some("out".to_string());
+        config.save().unwrap();
+
+        assert!(super::setup_service_host(None, Application::Elasticsearch).is_ok());
+        let error = super::setup_service_host(None, Application::Kibana)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("missing-secret"), "{error}");
+    }
+
+    #[cfg(feature = "setup")]
+    #[test]
+    fn setup_kibana_ignores_an_unavailable_output_credential() {
+        let _env = TestEnv::new();
+        let output = esdiag::data::KnownHostBuilder::new(Url::parse("https://es.example:9200").unwrap())
+            .application(Application::Elasticsearch)
+            .roles(vec![esdiag::data::HostRole::Send])
+            .secret(Some("missing-secret".to_string()))
+            .viewer(Some("kb".to_string()))
+            .build()
+            .unwrap();
+        let viewer = esdiag::data::KnownHostBuilder::new(Url::parse("https://kb.example:5601").unwrap())
+            .application(Application::Kibana)
+            .roles(vec![esdiag::data::HostRole::View])
+            .build()
+            .unwrap();
+        KnownHost::write_hosts_yml(&std::collections::BTreeMap::from([
+            ("out".to_string(), output),
+            ("kb".to_string(), viewer),
+        ]))
+        .unwrap();
+        let mut config = esdiag::data::ApplicationConfig::new();
+        config.output.default = Some("out".to_string());
+        config.save().unwrap();
+
+        let viewer = super::setup_service_host(None, Application::Kibana).expect("viewer without the output secret");
+        assert_eq!(viewer.app(), Some(Application::Kibana));
+        let error = super::setup_service_host(None, Application::Elasticsearch)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("missing-secret"), "{error}");
+    }
+
+    #[cfg(feature = "setup")]
+    #[test]
+    fn init_rerun_hint_opts_into_the_trial_only_when_the_license_blocked_kibana() {
+        let mut report = esdiag::setup::SetupReport::default();
+        report.failed_indices.push("logs-esdiag".to_string());
+        assert_eq!(
+            super::output_setup_rerun_command("diagnostics", &report),
+            "esdiag setup output diagnostics"
+        );
+        report
+            .warnings
+            .push(esdiag::setup::pipeline::TRIAL_OPT_IN_WARNING.to_string());
+        assert_eq!(
+            super::output_setup_rerun_command("diagnostics", &report),
+            "esdiag setup output diagnostics --activate-trial"
+        );
+    }
+
+    #[cfg(not(feature = "setup"))]
+    #[test]
+    fn stack_setup_subcommands_require_the_setup_feature() {
+        assert!(Cli::try_parse_from(["esdiag", "setup", "completions", "bash", "--print"]).is_ok());
+        for subcommand in ["elasticsearch", "kibana", "output", "env", "context"] {
+            assert!(
+                Cli::try_parse_from(["esdiag", "setup", subcommand]).is_err(),
+                "{subcommand}"
+            );
+        }
+    }
+
+    #[cfg(not(feature = "agent"))]
+    #[test]
+    fn setup_skills_requires_the_agent_feature() {
+        assert!(Cli::try_parse_from(["esdiag", "setup", "skills"]).is_err());
+    }
+
+    #[test]
+    fn setup_errors_report_the_setup_failed_category() {
+        let error = eyre::eyre!("Context 'missing' was not found");
+        assert_eq!(super::command_failure(&error, true).category, "setup_failed");
+        assert_eq!(super::command_failure(&error, false).category, "not_found");
     }
 
     #[cfg(feature = "agent")]
@@ -4601,6 +5362,99 @@ mod tests {
     }
 
     #[test]
+    fn elastic_cli_invocation_marker_requires_one() {
+        let mut env = TestEnv::new();
+        env.set("ESDIAG_ELASTIC_CLI", "1");
+        assert!(esdiag::env::is_elastic_cli_invocation());
+
+        env.set("ESDIAG_ELASTIC_CLI", "true");
+        assert!(!esdiag::env::is_elastic_cli_invocation());
+    }
+
+    #[test]
+    fn elastic_cli_help_text_documents_target_references() {
+        let help = elastic_cli_help_text();
+
+        assert!(help.contains("elastic diag collect .es ./out"));
+        assert!(help.contains(".context.service"));
+        assert!(help.contains(".context.cloud/<deployment-id>/es"));
+        assert!(!help.contains("\n  .cloud               "));
+    }
+
+    #[test]
+    fn executable_name_selects_extension_profile() {
+        assert!(esdiag::env::is_elastic_cli_executable(std::ffi::OsStr::new(
+            "elastic-diag"
+        )));
+        assert!(esdiag::env::is_elastic_cli_executable(std::ffi::OsStr::new(
+            "elastic-diag.exe"
+        )));
+        assert!(!esdiag::env::is_elastic_cli_executable(std::ffi::OsStr::new("esdiag")));
+    }
+
+    #[test]
+    fn extension_help_hides_standalone_administration() {
+        let mut command = cli_command(true);
+        let help = command.render_help().to_string();
+
+        assert!(help.contains("Usage: elastic diag"));
+        for supported in ["collect", "process", "send", "output", "version"] {
+            assert!(help.contains(supported), "{supported} must be visible");
+        }
+        for standalone in ["host", "keystore", "local", "init"] {
+            assert!(
+                !help.contains(&format!("  {standalone} ")),
+                "{standalone} must be hidden"
+            );
+        }
+    }
+
+    #[test]
+    fn extension_profile_accepts_send_and_rejects_host() {
+        let send = parse_extension(&["elastic-diag", "send", "diagnostic.zip", "upload-id"]).expect("send must parse");
+        assert!(matches!(send.command, Some(Commands::Send { .. })));
+        assert!(
+            cli_command(true)
+                .try_get_matches_from(["elastic-diag", "upload", "diagnostic.zip", "upload-id"])
+                .is_err(),
+            "the extension must not accept the retired upload command"
+        );
+
+        let matches = cli_command(true)
+            .try_get_matches_from(["elastic-diag", "host", "list"])
+            .expect("hidden command still reaches profile validator");
+        let host = Cli::from_arg_matches(&matches).expect("parse hidden host");
+        assert_eq!(
+            validate_extension_profile(host, true)
+                .expect_err("host must be rejected")
+                .kind(),
+            ErrorKind::InvalidSubcommand
+        );
+    }
+
+    #[test]
+    fn extension_profile_parses_output_and_version_commands() {
+        let output = parse_extension(&["elastic-diag", "output", "set", "monitoring"]).expect("output");
+        assert!(matches!(output.command, Some(Commands::Output { .. })));
+
+        let version = parse_extension(&["elastic-diag", "version"]).expect("version");
+        assert!(matches!(version.command, Some(Commands::Version)));
+    }
+
+    #[test]
+    fn bare_extension_process_gets_application_guidance() {
+        let args = [OsString::from("elastic-diag"), OsString::from("process")];
+        assert!(missing_extension_process_input(&args));
+
+        let delegated_help = [
+            OsString::from("elastic-diag"),
+            OsString::from("help"),
+            OsString::from("process"),
+        ];
+        assert!(!missing_extension_process_input(&delegated_help));
+    }
+
+    #[test]
     fn host_add_parses_comma_delimited_role_values() {
         let cli = Cli::parse_from([
             "esdiag",
@@ -4917,19 +5771,19 @@ mod tests {
     }
 
     #[test]
-    fn collect_command_parses_upload_id() {
-        let cli = Cli::parse_from(["esdiag", "collect", "prod-es", "diag-dir", "--upload", "abc123"]);
+    fn collect_command_parses_send_id() {
+        let cli = Cli::parse_from(["esdiag", "collect", "prod-es", "diag-dir", "--send", "abc123"]);
         match cli.command.expect("command") {
             Commands::Collect {
                 host,
                 output,
-                upload_id,
+                send_id,
                 user,
                 ..
             } => {
                 assert_eq!(host, "prod-es");
                 assert_eq!(output, "diag-dir");
-                assert_eq!(upload_id, Some("abc123".to_string()));
+                assert_eq!(send_id, Some("abc123".to_string()));
                 assert_eq!(user, None);
             }
             _ => panic!("expected collect command"),
@@ -4939,12 +5793,12 @@ mod tests {
     #[test]
     fn collect_command_keeps_user_short_option() {
         let cli = Cli::parse_from([
-            "esdiag", "collect", "prod-es", "diag-dir", "-u", "elastic", "--upload", "abc123",
+            "esdiag", "collect", "prod-es", "diag-dir", "-u", "elastic", "--send", "abc123",
         ]);
         match cli.command.expect("command") {
-            Commands::Collect { upload_id, user, .. } => {
+            Commands::Collect { send_id, user, .. } => {
                 assert_eq!(user, Some("elastic".to_string()));
-                assert_eq!(upload_id, Some("abc123".to_string()));
+                assert_eq!(send_id, Some("abc123".to_string()));
             }
             _ => panic!("expected collect command"),
         }
@@ -4997,7 +5851,7 @@ mod tests {
         };
         assert!(
             err.to_string()
-                .contains("Jobs require a saved known host name as input")
+                .contains("Jobs require a saved known host name or Elastic CLI context as input")
         );
     }
 
@@ -5027,7 +5881,7 @@ mod tests {
 
     #[cfg(feature = "keystore")]
     #[test]
-    fn derive_process_job_requires_explicit_output() {
+    fn derive_process_job_requires_explicit_or_configured_output() {
         let _env = setup_env();
         let host = KnownHost::new_no_auth(
             Application::Elasticsearch,
@@ -5041,24 +5895,28 @@ mod tests {
             Ok(_) => panic!("missing process output should be rejected"),
             Err(err) => err,
         };
-        assert_eq!(err.to_string(), "Saved jobs require an explicit process output target");
+        assert_eq!(
+            err.to_string(),
+            "Saved jobs require an explicit or configured process output target"
+        );
     }
 
     #[test]
-    fn upload_command_parses_file_and_upload_id() {
-        let cli = Cli::parse_from(["esdiag", "upload", "diag.zip", "abc123"]);
+    fn send_command_parses_file_and_upload_id() {
+        let cli = Cli::parse_from(["esdiag", "send", "diag.zip", "abc123"]);
         match cli.command.expect("command") {
-            Commands::Upload {
+            Commands::Send {
                 file_name,
                 upload_id,
                 api_url,
             } => {
                 assert_eq!(file_name, "diag.zip");
                 assert_eq!(upload_id, "abc123");
-                assert_eq!(api_url, esdiag::uploader::DEFAULT_UPLOAD_API_URL);
+                assert_eq!(api_url, esdiag::elastic_upload_service::DEFAULT_UPLOAD_API_URL);
             }
-            _ => panic!("expected upload command"),
+            _ => panic!("expected send command"),
         }
+        assert!(Cli::try_parse_from(["esdiag", "upload", "diag.zip", "abc123"]).is_err());
     }
 
     #[test]
@@ -5136,15 +5994,14 @@ mod tests {
 
     #[test]
     fn elastic_cloud_admin_hosts_validate_via_receiver() {
-        let uri = Uri::ElasticCloudAdmin(KnownHost::new_legacy_apikey(
+        let uri = Uri::ElasticCloudAdmin(KnownHost::new(
             Application::Elasticsearch,
             Url::parse("https://admin.found.no/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy/")
                 .expect("valid url"),
             vec![HostRole::Collect],
             None,
             false,
-            Some("ada-admin".to_string()),
-            None,
+            esdiag::data::Credential::Keystore("ada-admin".to_string()),
         ));
 
         assert!(host_connection_uses_receiver(&uri));
@@ -5215,7 +6072,7 @@ mod tests {
         let resolved = resolve_add_host_secret_auth("prod-es", &mut update).expect("resolve auth");
 
         assert!(resolved.is_none());
-        assert!(update.secret.is_none());
+        assert!(update.secret.as_deref().is_none());
     }
 
     #[test]
@@ -5226,7 +6083,7 @@ mod tests {
         let resolved = resolve_add_host_secret_auth("prod-es", &mut update).expect("resolve auth");
 
         assert!(resolved.is_none());
-        assert!(update.secret.is_none());
+        assert!(update.secret.as_deref().is_none());
     }
 
     #[cfg(feature = "server")]

@@ -1,65 +1,6 @@
 {
   "attributes": {
-    "columns": [
-      "node.name",
-      "task.action",
-      "task.running_time_in_nanos",
-      "task.description",
-      "task.type",
-      "task.headers.X-elastic-product-origin",
-      "task.headers.X-Opaque-Id",
-      "event.ingested"
-    ],
     "description": "",
-    "grid": {
-      "columns": {
-        "event.ingested": {
-          "width": 268
-        },
-        "node.name": {
-          "width": 186
-        },
-        "task.action": {
-          "width": 295
-        },
-        "task.description": {
-          "width": 732
-        },
-        "task.headers.X-Opaque-Id": {
-          "width": 1432
-        },
-        "task.headers.X-elastic-product-origin": {
-          "width": 133
-        },
-        "task.id": {
-          "width": 131
-        },
-        "task.running_time_in_nanos": {
-          "width": 184
-        },
-        "task.type": {
-          "width": 125
-        }
-      }
-    },
-    "hideChart": true,
-    "isTextBasedQuery": false,
-    "kibanaSavedObjectMeta": {
-      "searchSourceJSON": {
-        "filter": [],
-        "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
-        "query": {
-          "language": "kuery",
-          "query": ""
-        }
-      }
-    },
-    "sort": [
-      [
-        "event.ingested",
-        "desc"
-      ]
-    ],
     "tabs": [
       {
         "attributes": {
@@ -121,7 +62,6 @@
         "label": "Untitled"
       }
     ],
-    "timeRestore": false,
     "title": "Task List"
   },
   "coreMigrationVersion": "8.8.0",
@@ -144,5 +84,5 @@
     }
   ],
   "type": "search",
-  "typeMigrationVersion": "10.11.0"
+  "typeMigrationVersion": "10.13.0"
 }

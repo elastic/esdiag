@@ -167,22 +167,22 @@ esdiag job list
 esdiag job run <NAME>
 ```
 
-### Upload
+### Send
 
-To upload immediately after collection:
-
-```sh
-esdiag collect source-cluster "$HOME/diagnostics" --upload '<UPLOAD_ID_OR_URL>'
-```
-
-To upload an archive you already have:
+To send immediately after collection:
 
 ```sh
-esdiag upload /path/to/diagnostic.zip '<UPLOAD_ID_OR_URL>'
+esdiag collect source-cluster "$HOME/diagnostics" --send '<UPLOAD_ID_OR_URL>'
 ```
 
-The collected archive stays on disk. Use your approved method to keep upload
-IDs and URLs out of shell history.
+To send an archive you already have to Elastic Upload Service:
+
+```sh
+esdiag send /path/to/diagnostic.zip '<UPLOAD_ID_OR_URL>'
+```
+
+The collected archive stays on disk. Use your approved method to keep Elastic
+Upload Service IDs and URLs out of shell history.
 
 ## Next
 

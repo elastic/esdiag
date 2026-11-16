@@ -1,6 +1,6 @@
 use super::ServerState;
 use crate::data::{
-    CollectSource, Job, JobSignals, KnownHost, is_collectable_app, load_saved_jobs_async, with_saved_jobs_async,
+    CollectSource, HostReference, Job, JobSignals, is_collectable_app, load_saved_jobs_async, with_saved_jobs_async,
 };
 use crate::processor::Identifiers;
 use askama::Template;
@@ -174,11 +174,14 @@ fn validate_saved_job(signals: &SaveJobSignals) -> Result<(), &'static str> {
         return Err("Saved jobs require a selected known host.");
     }
 
-    let hosts = KnownHost::parse_hosts_yml().map_err(|_| "Failed to read known hosts.")?;
-    let host = hosts
-        .get(host_name)
-        .ok_or("Saved jobs require a known host that exists in hosts.yml.")?;
-    if !is_collectable_app(host.app()) {
+    let reference = HostReference::parse(host_name)
+        .ok()
+        .flatten()
+        .ok_or("Saved jobs require a saved host or Elastic CLI context reference.")?;
+    let host = reference
+        .resolve()
+        .map_err(|_| "Saved jobs require a host reference that resolves to a collectable host.")?;
+    if !is_collectable_app(Some(host.application())) {
         return Err("Saved jobs require an Elasticsearch, Kibana, or Logstash collect host.");
     }
 
@@ -233,7 +236,7 @@ pub async fn delete_saved_job(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{Application, HostRole, load_saved_jobs};
+    use crate::data::{Application, HostRole, KnownHost, load_saved_jobs};
     use crate::job::model::Input;
     use axum::body::to_bytes;
     use std::collections::BTreeMap;
@@ -302,6 +305,25 @@ mod tests {
         assert!(
             result.is_ok(),
             "a saved host should be collectable regardless of its visibility role"
+        );
+    }
+
+    #[cfg(feature = "elasticrc")]
+    #[test]
+    fn validate_saved_job_accepts_elastic_cli_context_references() {
+        let mut env = setup_env();
+        let config = env.tmp.path().join("elasticrc.yml");
+        std::fs::write(
+            &config,
+            "current_context: prod\ncontexts:\n  prod:\n    elasticsearch:\n      url: https://prod.example:9200\n",
+        )
+        .expect("write config");
+        env.set_path("ELASTIC_CLI_CONFIG_FILE", config);
+
+        assert!(validate_saved_job(&save_signals(CollectSource::KnownHost, ".prod.es")).is_ok());
+        assert_eq!(
+            validate_saved_job(&save_signals(CollectSource::KnownHost, "missing-host")),
+            Err("Saved jobs require a saved host or Elastic CLI context reference.")
         );
     }
 

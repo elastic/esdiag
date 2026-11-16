@@ -10,7 +10,7 @@ use rust_embed::RustEmbed;
 #[exclude = "kibana/**"]
 pub struct Assets;
 
-/// The portable ESDiag skill installed by `esdiag agent skills`.
+/// The portable ESDiag skill installed by `esdiag setup skills`.
 ///
 /// Helper scripts are intentionally excluded: installed skills compose native
 /// commands, so every binary carries one script-free, version-matched asset set.

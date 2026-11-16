@@ -67,6 +67,12 @@ whether to copy the generated Elastic password to the clipboard. Without an
 interactive terminal they don't copy it. Pass `--copy-password=true` or
 `--copy-password=false` to skip the question.
 
+Setup starts an Elasticsearch trial license when the local cluster has never
+had one, so the first `up` can install the Agent Builder assets. Pass
+`--activate-trial=true` or `--activate-trial=false` to `up`, `setup`, or
+`upgrade` to decide yourself, or set `ESDIAG_SETUP_ACTIVATE_TRIAL`. The option
+wins over the variable. Neither is saved in the state directory.
+
 The stack stores generated Elasticsearch credentials and API keys in `.env`.
 Do not copy them into `hosts.yml`, `settings.yml`, or `secrets.yml`.
 

@@ -825,6 +825,10 @@ pub struct ProcessorSummary {
     batch: BatchStats,
     pub docs: u32,
     doc_errors: u32,
+    /// Source records that were read but not indexed because they are not
+    /// documents (for example non-JSON log lines).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub skipped_records: u32,
     #[serde(skip_serializing)]
     pub processor: String,
     pub index: String,
@@ -846,6 +850,7 @@ impl ProcessorSummary {
                 self.batch.merge(other.batch);
                 self.docs = self.docs.saturating_add(other.docs);
                 self.doc_errors = self.doc_errors.saturating_add(other.doc_errors);
+                self.skipped_records = self.skipped_records.saturating_add(other.skipped_records);
                 self.events.extend(other.events);
             }
             Err(err) => {
@@ -935,6 +940,10 @@ fn is_false(value: &bool) -> bool {
     !*value
 }
 
+fn is_zero(value: &u32) -> bool {
+    *value == 0
+}
+
 impl ProcessorSummary {
     pub fn new(name: String) -> Self {
         Self {
@@ -949,6 +958,7 @@ impl ProcessorSummary {
             index: name.clone(),
             docs: 0,
             doc_errors: 0,
+            skipped_records: 0,
             processor: name,
             source: Source {
                 parsed: false,

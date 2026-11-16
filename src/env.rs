@@ -65,9 +65,29 @@ pub fn get_string(name: &str) -> std::io::Result<String> {
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, format!("{} not found", name)))
 }
 
+pub fn is_elastic_cli_invocation() -> bool {
+    std::env::var("ESDIAG_ELASTIC_CLI").is_ok_and(|value| value == "1")
+        || std::env::args_os()
+            .next()
+            .as_deref()
+            .is_some_and(is_elastic_cli_executable)
+}
+
+pub fn is_elastic_cli_executable(path: &std::ffi::OsStr) -> bool {
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| matches!(name, "elastic-diag" | "elastic-diag.exe"))
+}
+
 pub fn get_kibana_space() -> Option<String> {
-    match std::env::var("ESDIAG_KIBANA_SPACE") {
-        Ok(space) => {
+    kibana_space_setting(std::env::var("ESDIAG_KIBANA_SPACE").ok().as_deref())
+}
+
+/// Normalize an `ESDIAG_KIBANA_SPACE` value; `None` means the variable is not declared.
+pub fn kibana_space_setting(value: Option<&str>) -> Option<String> {
+    match value {
+        Some(space) => {
             let trimmed = space.trim();
             if trimmed.is_empty() || trimmed == "_default" || trimmed == "default" {
                 None
@@ -75,7 +95,7 @@ pub fn get_kibana_space() -> Option<String> {
                 Some(trimmed.to_string())
             }
         }
-        Err(_) => Some(ESDIAG_KIBANA_DEFAULT_SPACE.to_string()),
+        None => Some(ESDIAG_KIBANA_DEFAULT_SPACE.to_string()),
     }
 }
 

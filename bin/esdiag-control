@@ -11,6 +11,7 @@ repository_root=$(pwd -P)
 runtime=""
 push=false
 open_browser=true
+activate_trial=""
 
 info() { printf '[Info %s] %s\n' "$log_name" "$*" >&2; }
 die() { printf '[Error %s] %s\n' "$log_name" "$*" >&2; exit 1; }
@@ -38,6 +39,7 @@ Options:
   --registry URL
   --push
   --open-browser=true|false
+  --activate-trial=true|false
   --state-dir DIR
 EOF
 }
@@ -93,6 +95,7 @@ delegate() {
     release=$(version)
     state=${ESDIAG_LOCAL_DIR:-${repository_root}/target/esdiag-local}
     args=("$subcommand" --state-dir "$state" --runtime "$runtime" --pull never --open-browser="$open_browser")
+    [[ -z "$activate_trial" ]] || args+=(--activate-trial="$activate_trial")
     ESDIAG_IMAGE_TAG="esdiag:${release}" exec "${repository_root}/bin/esdiag-local" "${args[@]}"
 }
 
@@ -108,6 +111,7 @@ while [[ $# -gt 0 ]]; do
         --state-dir=*) ESDIAG_LOCAL_DIR=${1#*=}; export ESDIAG_LOCAL_DIR; shift ;;
         --push) push=true; shift ;;
         --open-browser=*) open_browser=${1#*=}; shift ;;
+        --activate-trial=*) activate_trial=${1#*=}; shift ;;
         -b) [[ $# -ge 2 ]] || die "Missing -b value"; open_browser=$2; shift 2 ;;
         -e|--env) [[ $# -ge 2 ]] || die "Missing --env value"; shift 2 ;;
         -s|--space) [[ $# -ge 2 ]] || die "Missing --space value"; ESDIAG_KIBANA_SPACE=$2; export ESDIAG_KIBANA_SPACE; shift 2 ;;
@@ -116,6 +120,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 [[ "$open_browser" == true || "$open_browser" == false ]] || die "--open-browser must be true or false"
+[[ -z "$activate_trial" || "$activate_trial" == true || "$activate_trial" == false ]] || die "--activate-trial must be true or false"
 
 case "$command" in
     help|-h|--help) usage ;;

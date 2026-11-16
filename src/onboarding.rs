@@ -82,15 +82,7 @@ pub struct CollectHostInput {
 /// Build a transient validation target without resolving an unsaved secret.
 /// Persisted hosts are built separately and contain only a keystore reference.
 pub fn validation_host(url: Url, app: Application, auth: SecretAuth) -> Result<KnownHost> {
-    let mut host = KnownHostBuilder::new(url).application(app).build()?;
-    match auth {
-        SecretAuth::ApiKey { apikey } => host.legacy_apikey = Some(apikey),
-        SecretAuth::Basic { username, password } => {
-            host.legacy_username = Some(username);
-            host.legacy_password = Some(password);
-        }
-    }
-    Ok(host)
+    KnownHostBuilder::new(url).application(app).auth(auth.into()).build()
 }
 
 pub fn output_validation_host(url: Url, app: Application, auth: SecretAuth) -> Result<KnownHost> {
@@ -266,7 +258,7 @@ pub fn save_output_deployment(input: OutputDeploymentInput, keystore_password: &
     KnownHost::write_hosts_yml(&hosts)?;
 
     let mut config = ApplicationConfig::load()?;
-    config.output.default = Some(input.output_name);
+    config.output.select_saved_host(input.output_name);
     config.save()?;
     Ok(config)
 }
@@ -413,7 +405,7 @@ mod tests {
                 crate::data::SecretAuth::apikey("new-unsaved-key"),
             )
             .unwrap();
-            assert!(host.secret.is_none());
+            assert!(host.secret_reference().is_none());
             let serialized = yaml_serde::to_string(&host).unwrap();
             assert!(!serialized.contains("new-unsaved-key"));
             let uri = crate::data::Uri::try_from(host).unwrap();

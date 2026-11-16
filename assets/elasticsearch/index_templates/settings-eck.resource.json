@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "description": "ESDiag ECK custom resources (Elasticsearch, Kibana, Agent, and other ECK kinds) with operator-reported status"
+  },
+  "index_patterns": ["settings-eck.resource-esdiag*"],
+  "composed_of": [
+    "esdiag@eck-mappings",
+    "esdiag@eck-metadata",
+    "esdiag@settings"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "eck.resource"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "settings"
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 1
+}

@@ -183,7 +183,7 @@ strict schema rejects the obsolete field. Both reference and inline links
 panels remain supported.
 
 An Elasticsearch asset rejection is recorded in the setup report's `warnings`.
-The combined `esdiag setup` command continues to Kibana and reports a partial
+A combined setup command such as `esdiag setup output` continues to Kibana and reports a partial
 outcome if asset installation or mapping updates remain incomplete. Errors
 that prevent probing a deployment, or a separate Kibana setup error, still
 fail the command.
@@ -193,11 +193,11 @@ fail the command.
 | Asset family | Count | Audit scope |
 | --- | ---: | --- |
 | Elasticsearch ingest pipelines | 1 | `set` processors and `reroute`; installation and simulation |
-| Elasticsearch component templates | 7 | Settings, mappings, metadata, and composition |
-| Elasticsearch index templates | 26 | Settings, mappings, data streams, and composition |
+| Elasticsearch component templates | 9 | Settings, mappings, metadata, and composition |
+| Elasticsearch index templates | 35 | Settings, mappings, data streams, and composition |
 | Elasticsearch roles | 1 | Installation; HTTP 403 on Serverless is a warning |
 | Kibana spaces | 1 | Creation and update with project-managed controls omitted |
-| Kibana saved objects | 90 | Dashboards, data views, Lens, saved searches, Vega visualizations, links, and tags |
+| Kibana saved objects | 105 | Dashboards, data views, Lens, saved searches, Vega visualizations, links, and tags |
 | Kibana workflows | 1 | Installation and its Elasticsearch authentication and ES|QL request definitions |
 | Agent Builder tools | 1 | Workflow reference and installation |
 | Agent Builder skills | 1 | Installation, referenced diagnostic guides, and attachment to the default agent |
@@ -229,8 +229,8 @@ Serverless test project. These setup commands install or update ESDiag assets:
 
 ```sh
 cargo build --bin esdiag
-target/debug/esdiag setup esdiag-less
-target/debug/esdiag setup esdiag-less-kb
+target/debug/esdiag setup elasticsearch esdiag-less
+target/debug/esdiag setup kibana esdiag-less-kb
 ```
 
 The explicit live test reads installed assets, simulates composed templates

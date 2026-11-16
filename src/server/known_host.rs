@@ -5,7 +5,10 @@
 use super::{
     KnownHostFormSignals, ServerEvent, ServerState, job_feed_event, job_runner, receiver_stream, signal_event, template,
 };
-use crate::{data::KnownHost, processor::new_job_id};
+use crate::{
+    data::{HostReference, KnownHost},
+    processor::new_job_id,
+};
 use axum::{
     extract::State,
     http::HeaderMap,
@@ -72,6 +75,17 @@ async fn send_event(tx: &mpsc::Sender<ServerEvent>, event: ServerEvent) {
     let _ = tx.send(event).await;
 }
 
+fn resolve_collect_host(name: &str) -> Result<KnownHost, String> {
+    match HostReference::parse(name) {
+        Ok(Some(reference)) => reference
+            .resolve()
+            .map(|host| host.into_known_host())
+            .map_err(|err| err.to_string()),
+        Ok(None) => Err("Known host not found".to_string()),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
 pub(super) async fn run_known_host_form(
     state: Arc<ServerState>,
     signals: KnownHostFormSignals,
@@ -79,34 +93,37 @@ pub(super) async fn run_known_host_form(
     tx: mpsc::Sender<ServerEvent>,
 ) {
     let download_token = signals.archive.download_token.clone();
-    let Some(host) = KnownHost::get_known(&signals.job.collect.known_host) else {
-        state
-            .reject_retained_bundle(
-                &download_token,
-                &request_user,
-                "Known host not found",
-                DOWNLOAD_REJECTION_TTL,
+    let host = match resolve_collect_host(&signals.job.collect.known_host) {
+        Ok(host) => host,
+        Err(error_message) => {
+            state
+                .reject_retained_bundle(
+                    &download_token,
+                    &request_user,
+                    error_message.clone(),
+                    DOWNLOAD_REJECTION_TTL,
+                )
+                .await;
+            state.record_job_rejected().await;
+            send_event(
+                &tx,
+                job_feed_event(template::JobFailed {
+                    job_id: new_job_id(),
+                    error: &error_message,
+                    source: &signals.job.collect.known_host,
+                }),
             )
             .await;
-        state.record_job_rejected().await;
-        send_event(
-            &tx,
-            job_feed_event(template::JobFailed {
-                job_id: new_job_id(),
-                error: "Known host not found",
-                source: &signals.job.collect.known_host,
-            }),
-        )
-        .await;
-        send_event(&tx, signal_event(r#"{"loading":false}"#)).await;
-        return;
+            send_event(&tx, signal_event(r#"{"loading":false}"#)).await;
+            return;
+        }
     };
 
     let job_id = new_job_id();
     #[cfg(feature = "keystore")]
     let keystore_password = state.keystore_password().await;
     #[cfg(not(feature = "keystore"))]
-    let keystore_password: Option<String> = None;
+    let keystore_password: Option<redact::Secret<String>> = None;
     if host.requires_keystore_secret() && keystore_password.is_none() {
         let error_message = saved_host_secret_error_message();
         state

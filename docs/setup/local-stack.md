@@ -7,7 +7,7 @@ tags: [setup, containers, local, agent-builder]
 
 # Run a local stack
 
-Use this guide when you want dashboards, browser uploads, and Agent Builder on
+Use this guide when you want dashboards, browser submissions, and Agent Builder on
 your own machine. ESDiag starts Elasticsearch and Kibana in containers and
 keeps every processed diagnostic on the machine.
 
@@ -160,6 +160,13 @@ documents, tickets, or chat.
 You need an Enterprise license or trial and a configured inference model before
 you can ask Agent Builder questions.
 
+The first `esdiag local up` starts a 30-day Elasticsearch trial license, so a
+new stack can install the Agent Builder assets. Later runs see that the cluster
+already had a trial and leave its license alone. To control this yourself, pass
+`--activate-trial=true` or `--activate-trial=false` to `up`, `setup`, or
+`upgrade`, or set `ESDIAG_SETUP_ACTIVATE_TRIAL`. With `false` on an unlicensed
+stack, setup installs the Elasticsearch assets and skips the Kibana ones.
+
 For Elastic Inference Service:
 
 1. Sign in to `http://localhost:5601/s/esdiag`.
@@ -213,7 +220,8 @@ esdiag job run <NAME>
 ```
 
 To keep the raw archive, collect first and pass the reported path to `process`.
-ESDiag only uploads when you run `upload` or use `collect --upload`.
+ESDiag sends to Elastic Upload Service only when you run `send` or use
+`collect --send`.
 
 ## Operate the stack
 

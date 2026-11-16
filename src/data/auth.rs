@@ -3,14 +3,14 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use clap::ValueEnum;
-use eyre::Result;
+use eyre::{Result, eyre};
 use redact::Secret;
 use std::str::FromStr;
 
 /// Resolved credential material for one stage. The secret halves are wrapped
 /// so neither `Debug` nor `Display` can print them (ADR-0011); reaching the
 /// plaintext takes an explicit `expose_secret()` at the transport boundary.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Auth {
     /// Use an API key authentication via headers
     Apikey(Secret<String>),
@@ -26,6 +26,23 @@ impl Auth {
             (AuthType::Apikey, _, _, Some(apikey)) => Self::apikey(apikey),
             (AuthType::Basic, Some(username), Some(password), _) => Self::basic(username, password),
             _ => Self::None,
+        }
+    }
+
+    /// Combine separately supplied credential parts, as CLI flags, environment
+    /// variables, and `hosts.yml` fields arrive. An API key excludes basic auth,
+    /// and basic auth needs both halves; no parts at all is [`Auth::None`].
+    pub fn from_parts(
+        apikey: Option<Secret<String>>,
+        username: Option<String>,
+        password: Option<Secret<String>>,
+    ) -> Result<Self> {
+        match (apikey, username, password) {
+            (Some(apikey), None, None) => Ok(Self::Apikey(apikey)),
+            (None, Some(username), Some(password)) => Ok(Self::Basic(username, password)),
+            (None, None, None) => Ok(Self::None),
+            (Some(_), _, _) => Err(eyre!("API key auth cannot be combined with username or password")),
+            _ => Err(eyre!("basic auth requires both username and password")),
         }
     }
 

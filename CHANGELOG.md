@@ -12,18 +12,38 @@ published release notes, maintenance branches, and tagged history.
 
 ### Added
 
-- Added `esdiag completions` to print or install bash, zsh, fish, and PowerShell completion scripts for the running binary.
+- Added `esdiag setup completions <shell>` to install bash, zsh, fish, and PowerShell completion scripts for the running binary, or print them with `--print`.
+- Added `esdiag setup env [--env-file <path>]` to install assets into the deployment that `ESDIAG_OUTPUT_*`, `ESDIAG_KIBANA_URL`, and `ESDIAG_KIBANA_SPACE` declare, and `esdiag setup context [name]` to install assets into the services an Elastic CLI `.elasticrc` context defines. Both set up whichever of Elasticsearch and Kibana the source declares (#431).
+- Added `--activate-trial` and `ESDIAG_SETUP_ACTIVATE_TRIAL` to start a 30-day Elasticsearch trial license during setup, a trial checkbox to the web onboarding output setup, and `--activate-trial=true|false` to `esdiag local` and `esdiag-local` (#431).
+- Added an experimental `elastic diag` profile with context-backed collection, named output contexts, saved symbolic context references, and explicit Cloud-admin deployment targets (#339).
 - Added `esdiag-lite.sh` and `esdiag-lite.ps1`, each with a SHA-256 checksum, to every GitHub release.
 - Added pull-request checks for the ESDiag Lite scripts, including the Windows PowerShell tests.
+- Added processing for ECK diagnostic bundles, indexing operator settings and logs, ECK resources and nodeSets, and Kubernetes node, pod, container, volume, and event state alongside the included Elasticsearch diagnostics (#73).
+- Added the ECK Platform Overview dashboard, linked from processed ECK bundles in place of the Cluster Report (#73).
 - Added processing for Kibana diagnostic bundles, including status, settings, security, Fleet, alerting, spaces, monitoring, synthetics, and detection-engine data.
 
 ### Changed
 
+- **Breaking:** `esdiag setup` now requires a subcommand (#431):
+  - `esdiag setup <output>` becomes `esdiag setup output <output>`, which installs Elasticsearch assets and the assets of the output's linked Kibana viewer.
+  - `esdiag setup <elasticsearch-host>` and `esdiag setup <kibana-host>` become `esdiag setup elasticsearch <host>` and `esdiag setup kibana <host>`. Each installs only that service's assets and rejects a saved host of the other app.
+  - A saved host named `elasticsearch` or `kibana` no longer works the old way: `esdiag setup kibana` now targets the default output's Kibana viewer, not the host named `kibana`. Repeat the name, as in `esdiag setup kibana kibana`.
+  - `esdiag setup` without a host becomes `esdiag setup env` for `ESDIAG_OUTPUT_*` deployments, or `esdiag setup output` for the saved default output. `setup output`, `setup elasticsearch`, and `setup kibana` no longer read `ESDIAG_OUTPUT_*`.
+  - `esdiag agent skills --target <agent>` becomes `esdiag setup skills [agent]...`.
+- **Breaking:** Setup no longer starts a trial license on its own. `esdiag setup`, `esdiag init` for an existing output, and web onboarding leave an unlicensed cluster's license alone unless you opt in; without the opt-in they install the Elasticsearch assets, skip the Kibana Agent Builder assets, and report a `partial` outcome. `esdiag init` asks before starting a trial. A new `esdiag local` stack still starts a trial on its first setup (#431).
+- **Breaking:** ESDiag's Kibana assets now require Elasticsearch and Kibana 9.5 or later. The bundled saved searches use the Kibana 9.5 format, which Kibana 9.4 cannot import.
+- Setup failures without an HTTP response now report the `setup_failed` outcome category.
+- CLI commands that need a saved secret from a locked keystore, such as `esdiag collect`, now prompt for the keystore password on an interactive terminal and continue instead of failing. Non-interactive runs still fail.
 - Updated workspace dependency requirements and the lockfile for the 0.18 development cycle, and regenerated third-party notices.
+- Standardized raw-bundle transfer terminology on `send`, including `esdiag send` and `collect --send`; `upload` now refers only to the Elastic Upload Service.
 
 ### Fixed
 
 - Fixed `esdiag setup` repeating provenance field warnings for every older data stream backing index on each run. It now warns per index only for indices that can still receive writes, summarizes older backing indices with unlinked provenance fields in one line per data stream, and only asks for a rollover after adding an alias to a writable index.
+- Fixed `.elasticrc.yml` errors exposing secrets. A malformed `$(...)` expression no longer echoes the field's value, and invalid service URL errors show the configured URL with its userinfo redacted instead of the resolved URL.
+- Preserved the legacy `settings.json` bundle filename while keeping `IndicesSettings` as the explicit code and dispatch name.
+- Fixed ECK (`eck-diagnostics`) and Kubernetes Platform bundles failing with "Failed to parse version.json" because they were processed as Elasticsearch diagnostics. They are processed as platform bundles again, and their included Elasticsearch diagnostics are processed as children.
+- Fixed `esdiag setup` failing on Elasticsearch Serverless Kibana projects with "Failed to search Kibana space 'default' for ESDiag assets (400 Bad Request)". The check that keeps ESDiag assets in one Kibana space now works on Serverless.
 - Fixed Kibana 9 collection failing for internal APIs, connectors, alerting rules, Fleet and security packages, and agent upgrade status, and stopped reporting missing endpoint exception lists as collection failures.
 
 ## [0.17.0] - 2026-10-13

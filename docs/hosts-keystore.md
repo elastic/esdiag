@@ -36,6 +36,8 @@ esdiag keystore unlock --ttl 7d
 
 `unlock` creates a local `keystore.unlock` lease file that expires after 24 hours by default. Expired leases are ignored and deleted on read when possible.
 
+When a command such as `esdiag collect` needs a saved secret and neither source is available, an interactive terminal prompts for the keystore password and the command continues. The prompted password applies only to that run and does not create an unlock lease. Without an interactive terminal, the command fails.
+
 ## Add Secrets
 
 Add a basic-auth secret:

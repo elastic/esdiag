@@ -7,11 +7,11 @@ use super::{
     outcome::ExecutionEvent,
 };
 use crate::{
-    data::{Application, HostRole, KnownHost, Platform, Uri},
+    data::{Application, HostReference, HostRole, Platform, Uri},
+    elastic_upload_service::{BundleSender, BundleSending},
     exporter::DocumentExporter,
     processor::new_job_id,
     receiver::InputResolver,
-    uploader::{BundleSender, BundleSending},
 };
 use eyre::{Result, eyre};
 use std::{collections::HashMap, sync::Arc};
@@ -116,16 +116,14 @@ impl ExecutionContext {
                 )
             }),
             ExportTarget::KnownHost { name } => {
-                let hosts = KnownHost::parse_hosts_yml()?;
                 let host_key = name.trim();
-                let host = hosts
-                    .get(host_key)
-                    .cloned()
-                    .ok_or_else(|| eyre!("Export host '{host_key}' not found in hosts.yml"))?;
-                if !host.has_role(HostRole::Send) {
+                let host = HostReference::parse(host_key)?
+                    .ok_or_else(|| eyre!("Export host '{host_key}' is no longer configured"))?
+                    .resolve()?;
+                if !host.as_ref().has_role(HostRole::Send) {
                     return Err(eyre!("Export host '{host_key}' is missing the send role"));
                 }
-                if host.app() != Some(Application::Elasticsearch) {
+                if host.application() != Application::Elasticsearch {
                     return Err(eyre!("Export host '{host_key}' must be an Elasticsearch host"));
                 }
                 DocumentExporter::try_from(Uri::try_from(host)?)
@@ -168,7 +166,7 @@ mod tests {
 
     #[test]
     fn process_output_uses_its_own_viewer_or_omits_the_link() {
-        use crate::data::KnownHostBuilder;
+        use crate::data::{KnownHost, KnownHostBuilder};
         use std::collections::BTreeMap;
         let mut env = crate::TestEnv::new();
         env.set("ESDIAG_OUTPUT_URL", "https://local-es.example");
@@ -203,7 +201,7 @@ mod tests {
             .into_inner();
         assert!(
             exporter
-                .kibana_link("diag", 0)
+                .kibana_link(crate::exporter::KibanaLinkTarget::ClusterReport, "diag", 0)
                 .unwrap()
                 .starts_with("https://less-kb.example/s/esdiag/app/")
         );
@@ -214,7 +212,9 @@ mod tests {
             .unwrap()
             .into_inner();
         assert!(
-            exporter.kibana_link("diag", 0).is_none(),
+            exporter
+                .kibana_link(crate::exporter::KibanaLinkTarget::ClusterReport, "diag", 0)
+                .is_none(),
             "an unrelated configured viewer must not leak into the result"
         );
         let exporter = context
@@ -223,7 +223,7 @@ mod tests {
             .into_inner();
         assert!(
             exporter
-                .kibana_link("diag", 0)
+                .kibana_link(crate::exporter::KibanaLinkTarget::ClusterReport, "diag", 0)
                 .unwrap()
                 .starts_with("https://local-kb.example/s/esdiag/app/")
         );
@@ -233,7 +233,9 @@ mod tests {
             .unwrap()
             .into_inner();
         assert!(
-            exporter.kibana_link("diag", 0).is_none(),
+            exporter
+                .kibana_link(crate::exporter::KibanaLinkTarget::ClusterReport, "diag", 0)
+                .is_none(),
             "an unconfigured environment viewer must not default to localhost"
         );
     }

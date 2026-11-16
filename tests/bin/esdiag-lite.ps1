@@ -98,18 +98,18 @@ try {
   $script:UploadId = 'upload-id'
   $script:UploadHost = 'https://upload.elastic.co'
   $script:UploadRequested = $true
-  Assert-True (Invoke-DiagnosticUpload) 'upload should complete with mocked requests'
-  Assert-True ($global:Requests.Method -contains 'Head') 'upload should check whether a part already exists'
-  Assert-True ($global:Requests.Method -contains 'Put') 'upload should send a missing part'
-  Assert-True ($global:Requests.Method -contains 'Post') 'upload should finalize the file'
+  Assert-True (Invoke-DiagnosticSend) 'send should complete with mocked requests'
+  Assert-True ($global:Requests.Method -contains 'Head') 'send should check whether a part already exists'
+  Assert-True ($global:Requests.Method -contains 'Put') 'send should transfer a missing part'
+  Assert-True ($global:Requests.Method -contains 'Post') 'send should finalize the file'
   $putRequest = $global:Requests | Where-Object Method -EQ 'Put' | Select-Object -Last 1
-  Assert-True ($putRequest.Uri.StartsWith('https://upload.elastic.co/api/uploads/upload-id?part_number=1&')) 'upload URL should retain the upload id and query separator'
+  Assert-True ($putRequest.Uri.StartsWith('https://upload.elastic.co/api/uploads/upload-id?part_number=1&')) 'send URL should retain the upload id and query separator'
 
   $requestCount = $global:Requests.Count
   $global:UploadPartExists = $true
-  Assert-True (Invoke-DiagnosticUpload) 'upload should resume when all parts already exist'
+  Assert-True (Invoke-DiagnosticSend) 'send should resume when all parts already exist'
   $resumeMethods = $global:Requests[$requestCount..($global:Requests.Count - 1)].Method
-  Assert-True (-not ($resumeMethods -contains 'Put')) 'upload should skip existing parts'
+  Assert-True (-not ($resumeMethods -contains 'Put')) 'send should skip existing parts'
 
   # Use a real child PowerShell process and jobs: mocks cannot validate job
   # argument serialization, working directories, or child exit statuses.

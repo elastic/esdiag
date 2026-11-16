@@ -5,7 +5,7 @@
 use super::{ServerState, get_theme_dark, template};
 #[cfg(all(feature = "keystore", feature = "setup"))]
 use crate::data::OnboardingWorkflow;
-use crate::data::{Application, ApplicationConfig, HostRole, KnownHost, Settings, is_collectable_app};
+use crate::data::{Application, ApplicationConfig, HostReference, HostRole, KnownHost, Settings, is_collectable_app};
 #[cfg(feature = "keystore")]
 use crate::data::{Job, load_saved_jobs_async};
 use crate::exporter::Exporter;
@@ -263,7 +263,7 @@ async fn build_jobs_page(
 
     let exporter = { state.exporter.read().await.clone() };
     let send_defaults = classify_configured_exporter(&exporter);
-    let job_hosts = job_host_options(&state);
+    let mut job_hosts = job_host_options(&state);
     let default_save_dir = default_downloads_dir().display().to_string();
     let process_options_json = serde_json::to_string(&ApiResolver::processing_catalog().unwrap_or_default())
         .unwrap_or_else(|_| "{}".to_string());
@@ -287,9 +287,18 @@ async fn build_jobs_page(
         (None, false, None)
     };
 
+    if let Some(host) = saved_job.as_ref().map(Job::collect_host)
+        && !host.is_empty()
+        && !job_hosts.collect_hosts.contains(&host)
+        && matches!(HostReference::parse(&host), Ok(Some(_)))
+    {
+        job_hosts.collect_hosts.push(host);
+    }
     let stale_host = saved_job.as_ref().is_some_and(|job| {
         let h = job.collect_host();
-        !h.is_empty() && !job_hosts.collect_hosts.iter().any(|host| host == h)
+        matches!(job.input(), crate::job::model::Input::Collect { .. })
+            && !h.is_empty()
+            && !job_hosts.collect_hosts.iter().any(|host| host == &h)
     });
     let hide_saved_job = job_not_found || job_load_error.is_some();
 

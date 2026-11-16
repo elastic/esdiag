@@ -198,14 +198,9 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
     type Error = eyre::Report;
 
     fn try_from(host: KnownHost) -> Result<Self> {
-        let kibana_base_url = super::kibana_base_url_for_output(&host);
-        let kibana_viewer = kibana_base_url.as_ref().and_then(|_| {
-            if let Some(viewer) = host.viewer() {
-                KnownHost::get_known(&viewer.to_string()).map(crate::data::Uri::KnownHost)
-            } else {
-                crate::data::Uri::try_from_kibana_env().ok()
-            }
-        });
+        let viewer = super::output_viewer(&host);
+        let kibana_base_url = viewer.as_ref().and_then(super::kibana_base_url_for_output);
+        let kibana_viewer = kibana_base_url.as_ref().and(viewer).map(crate::data::Uri::KnownHost);
         let requires_secret = !matches!(host.get_auth_for_direction(CredentialDirection::Output)?, Auth::None);
         let url = host.get_url()?;
         let client = elasticsearch_client_from_output_host(host)?;

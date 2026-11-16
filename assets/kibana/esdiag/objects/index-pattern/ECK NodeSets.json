@@ -1,0 +1,18 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fieldAttrs": {},
+    "fieldFormatMap": {},
+    "fields": "[]",
+    "name": "ECK NodeSets",
+    "runtimeFieldMap": "{}",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "settings-eck.nodeset-esdiag"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "80290e4c-80a0-5579-b0b5-cffbb76abdca",
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

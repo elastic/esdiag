@@ -1,83 +1,6 @@
 {
   "attributes": {
-    "columns": [
-      "node.name",
-      "task.action",
-      "task.running_time_in_nanos",
-      "index.bulk.docs",
-      "shard.bulk.docs",
-      "shard.number",
-      "index.name",
-      "task.id",
-      "task.parent.id",
-      "task.description",
-      "event.ingested"
-    ],
     "description": "",
-    "grid": {
-      "columns": {
-        "event.ingested": {
-          "width": 268
-        },
-        "index.bulk.docs": {
-          "width": 145
-        },
-        "index.name": {
-          "width": 689
-        },
-        "node.name": {
-          "width": 186
-        },
-        "shard.bulk.docs": {
-          "width": 144
-        },
-        "shard.number": {
-          "width": 123
-        },
-        "task.action": {
-          "width": 295
-        },
-        "task.description": {
-          "width": 732
-        },
-        "task.headers.X-Opaque-Id": {
-          "width": 1432
-        },
-        "task.headers.X-elastic-product-origin": {
-          "width": 133
-        },
-        "task.id": {
-          "width": 131
-        },
-        "task.parent.id": {
-          "width": 114
-        },
-        "task.running_time_in_nanos": {
-          "width": 184
-        },
-        "task.type": {
-          "width": 125
-        }
-      }
-    },
-    "hideChart": true,
-    "isTextBasedQuery": false,
-    "kibanaSavedObjectMeta": {
-      "searchSourceJSON": {
-        "filter": [],
-        "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
-        "query": {
-          "language": "kuery",
-          "query": ""
-        }
-      }
-    },
-    "sort": [
-      [
-        "event.ingested",
-        "desc"
-      ]
-    ],
     "tabs": [
       {
         "attributes": {
@@ -157,7 +80,6 @@
         "label": "Untitled"
       }
     ],
-    "timeRestore": false,
     "title": "Bulk Task List"
   },
   "coreMigrationVersion": "8.8.0",
@@ -180,5 +102,5 @@
     }
   ],
   "type": "search",
-  "typeMigrationVersion": "10.11.0"
+  "typeMigrationVersion": "10.13.0"
 }

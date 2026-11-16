@@ -42,7 +42,7 @@ Top-Level Layout
 - `docker/`: Container and Compose definitions for local and packaging-related workflows.
 - `docs/`: User-facing and maintainer-facing documentation.
 - `openspec/`: OpenSpec change proposals, archived changes, and repository specification artifacts.
-- `plugin/`: Distributable script-free Agent Skill package with thin Claude Code and Codex manifests. Its bundled `SKILL.md` and `references/` under `plugin/skills/` are generated from `.agents/skills/esdiag/` by `bin/sync-plugin-skill.sh` and must not be edited directly. The repository-root `.claude-plugin/marketplace.json` publishes the Claude package; Codex and OpenCode discover the canonical `.agents/skills/` copy in a checkout, while `esdiag agent skills` installs the matching embedded skill for binary users.
+- `plugin/`: Distributable script-free Agent Skill package with thin Claude Code and Codex manifests. Its bundled `SKILL.md` and `references/` under `plugin/skills/` are generated from `.agents/skills/esdiag/` by `bin/sync-plugin-skill.sh` and must not be edited directly. The repository-root `.claude-plugin/marketplace.json` publishes the Claude package; Codex and OpenCode discover the canonical `.agents/skills/` copy in a checkout, while `esdiag setup skills` installs the matching embedded skill for binary users.
 - `src/`: Rust application and library source code.
 - `templates/`: Askama HTML templates that power the web UI.
 - `tests/`: Integration-style tests, CLI tests, runtime tests, and test fixtures.
@@ -66,14 +66,14 @@ src/
 ├── processor/
 ├── receiver/
 ├── server/
+├── setup/
 ├── embeds.rs
 ├── env.rs
 ├── job.rs
 ├── lib.rs
 ├── main.rs
 ├── onboarding.rs
-├── setup.rs
-└── uploader.rs
+└── elastic_upload_service.rs
 ```
 
 ### Directories
@@ -82,15 +82,19 @@ src/
 - `src/data/`: Shared domain types, configuration models, known host handling, keystore support, settings, and workflow data structures.
 - `src/exporter/`: Output adapters that write processed data to Elasticsearch, files, directories, archives, or stdout.
 - `src/processor/`: Diagnostic collection and transformation pipeline that turns raw inputs into normalized reports and exported documents.
-- `src/receiver/`: Input adapters that read diagnostics from local archives, directories, remote services, and upload links.
-- `src/server/`: Axum-based HTTP server and web UI runtime for uploads, settings, docs, Advanced page, and related browser-facing features.
+- `src/receiver/`: Input adapters that read diagnostics from local archives,
+  directories, remote services, and Elastic Upload Service links.
+- `src/setup/`: `esdiag setup` logic: Elasticsearch and Kibana asset installation and license checks, the env and `.elasticrc` context sources, agent skill installation, and shell completions.
+- `src/server/`: Axum-based HTTP server and web UI runtime for archive
+  submissions, settings, docs, Advanced page, and related browser-facing
+  features.
 
 ### Root Files
 
 - `src/lib.rs`: Library module declarations and shared exports used by the binary and tests.
 - `src/main.rs`: Main CLI entrypoint, command definitions, and runtime orchestration.
-- `src/setup.rs`: Asset installation logic for Elasticsearch and Kibana setup flows.
-- `src/uploader.rs`: Upload logic for sending collected archives to the Elastic Upload Service.
+- `src/elastic_upload_service.rs`: Elastic Upload Service adapter used by the
+  generic Send stage.
 - `src/job.rs`: Saved job execution and management helpers.
 - `src/onboarding.rs`: Flow-neutral first-run configuration, persistence, and readiness operations shared by terminal and future GUI flows.
 - `src/env.rs`: Environment-variable defaults and lookup helpers.

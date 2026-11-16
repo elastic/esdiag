@@ -2,10 +2,10 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
+use super::HostReference;
+use super::credential::PersistError;
 use super::keystore::upsert_secret_auth_batch;
-use crate::data::{
-    Application, Auth, Platform, SecretAuth, get_keystore_password, resolve_secret_auth as resolve_secret_by_id,
-};
+use crate::data::{Application, Auth, Credential, Platform, SecretAuth};
 use eyre::{Result, eyre};
 use redact::Secret;
 #[cfg(test)]
@@ -161,7 +161,7 @@ impl TryFrom<&Url> for ElasticCloud {
     fn try_from(url: &Url) -> Result<Self, Self::Error> {
         if url.domain() == Some("admin.us-gov-east-1.aws.elastic-cloud.com") {
             Ok(ElasticCloud::ElasticGovCloudAdmin)
-        } else if url.domain() == Some("admin.found.no") {
+        } else if matches!(url.domain(), Some("admin.found.no" | "api.elastic-cloud.com")) {
             Ok(ElasticCloud::ElasticCloudAdmin)
         } else if url.domain() == Some("cloud.elastic.co") {
             Ok(ElasticCloud::ElasticCloud)
@@ -183,15 +183,13 @@ impl Display for ElasticCloud {
 
 pub struct KnownHostBuilder {
     accept_invalid_certs: bool,
-    apikey: Option<Secret<String>>,
     app: Option<Application>,
+    auth: Auth,
     cloud_id: Option<ElasticCloud>,
-    password: Option<Secret<String>>,
     roles: Vec<HostRole>,
     secret: Option<String>,
     url: Option<Url>,
     url_template: Option<String>,
-    username: Option<String>,
     viewer: Option<String>,
 }
 
@@ -199,15 +197,13 @@ impl KnownHostBuilder {
     pub fn new(url: Url) -> Self {
         KnownHostBuilder {
             accept_invalid_certs: false,
-            apikey: None,
             app: Some(Application::Elasticsearch),
+            auth: Auth::None,
             cloud_id: None,
-            password: None,
             roles: default_collect_roles(),
             secret: None,
             url: Some(url),
             url_template: None,
-            username: None,
             viewer: None,
         }
     }
@@ -215,15 +211,13 @@ impl KnownHostBuilder {
     pub fn new_template(url_template: String) -> Self {
         KnownHostBuilder {
             accept_invalid_certs: false,
-            apikey: None,
             app: None,
+            auth: Auth::None,
             cloud_id: None,
-            password: None,
             roles: default_collect_roles(),
             secret: None,
             url: None,
             url_template: Some(url_template),
-            username: None,
             viewer: None,
         }
     }
@@ -235,35 +229,10 @@ impl KnownHostBuilder {
         }
     }
 
-    pub fn apikey(self, apikey: Option<String>) -> Self {
-        Self {
-            apikey: apikey.map(Secret::new),
-            ..self
-        }
-    }
-
-    pub fn password(self, password: Option<String>) -> Self {
-        Self {
-            password: password.map(Secret::new),
-            ..self
-        }
-    }
-
-    /// Carries already-wrapped legacy credentials into the builder, as rendering
-    /// a template host or applying a CLI update does, without unwrapping them in
-    /// between. Plaintext callers want [`Self::apikey`] and [`Self::password`].
-    pub fn legacy_credentials(
-        self,
-        apikey: Option<Secret<String>>,
-        username: Option<String>,
-        password: Option<Secret<String>>,
-    ) -> Self {
-        Self {
-            apikey,
-            password,
-            username,
-            ..self
-        }
+    /// Credentials supplied at run time. A host built with them can be used
+    /// but not saved; pair a saved host with [`Self::secret`] instead.
+    pub fn auth(self, auth: Auth) -> Self {
+        Self { auth, ..self }
     }
 
     pub fn application(self, app: Application) -> Self {
@@ -285,10 +254,6 @@ impl KnownHostBuilder {
         Self { roles, ..self }
     }
 
-    pub fn username(self, username: Option<String>) -> Self {
-        Self { username, ..self }
-    }
-
     pub fn viewer(self, viewer: Option<String>) -> Self {
         Self { viewer, ..self }
     }
@@ -298,6 +263,7 @@ impl KnownHostBuilder {
     /// This only rewrites concrete Elasticsearch hosts for known Elastic Cloud domains:
     ///
     /// - `cloud.elastic.co`
+    /// - `api.elastic-cloud.com`
     /// - `admin.found.no`
     /// - `admin.us-gov-east-1.aws.elastic-cloud.com`
     ///
@@ -335,48 +301,37 @@ impl KnownHostBuilder {
 
     pub fn build(mut self) -> Result<KnownHost> {
         self.update_cloud_api_path();
+        let credential = match (self.secret, self.auth) {
+            (Some(secret), Auth::None) => Credential::Keystore(secret),
+            (None, auth) => Credential::runtime(auth),
+            (Some(_), _) => {
+                return Err(eyre!(
+                    "Invalid KnownHost configuration: explicit credentials conflict with secret auth"
+                ));
+            }
+        };
         KnownHost::from_parts(KnownHostParts {
             accept_invalid_certs: self.accept_invalid_certs,
             app: self.app,
             cloud_id: self.cloud_id,
             roles: self.roles,
-            secret: self.secret,
+            credential,
             viewer: self.viewer,
             url: self.url,
             url_template: self.url_template,
-            legacy_apikey: self.apikey,
-            legacy_username: self.username,
-            legacy_password: self.password,
         })
     }
 
-    pub fn build_with_secret_auth(mut self, _secret_auth: SecretAuth) -> Result<KnownHost> {
-        self.update_cloud_api_path();
-
-        if self.apikey.is_some() || self.username.is_some() || self.password.is_some() {
+    pub fn build_with_secret_auth(self, _secret_auth: SecretAuth) -> Result<KnownHost> {
+        if self.auth != Auth::None {
             return Err(eyre!(
                 "Invalid KnownHost configuration: explicit credentials conflict with secret auth"
             ));
         }
-
-        let secret = self
-            .secret
-            .take()
-            .ok_or_else(|| eyre!("Invalid KnownHost configuration: missing secret reference"))?;
-
-        KnownHost::from_parts(KnownHostParts {
-            accept_invalid_certs: self.accept_invalid_certs,
-            app: self.app,
-            cloud_id: self.cloud_id,
-            roles: self.roles,
-            secret: Some(secret),
-            viewer: self.viewer,
-            url: self.url,
-            url_template: self.url_template,
-            legacy_apikey: None,
-            legacy_username: None,
-            legacy_password: None,
-        })
+        if self.secret.is_none() {
+            return Err(eyre!("Invalid KnownHost configuration: missing secret reference"));
+        }
+        self.build()
     }
 }
 
@@ -409,6 +364,9 @@ fn deployment_id_from_cloud_url(url: &Url) -> Option<&str> {
 fn elastic_cloud_proxy_template(domain: Option<&str>) -> Option<&'static str> {
     match domain {
         Some("admin.found.no") => Some("https://admin.found.no/api/v1/deployments/{id}/elasticsearch/_main/proxy/"),
+        Some("api.elastic-cloud.com") => {
+            Some("https://api.elastic-cloud.com/api/v1/deployments/{id}/elasticsearch/_main/proxy/")
+        }
         Some("cloud.elastic.co") => Some("https://cloud.elastic.co/api/v1/deployments/{id}/elasticsearch/_main/proxy/"),
         Some("admin.us-gov-east-1.aws.elastic-cloud.com") => {
             Some("https://admin.us-gov-east-1.aws.elastic-cloud.com/api/v1/deployments/{id}/elasticsearch/_main/proxy/")
@@ -451,16 +409,14 @@ pub struct KnownHost {
     pub app: Option<Application>,
     pub cloud_id: Option<ElasticCloud>,
     pub roles: Vec<HostRole>,
-    pub secret: Option<String>,
     pub viewer: Option<String>,
     pub url: Option<Url>,
     pub url_template: Option<String>,
-    /// Pre-migration plaintext credentials, wrapped so the derived `Debug` of a
-    /// host cannot print them (ADR-0011). `Serialize` drops them entirely:
-    /// `hosts.yml` carries a `secret` reference into the keystore instead.
-    pub legacy_apikey: Option<Secret<String>>,
-    pub legacy_username: Option<String>,
-    pub legacy_password: Option<Secret<String>>,
+    credential: Credential,
+    /// The Kibana host that views this output's data, attached when resolution
+    /// already knows it (an Elastic CLI context or `ESDIAG_KIBANA_URL`). Runtime
+    /// only: `hosts.yml` links a saved viewer by name through `viewer`.
+    attached_viewer: Option<Box<KnownHost>>,
 }
 
 /// The route used by a concrete known host to reach its application API.
@@ -520,7 +476,7 @@ struct FlatKnownHostRef<'a> {
     #[serde(default = "default_collect_roles", skip_serializing_if = "roles_is_default_collect")]
     roles: &'a Vec<HostRole>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    secret: &'a Option<String>,
+    secret: Option<&'a str>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     viewer: &'a Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -673,13 +629,10 @@ struct KnownHostParts {
     app: Option<Application>,
     cloud_id: Option<ElasticCloud>,
     roles: Vec<HostRole>,
-    secret: Option<String>,
+    credential: Credential,
     viewer: Option<String>,
     url: Option<Url>,
     url_template: Option<String>,
-    legacy_apikey: Option<Secret<String>>,
-    legacy_username: Option<String>,
-    legacy_password: Option<Secret<String>>,
 }
 
 impl Serialize for KnownHost {
@@ -692,7 +645,7 @@ impl Serialize for KnownHost {
             app: &self.app,
             cloud_id: &self.cloud_id,
             roles: &self.roles,
-            secret: &self.secret,
+            secret: self.credential.secret_reference(),
             viewer: &self.viewer,
             url: &self.url,
             url_template: &self.url_template,
@@ -722,28 +675,11 @@ impl KnownHost {
             app,
             cloud_id,
             roles,
-            secret,
+            credential,
             viewer,
             url,
             url_template,
-            legacy_apikey,
-            legacy_username,
-            legacy_password,
         } = parts;
-        match (&legacy_apikey, &legacy_username, &legacy_password) {
-            (Some(_), None, None) => {}
-            (None, Some(_), Some(_)) | (None, None, None) => {}
-            (Some(_), _, _) => {
-                return Err(eyre!(
-                    "Invalid KnownHost configuration: API key auth cannot be combined with username or password"
-                ));
-            }
-            (None, Some(_), None) | (None, None, Some(_)) => {
-                return Err(eyre!(
-                    "Invalid KnownHost configuration: basic auth requires both username and password"
-                ));
-            }
-        }
 
         match (&url, &url_template) {
             (Some(_), None) => {}
@@ -770,13 +706,11 @@ impl KnownHost {
             app,
             cloud_id,
             roles,
-            secret,
+            credential,
             viewer,
             url,
             url_template,
-            legacy_apikey,
-            legacy_username,
-            legacy_password,
+            attached_viewer: None,
         })
     }
 
@@ -786,13 +720,10 @@ impl KnownHost {
             app: wire.app,
             cloud_id: wire.cloud_id,
             roles: wire.roles,
-            secret: wire.secret.clone(),
+            credential: hosts_yml_credential(wire.secret, wire.apikey, wire.username, wire.password)?,
             viewer: wire.viewer,
             url: wire.url,
             url_template: wire.url_template,
-            legacy_apikey: wire.apikey.map(Secret::new),
-            legacy_username: wire.username,
-            legacy_password: wire.password.map(Secret::new),
         })
     }
 
@@ -812,13 +743,10 @@ impl KnownHost {
                 app,
                 cloud_id,
                 roles,
-                secret: secret.clone(),
+                credential: hosts_yml_credential(secret, apikey, None, None)?,
                 viewer,
                 url: Some(url),
                 url_template: None,
-                legacy_apikey: apikey.map(Secret::new),
-                legacy_username: None,
-                legacy_password: None,
             }),
             LegacyKnownHostWire::Basic {
                 accept_invalid_certs,
@@ -834,13 +762,10 @@ impl KnownHost {
                 app,
                 cloud_id: None,
                 roles,
-                secret: secret.clone(),
+                credential: hosts_yml_credential(secret, None, username, password)?,
                 viewer,
                 url: Some(url),
                 url_template: None,
-                legacy_apikey: None,
-                legacy_username: username,
-                legacy_password: password.map(Secret::new),
             }),
             LegacyKnownHostWire::NoAuth {
                 accept_invalid_certs,
@@ -853,37 +778,33 @@ impl KnownHost {
                 app,
                 cloud_id: None,
                 roles,
-                secret: None,
+                credential: Credential::None,
                 viewer,
                 url: Some(url),
                 url_template: None,
-                legacy_apikey: None,
-                legacy_username: None,
-                legacy_password: None,
             }),
         }
     }
 
-    fn has_legacy_plaintext_auth(&self) -> bool {
-        self.legacy_apikey.is_some() || self.legacy_username.is_some() || self.legacy_password.is_some()
-    }
-
-    fn clear_legacy_plaintext_auth(&mut self) {
-        self.legacy_apikey = None;
-        self.legacy_username = None;
-        self.legacy_password = None;
-    }
-
-    fn auth_label(&self) -> &'static str {
-        if self.secret.is_some() {
-            "secret"
-        } else if self.legacy_apikey.is_some() {
-            "apikey"
-        } else if self.legacy_username.is_some() || self.legacy_password.is_some() {
-            "basic"
-        } else {
-            "none"
-        }
+    pub fn new(
+        app: impl IntoKnownHostApp,
+        url: Url,
+        roles: Vec<HostRole>,
+        viewer: Option<String>,
+        accept_invalid_certs: bool,
+        credential: Credential,
+    ) -> Self {
+        Self::from_parts(KnownHostParts {
+            accept_invalid_certs,
+            app: app.into_known_host_app(),
+            cloud_id: ElasticCloud::try_from(&url).ok(),
+            roles,
+            credential,
+            viewer,
+            url: Some(url),
+            url_template: None,
+        })
+        .expect("a concrete URL is always a valid host")
     }
 
     pub fn new_no_auth(
@@ -893,73 +814,7 @@ impl KnownHost {
         viewer: Option<String>,
         accept_invalid_certs: bool,
     ) -> Self {
-        Self::from_parts(KnownHostParts {
-            accept_invalid_certs,
-            app: app.into_known_host_app(),
-            cloud_id: ElasticCloud::try_from(&url).ok(),
-            roles,
-            secret: None,
-            viewer,
-            url: Some(url),
-            url_template: None,
-            legacy_apikey: None,
-            legacy_username: None,
-            legacy_password: None,
-        })
-        .expect("valid no-auth host")
-    }
-
-    pub fn new_legacy_apikey(
-        app: impl IntoKnownHostApp,
-        url: Url,
-        roles: Vec<HostRole>,
-        viewer: Option<String>,
-        accept_invalid_certs: bool,
-        secret: Option<String>,
-        apikey: Option<String>,
-    ) -> Self {
-        Self::from_parts(KnownHostParts {
-            accept_invalid_certs,
-            app: app.into_known_host_app(),
-            cloud_id: ElasticCloud::try_from(&url).ok(),
-            roles,
-            secret: secret.clone(),
-            viewer,
-            url: Some(url),
-            url_template: None,
-            legacy_apikey: apikey.map(Secret::new),
-            legacy_username: None,
-            legacy_password: None,
-        })
-        .expect("valid legacy api key host")
-    }
-
-    pub fn new_legacy_basic(
-        app: impl IntoKnownHostApp,
-        url: Url,
-        roles: Vec<HostRole>,
-        viewer: Option<String>,
-        accept_invalid_certs: bool,
-        secret: Option<String>,
-        credentials: Option<(String, String)>,
-    ) -> Self {
-        let (legacy_username, legacy_password) = credentials
-            .map(|(username, password)| (Some(username), Some(Secret::new(password))))
-            .unwrap_or((None, None));
-        Self::from_parts(KnownHostParts {
-            accept_invalid_certs,
-            app: app.into_known_host_app(),
-            cloud_id: ElasticCloud::try_from(&url).ok(),
-            roles,
-            secret: secret.clone(),
-            viewer,
-            url: Some(url),
-            url_template: None,
-            legacy_apikey: None,
-            legacy_username,
-            legacy_password,
-        })
-        .expect("valid legacy basic host")
+        Self::new(app, url, roles, viewer, accept_invalid_certs, Credential::None)
     }
 
     pub fn app(&self) -> Option<Application> {
@@ -1042,6 +897,15 @@ impl KnownHost {
         self.viewer.as_deref()
     }
 
+    pub fn with_attached_viewer(mut self, viewer: KnownHost) -> Self {
+        self.attached_viewer = Some(Box::new(viewer));
+        self
+    }
+
+    pub fn attached_viewer(&self) -> Option<&KnownHost> {
+        self.attached_viewer.as_deref()
+    }
+
     pub fn accept_invalid_certs(&self) -> bool {
         self.accept_invalid_certs
     }
@@ -1050,12 +914,16 @@ impl KnownHost {
         self.cloud_id.as_ref()
     }
 
+    pub fn credential(&self) -> &Credential {
+        &self.credential
+    }
+
     pub fn requires_keystore_secret(&self) -> bool {
-        self.secret.is_some()
+        self.credential.secret_reference().is_some()
     }
 
     pub fn secret_reference(&self) -> Option<&str> {
-        self.secret.as_deref()
+        self.credential.secret_reference()
     }
 
     /// Resolve this host's credential as an *input* credential, the direction
@@ -1080,17 +948,17 @@ impl KnownHost {
                 .collect::<Vec<_>>()
                 .join(",")
         );
-        resolve_auth_with_precedence(
-            &self.secret,
-            self.legacy_apikey.clone(),
-            self.legacy_username.clone().zip(self.legacy_password.clone()),
-        )
+        self.credential.resolve()
     }
 
     pub fn template_guidance(name: &str) -> String {
         format!(
             "Host '{name}' is template-backed and requires an `id` plus an optional `product`. Use `{name}://<id>[/<product>]` and omit `product` to default to `{DEFAULT_TEMPLATE_PRODUCT}`."
         )
+    }
+
+    pub(crate) fn is_template_reference(reference: &str) -> Result<bool> {
+        Ok(parse_template_reference(reference)?.is_some())
     }
 
     pub fn resolve_template_reference(reference: &str) -> Result<Option<Self>> {
@@ -1123,17 +991,13 @@ impl KnownHost {
             .application(app)
             .accept_invalid_certs(self.accept_invalid_certs)
             .roles(self.roles.clone())
-            .viewer(self.viewer.clone())
-            .legacy_credentials(
-                self.legacy_apikey.clone(),
-                self.legacy_username.clone(),
-                self.legacy_password.clone(),
-            )
-            .secret(self.secret.clone());
+            .viewer(self.viewer.clone());
         if self.roles.is_empty() {
             builder = builder.roles(default_collect_roles());
         }
-        builder.build()
+        let mut host = builder.build()?;
+        host.credential = self.credential.clone();
+        Ok(host)
     }
 
     fn validate_template_host_name(&self, host_name: &str) -> Result<()> {
@@ -1154,13 +1018,11 @@ impl KnownHost {
         };
         self.normalize_and_validate_roles(name)?;
         self.validate_template_host_name(name)?;
-        if self.secret.is_some() {
-            self.clear_legacy_plaintext_auth();
-        } else if self.has_legacy_plaintext_auth() {
-            return Err(eyre!(
+        self.credential = self.credential.persisted().map_err(|_| {
+            eyre!(
                 "Host '{name}' requires a secret reference before it can be saved. Use `--secret <id>` to persist auth, or `--nosave` for transient validation."
-            ));
-        }
+            )
+        })?;
         hosts.insert(name.to_owned(), self);
         KnownHost::write_hosts_yml(&hosts)
     }
@@ -1175,60 +1037,32 @@ impl KnownHost {
             .accept_invalid_certs
             .unwrap_or_else(|| self.accept_invalid_certs());
 
-        if let Some(secret_id) = &update.secret {
-            let _secret_auth = secret_auth
+        let credential = if let Some(secret_id) = &update.secret {
+            secret_auth
                 .ok_or_else(|| eyre!("Invalid KnownHost configuration: missing secret auth for secret update"))?;
-            return Self::from_parts(KnownHostParts {
-                accept_invalid_certs,
-                app,
-                cloud_id: url.as_ref().and_then(|url| ElasticCloud::try_from(url).ok()),
-                roles,
-                secret: Some(secret_id.clone()),
-                viewer,
-                url,
-                url_template,
-                legacy_apikey: None,
-                legacy_username: None,
-                legacy_password: None,
-            });
-        }
-
-        if let Some(apikey) = &update.apikey {
-            return Self::from_parts(KnownHostParts {
-                accept_invalid_certs,
-                app,
-                cloud_id: url.as_ref().and_then(|url| ElasticCloud::try_from(url).ok()),
-                roles,
-                secret: None,
-                viewer,
-                url,
-                url_template,
-                legacy_apikey: Some(apikey.clone()),
-                legacy_username: None,
-                legacy_password: None,
-            });
-        }
-
-        if update.username.is_some() || update.password.is_some() {
-            let username = update.username.clone();
-            let password = update.password.clone();
-            if username.is_none() || password.is_none() {
+            Some(Credential::Keystore(secret_id.clone()))
+        } else if let Some(apikey) = &update.apikey {
+            Some(Credential::runtime(Auth::Apikey(apikey.clone())))
+        } else if update.username.is_some() || update.password.is_some() {
+            let (Some(username), Some(password)) = (update.username.clone(), update.password.clone()) else {
                 return Err(eyre!(
                     "Invalid Basic auth update: either provide a secret reference or both username and password"
                 ));
-            }
+            };
+            Some(Credential::runtime(Auth::Basic(username, password)))
+        } else {
+            None
+        };
+        if let Some(credential) = credential {
             return Self::from_parts(KnownHostParts {
                 accept_invalid_certs,
                 app,
                 cloud_id: url.as_ref().and_then(|url| ElasticCloud::try_from(url).ok()),
                 roles,
-                secret: None,
+                credential,
                 viewer,
                 url,
                 url_template,
-                legacy_apikey: None,
-                legacy_username: username,
-                legacy_password: password,
             });
         }
 
@@ -1262,13 +1096,13 @@ impl KnownHost {
         Self::write_hosts_yml(&hosts)
     }
 
-    pub fn has_legacy_secret(&self) -> bool {
-        self.has_legacy_plaintext_auth()
+    /// Whether `hosts.yml` still holds pre-migration plaintext for this host.
+    pub fn has_legacy_credential(&self) -> bool {
+        self.credential.legacy_auth().is_some()
     }
 
     pub fn set_secret_reference(&mut self, secret_id: String) {
-        self.secret = Some(secret_id);
-        self.clear_legacy_plaintext_auth();
+        self.credential = Credential::Keystore(secret_id);
     }
 
     pub fn migrate_hosts_to_keystore(keystore_password: &str) -> Result<(usize, usize)> {
@@ -1281,7 +1115,7 @@ impl KnownHost {
         tracing::info!("Starting keystore migration for {total} host(s).");
 
         for (index, (name, host)) in hosts.iter_mut().enumerate() {
-            match host.legacy_auth() {
+            match host.credential.legacy_auth().cloned() {
                 Some(auth) => {
                     tracing::debug!(
                         "Preparing host {}/{} for keystore migration: {}",
@@ -1331,18 +1165,6 @@ impl KnownHost {
         Ok(names)
     }
 
-    fn legacy_auth(&self) -> Option<SecretAuth> {
-        match (
-            self.legacy_apikey.clone(),
-            self.legacy_username.clone(),
-            self.legacy_password.clone(),
-        ) {
-            (Some(apikey), None, None) => Some(SecretAuth::ApiKey { apikey }),
-            (None, Some(username), Some(password)) => Some(SecretAuth::Basic { username, password }),
-            _ => None,
-        }
-    }
-
     pub fn list_all() -> Option<Vec<String>> {
         let hosts = KnownHost::parse_hosts_yml().ok()?;
         let mut names: Vec<String> = hosts.keys().cloned().collect();
@@ -1368,13 +1190,11 @@ impl KnownHost {
             app: Some(Application::Elasticsearch),
             cloud_id: ElasticCloud::try_from(url).ok(),
             roles: default_collect_roles(),
-            secret: None,
             viewer: None,
             url: Some(url.clone()),
             url_template: None,
-            legacy_apikey: None,
-            legacy_username: None,
-            legacy_password: None,
+            credential: Credential::None,
+            attached_viewer: None,
         }
     }
 
@@ -1451,17 +1271,19 @@ impl KnownHost {
 
     pub fn write_hosts_yml(hosts: &BTreeMap<String, KnownHost>) -> Result<String> {
         let path = KnownHost::get_hosts_path();
+        reject_new_reserved_names(hosts)?;
         let mut hosts = hosts.clone();
         for (name, host) in hosts.iter_mut() {
             host.normalize_and_validate_roles(name)?;
             host.validate_template_host_name(name)?;
-            if host.secret.is_some() {
-                host.clear_legacy_plaintext_auth();
-            } else if host.has_legacy_plaintext_auth() {
-                return Err(eyre!(
+            host.credential = host.credential.persisted().map_err(|err| match err {
+                PersistError::Legacy => eyre!(
                     "Host '{name}' still contains plaintext credentials. Run `esdiag keystore migrate` first."
-                ));
-            }
+                ),
+                PersistError::Runtime => eyre!(
+                    "Host '{name}' carries runtime credentials, which are never saved. Store them in the keystore and reference them with `--secret <id>`."
+                ),
+            })?;
         }
         validate_viewer_links(&hosts)?;
         tracing::debug!(
@@ -1523,7 +1345,7 @@ impl KnownHost {
 impl Display for KnownHost {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> std::fmt::Result {
         let transport = self.transport_display();
-        match self.auth_label() {
+        match self.credential.label() {
             "apikey" => {
                 let cloud_id = self
                     .cloud_id
@@ -1539,10 +1361,7 @@ impl Display for KnownHost {
                 )
             }
             "basic" => {
-                let username = self
-                    .legacy_username
-                    .clone()
-                    .unwrap_or_else(|| "<secret-auth>".to_string());
+                let username = self.credential.basic_username().unwrap_or("<secret-auth>");
                 write!(
                     fmt,
                     "KnownHost Basic: {} {}@ {}",
@@ -1567,35 +1386,42 @@ impl Serialize for TestKnownHostRef<'_> {
         S: Serializer,
     {
         let host = self.0;
-        if host.secret.is_none() && host.has_legacy_plaintext_auth() {
-            if host.legacy_apikey.is_some() {
+        let plaintext = match &host.credential {
+            Credential::Legacy { auth, secret: None } | Credential::Runtime(auth) => Some(auth),
+            _ => None,
+        };
+        let url = || {
+            host.concrete_url()
+                .expect("legacy test serialization requires a concrete URL")
+        };
+        match plaintext {
+            Some(SecretAuth::ApiKey { apikey }) => {
                 return LegacyKnownHostRef::ApiKey {
                     accept_invalid_certs: host.accept_invalid_certs,
-                    apikey: &host.legacy_apikey,
+                    apikey: &Some(apikey.clone()),
                     app: &host.app,
                     cloud_id: &host.cloud_id,
                     roles: &host.roles,
-                    secret: &host.secret,
+                    secret: &None,
                     viewer: &host.viewer,
-                    url: host
-                        .concrete_url()
-                        .expect("legacy test serialization requires a concrete URL"),
+                    url: url(),
                 }
                 .serialize(serializer);
             }
-            return LegacyKnownHostRef::Basic {
-                accept_invalid_certs: host.accept_invalid_certs,
-                app: &host.app,
-                password: &host.legacy_password,
-                roles: &host.roles,
-                secret: &host.secret,
-                viewer: &host.viewer,
-                url: host
-                    .concrete_url()
-                    .expect("legacy test serialization requires a concrete URL"),
-                username: &host.legacy_username,
+            Some(SecretAuth::Basic { username, password }) => {
+                return LegacyKnownHostRef::Basic {
+                    accept_invalid_certs: host.accept_invalid_certs,
+                    app: &host.app,
+                    password: &Some(password.clone()),
+                    roles: &host.roles,
+                    secret: &None,
+                    viewer: &host.viewer,
+                    url: url(),
+                    username: &Some(username.clone()),
+                }
+                .serialize(serializer);
             }
-            .serialize(serializer);
+            None => {}
         }
 
         host.serialize(serializer)
@@ -1626,6 +1452,29 @@ pub(crate) fn write_hosts_yml_for_tests(hosts: &BTreeMap<String, KnownHost>) -> 
     let writer = BufWriter::new(file);
     yaml_serde::to_writer(writer, &TestKnownHostsRef(hosts))?;
     Ok(format!("{}", path.display()))
+}
+
+/// Reject host names that a host reference would read as an Elastic CLI
+/// context. Names already in `hosts.yml` are kept so an older file stays
+/// editable; they are unreachable by reference and only warn.
+fn reject_new_reserved_names(hosts: &BTreeMap<String, KnownHost>) -> Result<()> {
+    let reserved: Vec<&String> = hosts
+        .keys()
+        .filter(|name| HostReference::is_reserved_name(name))
+        .collect();
+    if reserved.is_empty() {
+        return Ok(());
+    }
+    let existing = KnownHost::parse_hosts_yml().unwrap_or_default();
+    for name in reserved {
+        if !existing.contains_key(name) {
+            return Err(eyre!(
+                "Host name '{name}' is reserved for Elastic CLI context references. Choose a name that does not start with '.'."
+            ));
+        }
+        tracing::warn!("Saved host '{name}' is shadowed by Elastic CLI context references; rename it to use it");
+    }
+    Ok(())
 }
 
 fn validate_viewer_links(hosts: &BTreeMap<String, KnownHost>) -> Result<()> {
@@ -1760,48 +1609,20 @@ fn validate_url_template(template: &str) -> Result<()> {
         .map_err(|err| eyre!("Invalid `url_template`: {err}"))
 }
 
+fn hosts_yml_credential(
+    secret: Option<String>,
+    apikey: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<Credential> {
+    let auth = Auth::from_parts(apikey.map(Secret::new), username, password.map(Secret::new))
+        .map_err(|err| eyre!("Invalid KnownHost configuration: {err}"))?;
+    Ok(Credential::from_hosts_yml(secret, auth))
+}
+
 fn render_url_template_url(template: &str, id: &str, product: &str) -> Result<Url> {
     let rendered = template.replace("{id}", id).replace("{product}", product);
     Url::parse(&rendered).map_err(|err| eyre!("Invalid rendered URL from template host: {err}"))
-}
-
-fn resolve_auth_with_precedence(
-    secret_id: &Option<String>,
-    legacy_apikey: Option<Secret<String>>,
-    legacy_basic: Option<(String, Secret<String>)>,
-) -> Result<Auth> {
-    if let Some(secret_id) = secret_id {
-        let auth = resolve_explicit_secret(secret_id)?;
-        if legacy_apikey.is_some() || legacy_basic.is_some() {
-            tracing::warn!(
-                "Legacy credentials exist in hosts.yml and keystore entry '{secret_id}' exists; using keystore credentials."
-            );
-        }
-        return Ok(auth);
-    }
-
-    if let Some(apikey) = legacy_apikey {
-        return Ok(Auth::Apikey(apikey));
-    }
-    if let Some((username, password)) = legacy_basic {
-        return Ok(Auth::Basic(username, password));
-    }
-    Ok(Auth::None)
-}
-
-fn resolve_explicit_secret(secret_id: &str) -> Result<Auth> {
-    let keystore_password =
-        get_keystore_password().map_err(|err| eyre!("Host references secret '{secret_id}' but {err}"))?;
-    let secret = resolve_secret_by_id(secret_id, &keystore_password)?
-        .ok_or_else(|| eyre!("Secret '{secret_id}' was not found in keystore"))?;
-    secret_auth_to_auth(secret)
-}
-
-fn secret_auth_to_auth(secret: SecretAuth) -> Result<Auth> {
-    match secret {
-        SecretAuth::ApiKey { apikey } => Ok(Auth::Apikey(apikey)),
-        SecretAuth::Basic { username, password } => Ok(Auth::Basic(username, password)),
-    }
 }
 
 impl FromStr for KnownHost {
@@ -2011,14 +1832,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "legacy-es".to_string(),
-            KnownHost::new_legacy_apikey(
+            KnownHost::new(
                 Application::Elasticsearch,
                 Url::parse("http://localhost:9200").expect("url"),
                 default_collect_roles(),
                 None,
                 false,
-                None,
-                Some("legacy-key".to_string()),
+                Credential::from_hosts_yml(None, Auth::apikey("legacy-key".to_string())),
             ),
         );
         write_hosts(hosts);
@@ -2038,14 +1858,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "secret-only".to_string(),
-            KnownHost::new_legacy_basic(
+            KnownHost::new(
                 Application::Elasticsearch,
                 Url::parse("http://localhost:9200").expect("url"),
                 default_collect_roles(),
                 None,
                 false,
-                Some("missing-secret".to_string()),
-                None,
+                Credential::Keystore("missing-secret".to_string()),
             ),
         );
         write_hosts(hosts);
@@ -2064,14 +1883,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "prod-es".to_string(),
-            KnownHost::new_legacy_basic(
+            KnownHost::new(
                 Application::Elasticsearch,
                 Url::parse("http://localhost:9200").expect("url"),
                 default_collect_roles(),
                 None,
                 false,
-                Some("lease-secret".to_string()),
-                None,
+                Credential::Keystore("lease-secret".to_string()),
             ),
         );
         write_hosts(hosts);
@@ -2087,12 +1905,11 @@ mod tests {
     #[test]
     fn host_debug_redacts_legacy_credentials() {
         let apikey = KnownHostBuilder::new(Url::parse("http://localhost:9200").expect("url"))
-            .apikey(Some("ad-hoc-api-key".to_string()))
+            .auth(Auth::apikey("ad-hoc-api-key"))
             .build()
             .expect("api key host");
         let basic = KnownHostBuilder::new(Url::parse("http://localhost:9200").expect("url"))
-            .username(Some("elastic".to_string()))
-            .password(Some("a-password".to_string()))
+            .auth(Auth::basic("elastic", "a-password"))
             .build()
             .expect("basic host");
 
@@ -2148,14 +1965,16 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "prod-es".to_string(),
-            KnownHost::new_legacy_basic(
+            KnownHost::new(
                 Application::Elasticsearch,
                 Url::parse("http://localhost:9200").expect("url"),
                 default_collect_roles(),
                 None,
                 false,
-                Some("custom-secret".to_string()),
-                Some(("legacy-user".to_string(), "legacy-pass".to_string())),
+                Credential::from_hosts_yml(
+                    Some("custom-secret".to_string()),
+                    Auth::basic("legacy-user".to_string(), "legacy-pass".to_string()),
+                ),
             ),
         );
         write_hosts(hosts);
@@ -2175,26 +1994,27 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "prod-es".to_string(),
-            KnownHost::new_legacy_basic(
+            KnownHost::new(
                 Application::Elasticsearch,
                 Url::parse("http://localhost:9200").expect("url"),
                 default_collect_roles(),
                 None,
                 false,
-                None,
-                Some(("legacy-user".to_string(), "legacy-pass".to_string())),
+                Credential::from_hosts_yml(None, Auth::basic("legacy-user".to_string(), "legacy-pass".to_string())),
             ),
         );
         hosts.insert(
             "legacy-only".to_string(),
-            KnownHost::new_legacy_basic(
+            KnownHost::new(
                 Application::Elasticsearch,
                 Url::parse("http://localhost:9201").expect("url"),
                 default_collect_roles(),
                 None,
                 false,
-                None,
-                Some(("legacy-only-user".to_string(), "legacy-only-pass".to_string())),
+                Credential::from_hosts_yml(
+                    None,
+                    Auth::basic("legacy-only-user".to_string(), "legacy-only-pass".to_string()),
+                ),
             ),
         );
         write_hosts(hosts);
@@ -2220,26 +2040,24 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "es-prod".to_string(),
-            KnownHost::new_legacy_apikey(
+            KnownHost::new(
                 Application::Elasticsearch,
                 Url::parse("http://localhost:9200").expect("url"),
                 default_collect_roles(),
                 None,
                 false,
-                None,
-                Some("apikey-1".to_string()),
+                Credential::from_hosts_yml(None, Auth::apikey("apikey-1".to_string())),
             ),
         );
         hosts.insert(
             "kb-prod".to_string(),
-            KnownHost::new_legacy_basic(
+            KnownHost::new(
                 Application::Kibana,
                 Url::parse("http://localhost:5601").expect("url"),
                 default_collect_roles(),
                 None,
                 false,
-                None,
-                Some(("elastic".to_string(), "pass-1".to_string())),
+                Credential::from_hosts_yml(None, Auth::basic("elastic".to_string(), "pass-1".to_string())),
             ),
         );
         write_hosts(hosts);
@@ -2255,20 +2073,20 @@ mod tests {
 
         let migrated_es = migrated_hosts.get("es-prod").expect("migrated es host");
         assert!(
-            migrated_es.legacy_apikey.is_none(),
+            !migrated_es.has_legacy_credential(),
             "plaintext api key should be removed"
         );
-        assert_eq!(migrated_es.secret.as_deref(), Some("es-prod"));
+        assert_eq!(migrated_es.secret_reference(), Some("es-prod"));
         let migrated_kb = migrated_hosts.get("kb-prod").expect("migrated kb host");
         assert!(
-            migrated_kb.legacy_username.is_none(),
+            !migrated_kb.has_legacy_credential(),
             "plaintext username should be removed"
         );
         assert!(
-            migrated_kb.legacy_password.is_none(),
+            !migrated_kb.has_legacy_credential(),
             "plaintext password should be removed"
         );
-        assert_eq!(migrated_kb.secret.as_deref(), Some("kb-prod"));
+        assert_eq!(migrated_kb.secret_reference(), Some("kb-prod"));
         assert!(!raw_hosts.contains("apikey: apikey-1"));
         assert!(!raw_hosts.contains("username: elastic"));
         assert!(!raw_hosts.contains("password: pass-1"));
@@ -2323,14 +2141,13 @@ mod tests {
 
     #[test]
     fn merge_cli_update_preserves_omitted_fields() {
-        let host = KnownHost::new_legacy_apikey(
+        let host = KnownHost::new(
             Application::Elasticsearch,
             Url::parse("http://localhost:9200").expect("url"),
             vec![HostRole::Collect],
             None,
             true,
-            None,
-            Some("legacy-key".to_string()),
+            Credential::from_hosts_yml(None, Auth::apikey("legacy-key".to_string())),
         );
         let update = KnownHostCliUpdate {
             roles: Some(vec![HostRole::Collect, HostRole::Send]),
@@ -2341,23 +2158,21 @@ mod tests {
 
         assert!(merged.accept_invalid_certs, "certificate setting should be preserved");
         assert_eq!(
-            merged.legacy_apikey.as_ref().map(|key| key.expose_secret().as_str()),
-            Some("legacy-key")
+            merged.credential(),
+            &Credential::from_hosts_yml(None, Auth::apikey("legacy-key"))
         );
-        assert_eq!(merged.secret, None);
         assert_eq!(merged.roles, vec![HostRole::Collect, HostRole::Send]);
     }
 
     #[test]
     fn merge_cli_update_switches_secret_host_to_apikey() {
-        let host = KnownHost::new_legacy_basic(
+        let host = KnownHost::new(
             Application::Elasticsearch,
             Url::parse("http://localhost:9200").expect("url"),
             vec![HostRole::Collect],
             None,
             false,
-            Some("old-secret".to_string()),
-            None,
+            Credential::Keystore("old-secret".to_string()),
         );
         let update = KnownHostCliUpdate {
             apikey: Some(Secret::new("new-key".to_string())),
@@ -2366,23 +2181,22 @@ mod tests {
 
         let merged = host.merge_cli_update(&update, None).expect("merge should succeed");
 
-        assert_eq!(
-            merged.legacy_apikey.as_ref().map(|key| key.expose_secret().as_str()),
-            Some("new-key")
+        assert_eq!(merged.credential(), &Credential::runtime(Auth::apikey("new-key")));
+        assert!(
+            merged.secret_reference().is_none(),
+            "secret reference should be cleared"
         );
-        assert!(merged.secret.is_none(), "secret reference should be cleared");
     }
 
     #[test]
     fn merge_cli_update_applies_explicit_false_for_accept_invalid_certs() {
-        let host = KnownHost::new_legacy_apikey(
+        let host = KnownHost::new(
             Application::Elasticsearch,
             Url::parse("http://localhost:9200").expect("url"),
             vec![HostRole::Collect],
             None,
             true,
-            None,
-            Some("legacy-key".to_string()),
+            Credential::from_hosts_yml(None, Auth::apikey("legacy-key".to_string())),
         );
         let update = KnownHostCliUpdate {
             accept_invalid_certs: Some(false),
@@ -2451,14 +2265,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "legacy-es".to_string(),
-            KnownHost::new_legacy_apikey(
+            KnownHost::new(
                 Application::Elasticsearch,
                 Url::parse("http://localhost:9200").expect("url"),
                 vec![HostRole::Collect],
                 None,
                 false,
-                None,
-                Some("legacy-key".to_string()),
+                Credential::from_hosts_yml(None, Auth::apikey("legacy-key".to_string())),
             ),
         );
 
@@ -2494,14 +2307,13 @@ mod tests {
 
     #[test]
     fn merge_cli_update_rejects_partial_basic_auth_for_existing_basic_host() {
-        let host = KnownHost::new_legacy_basic(
+        let host = KnownHost::new(
             Application::Elasticsearch,
             Url::parse("http://localhost:9200").expect("url"),
             vec![HostRole::Collect],
             None,
             false,
-            None,
-            Some(("old-user".to_string(), "old-pass".to_string())),
+            Credential::from_hosts_yml(None, Auth::basic("old-user".to_string(), "old-pass".to_string())),
         );
         let update = KnownHostCliUpdate {
             username: Some("new-user".to_string()),
@@ -2562,14 +2374,13 @@ mod tests {
         );
         hosts.insert(
             "a-prod".to_string(),
-            KnownHost::new_legacy_apikey(
+            KnownHost::new(
                 Application::Elasticsearch,
                 Url::parse("http://localhost:9200").expect("url"),
                 vec![HostRole::Collect],
                 None,
                 false,
-                Some("prod-secret".to_string()),
-                None,
+                Credential::Keystore("prod-secret".to_string()),
             ),
         );
         write_hosts(hosts);
@@ -2717,7 +2528,7 @@ url: https://platform.example
             app: Some(Application::Elasticsearch),
             cloud_id: Some(ElasticCloud::ElasticCloudAdmin),
             roles: default_collect_roles(),
-            secret: None,
+            credential: Credential::None,
             viewer: None,
             url: Some(
                 Url::parse(
@@ -2726,9 +2537,6 @@ url: https://platform.example
                 .expect("cloud admin proxy url"),
             ),
             url_template: None,
-            legacy_apikey: None,
-            legacy_username: None,
-            legacy_password: None,
         })
         .expect("build host");
 
@@ -2752,5 +2560,32 @@ url: https://platform.example
             host.concrete_url().map(|url| url.as_str()),
             Some("https://admin.found.no/api/v1/deployments/deployment-123/elasticsearch/_main/proxy/")
         );
+    }
+
+    #[test]
+    fn every_hosts_writer_rejects_new_context_reference_names() {
+        let (_env, _, _) = setup_env();
+        let host = || {
+            KnownHostBuilder::new(Url::parse("http://localhost:9200").expect("url"))
+                .build()
+                .expect("host")
+        };
+
+        let error =
+            KnownHost::write_hosts_yml(&BTreeMap::from([(".prod.es".to_string(), host())])).expect_err("reserved name");
+        assert!(
+            error
+                .to_string()
+                .contains("reserved for Elastic CLI context references"),
+            "{error}"
+        );
+
+        write_hosts(BTreeMap::from([(".legacy.es".to_string(), host())]));
+        KnownHost::write_hosts_yml(&BTreeMap::from([
+            (".legacy.es".to_string(), host()),
+            ("plain".to_string(), host()),
+        ]))
+        .expect("an existing reserved name does not block other edits");
+        assert!(KnownHost::parse_hosts_yml().expect("hosts").contains_key("plain"));
     }
 }

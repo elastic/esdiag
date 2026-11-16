@@ -11,7 +11,7 @@
 //!   and/or [`Process`] (transform). `Export` lives *inside* [`Process`]
 //!   (Model β): "process to nowhere" and "export nothing" are unrepresentable.
 //! - **Phase 3 — output (optional, and/or):** `Export` (inside `Process`)
-//!   and/or [`SendTarget`] (bundle to the Elastic Uploader).
+//!   and/or [`SendTarget`] (bundle to the Elastic Upload Service).
 //!
 //! Execution mode is **derived, not stored** (`Save` is the serialization
 //! barrier): see [`Job::execution_mode`].
@@ -57,6 +57,7 @@ impl BindingKey {
 pub enum Input {
     /// Call live product APIs to acquire a new diagnostic.
     Collect {
+        /// A [`crate::data::HostReference`], resolved when the job runs.
         host: String,
         diagnostic_type: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -75,7 +76,7 @@ pub enum Input {
     },
     /// Read an existing diagnostic from a directory, bundle, or download.
     Load { uri: Uri },
-    /// Load a transient upload or a nested path in a parent bundle.
+    /// Load a transient submitted bundle or a nested path in a parent bundle.
     LoadBinding { binding: BindingKey },
 }
 
@@ -136,7 +137,8 @@ pub struct Process {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum ExportTarget {
-    /// A saved known host (an Elasticsearch output cluster).
+    /// An Elasticsearch output cluster selected by a
+    /// [`crate::data::HostReference`], resolved when the job runs.
     KnownHost { name: String },
     /// The output deployment supplied through `ESDIAG_OUTPUT_*` at execution time.
     Environment,
@@ -150,7 +152,7 @@ pub enum ExportTarget {
     Binding { binding: BindingKey },
 }
 
-/// Phase 3: transmit an existing bundle to the Elastic Uploader service.
+/// Phase 3: transmit an existing bundle to a remote destination.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SendTarget {
     pub upload_id: String,
@@ -642,5 +644,38 @@ process:
 
         Job::try_new(Identifiers::default(), Input::Load { uri }, None, None, Some(send()))
             .expect("service-link bundle can be materialized for send");
+    }
+
+    #[test]
+    fn elastic_context_references_persist_as_host_references() {
+        let job = Job::try_new(
+            Identifiers::default(),
+            Input::Collect {
+                host: ".prod.es".to_string(),
+                diagnostic_type: "standard".to_string(),
+                include: None,
+                exclude: None,
+            },
+            None,
+            Some(Process {
+                selection: None,
+                export: ExportTarget::KnownHost {
+                    name: ".monitoring.es".to_string(),
+                },
+            }),
+            None,
+        )
+        .expect("context job");
+
+        let yaml = yaml_serde::to_string(&job).expect("serialize");
+        let loaded: Job = yaml_serde::from_str(&yaml).expect("deserialize");
+
+        assert!(yaml.contains("host: .prod.es"), "{yaml}");
+        assert!(yaml.contains("name: .monitoring.es"), "{yaml}");
+        assert!(matches!(loaded.input(), Input::Collect { host, .. } if host == ".prod.es"));
+        assert!(matches!(
+            loaded.process().map(|process| &process.export),
+            Some(ExportTarget::KnownHost { name }) if name == ".monitoring.es"
+        ));
     }
 }

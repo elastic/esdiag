@@ -12,7 +12,7 @@ Service for a managed model, or connect an OpenAI-compatible local model.
 
 ## Before you start
 
-- Kibana 9.4 or later.
+- Kibana 9.5 or later.
 - An Enterprise license or trial.
 - Access to the Kibana space where ESDiag installed its Agent Builder assets.
 - A network path from Kibana to the model endpoint.

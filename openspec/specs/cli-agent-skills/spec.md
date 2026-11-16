@@ -14,21 +14,21 @@ An ESDiag binary built with the Cargo `agent` feature SHALL embed the canonical 
 
 #### Scenario: Homebrew binary contains the skill
 - **WHEN** a packaged ESDiag binary is installed through Homebrew
-- **THEN** `esdiag agent skills` can read the embedded skill while offline
+- **THEN** `esdiag setup skills` can read the embedded skill while offline
 - **AND** the embedded content matches the binary's ESDiag version
 
 ### Requirement: Agent Skills Command Detects Supported Hosts
-The CLI SHALL provide `esdiag agent skills [--target <claude|codex|opencode>]... [--force]` to detect supported user-scoped Claude Code, Codex, and OpenCode skill targets and install the embedded ESDiag skill into every detected target. It SHALL support explicit repeatable target selection when automatic detection is insufficient and MUST NOT modify a project-local skill directory implicitly.
+The CLI SHALL provide `esdiag setup skills [<claude|codex|opencode>]... [--force]` to detect supported user-scoped Claude Code, Codex, and OpenCode skill targets and install the embedded ESDiag skill into every detected target. It SHALL support explicit repeatable positional target selection when automatic detection is insufficient and MUST NOT modify a project-local skill directory implicitly. The former `esdiag agent skills` spelling is removed.
 
 #### Scenario: Multiple installed agents are detected
 - **GIVEN** supported user homes exist for Codex and OpenCode
-- **WHEN** the user runs `esdiag agent skills`
+- **WHEN** the user runs `esdiag setup skills`
 - **THEN** both targets are selected for installation
 - **AND** an undetected Claude Code target is reported without being created implicitly
 
 #### Scenario: Explicit target has no existing home
 - **GIVEN** Claude Code is not automatically detectable
-- **WHEN** the user explicitly selects the Claude Code target
+- **WHEN** the user runs `esdiag setup skills claude`
 - **THEN** the command creates the documented user-scoped skill parent as needed
 - **AND** installs no project-local files
 
@@ -36,6 +36,11 @@ The CLI SHALL provide `esdiag agent skills [--target <claude|codex|opencode>]...
 - **WHEN** default detection finds no supported target
 - **THEN** the command makes no filesystem changes
 - **AND** returns a structured outcome listing supported explicit targets
+
+#### Scenario: Removed spelling is rejected
+- **WHEN** the user runs `esdiag agent skills`
+- **THEN** the command fails as a usage error
+- **AND** no agent home is modified
 
 ### Requirement: Installation Is Offline And Version-Correct
 Skill installation SHALL copy only from the running binary's embedded assets and MUST NOT contact GitHub, a plugin marketplace, a package registry, or another network service. The installed result SHALL report the running ESDiag version and embedded content digest.
@@ -101,13 +106,13 @@ The skill installer SHALL expose the same in-process target detection, preflight
 #### Scenario: User declines optional skill installation
 - **WHEN** the user declines the agent-skill stage during initialization
 - **THEN** initialization completes successfully without modifying any agent home
-- **AND** identifies `esdiag agent skills` as the standalone installation command
+- **AND** identifies `esdiag setup skills` as the standalone installation command
 
 #### Scenario: Installation fails after core initialization succeeds
 - **GIVEN** initialization has completed its required ESDiag configuration stages
 - **WHEN** a selected agent target conflicts or cannot be written
 - **THEN** the configured identity, keystore, output deployment, hosts, and job remain valid
-- **AND** initialization reports the per-target failure and standalone recovery command
+- **AND** initialization reports the per-target failure and `esdiag setup skills` as the standalone recovery command
 - **AND** does not claim that core ESDiag configuration failed
 
 ### Requirement: Installed Skill Remains Portable And Script-Free

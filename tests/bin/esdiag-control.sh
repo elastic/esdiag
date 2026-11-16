@@ -47,5 +47,12 @@ assert_contains "$tmp/delegate.log" 'image=esdiag:0.18.0-SNAPSHOT'
 assert_contains "$tmp/delegate.log" 'args=setup'
 assert_contains "$tmp/delegate.log" '--pull never'
 assert_contains "$tmp/delegate.log" "--state-dir $tmp/custom state"
+assert_not_contains "$tmp/delegate.log" '--activate-trial'
+
+: >"$tmp/delegate.log"
+(cd "$tmp/repo" && PATH="$tmp/bin:$PATH" bin/esdiag-control setup --runtime podman --activate-trial=true)
+assert_contains "$tmp/delegate.log" '--activate-trial=true'
+if (cd "$tmp/repo" && PATH="$tmp/bin:$PATH" bin/esdiag-control setup --runtime podman --activate-trial=maybe) 2>"$tmp/trial-error"; then fail 'invalid --activate-trial was accepted'; fi
+assert_contains "$tmp/trial-error" '--activate-trial must be true or false'
 
 printf 'esdiag-control tests passed\n'

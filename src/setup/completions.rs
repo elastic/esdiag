@@ -16,7 +16,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Shells that `esdiag completions` can emit scripts for.
+/// Shells that `esdiag setup completions` can emit scripts for.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, clap::ValueEnum)]
 #[value(rename_all = "lower")]
 pub enum CompletionShell {

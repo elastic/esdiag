@@ -7,10 +7,10 @@ tags: [api, examples, reference]
 
 # API examples
 
-The values below are placeholders. Do not paste real API keys or upload tokens
-into a shell history or an unauthenticated service.
+The values below are placeholders. Do not paste real API keys or Elastic
+Upload Service tokens into shell history or an unauthenticated service.
 
-## Submit an upload link
+## Submit an Elastic Upload Service link
 
 This request returns immediately with a job ID:
 

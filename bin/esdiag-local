@@ -18,6 +18,7 @@ compose=()
 pull_policy="always"
 open_browser=true
 copy_password=ask
+activate_trial=""
 refresh_images=false
 force=false
 stack_mode="auto"
@@ -86,6 +87,9 @@ Options:
   --pull always|missing|never Image pull policy
   --open-browser=false       Do not launch ESDiag after startup
   --copy-password=true|false Copy the Kibana password before launch (asks by default)
+  --activate-trial=true|false Start an Elasticsearch trial for Agent Builder during setup
+                             (default: only when the cluster never had one; or set
+                             ESDIAG_SETUP_ACTIVATE_TRIAL)
   --mount PATH               Make an additional host path available to exec
   --force                    Confirm reset or upgrade without asking
 
@@ -328,7 +332,7 @@ YAML
       ESDIAG_OUTPUT_APIKEY: ${ESDIAG_OUTPUT_APIKEY}
       ESDIAG_KIBANA_URL: http://kibana:5601/s/${ESDIAG_KIBANA_SPACE}
       LOG_LEVEL: ${LOG_LEVEL}
-    command: ["setup"]
+    command: __SETUP_COMMAND__
   esdiag:
     image: ${ESDIAG_IMAGE}
     depends_on:
@@ -358,8 +362,26 @@ YAML
   esdiag-data:
 YAML
     fi
+    local contents
+    contents=$(<"$tmp")
+    printf '%s\n' "${contents//__SETUP_COMMAND__/$(setup_command_args "$(env_get ESDIAG_IMAGE 2>/dev/null || true)")}" >"$tmp"
     chmod 600 "$tmp"
     mv "$tmp" "${state_dir}/compose.yml"
+}
+
+# ESDiag images before 0.18 only accept bare `setup`; later images need `setup env`.
+setup_command_args() {
+    local image=${1%%@*} tag="" major minor
+    [[ "${image##*/}" == *:* ]] && tag=${image##*:}
+    if [[ "$tag" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+][0-9A-Za-z.+-]+)?$ ]]; then
+        major=${BASH_REMATCH[1]}
+        minor=${BASH_REMATCH[2]}
+        if ((major == 0 && minor < 18)); then
+            printf '["setup"]'
+            return
+        fi
+    fi
+    printf '["setup", "env"]'
 }
 
 init_state() {
@@ -559,11 +581,48 @@ configure_security() {
     fi
 }
 
+# Prints true or false: the option, then ESDIAG_SETUP_ACTIVATE_TRIAL, then whether the
+# cluster has never started a trial. The value is passed to setup and never persisted.
+resolve_activate_trial() {
+    local value="" response eligible
+    if [[ -n "$activate_trial" ]]; then
+        value=$activate_trial
+    elif [[ -n "${ESDIAG_SETUP_ACTIVATE_TRIAL+set}" ]]; then
+        # A set but empty variable opts out, matching `esdiag local`.
+        value=${ESDIAG_SETUP_ACTIVATE_TRIAL:-false}
+    fi
+    if [[ -n "$value" ]]; then
+        case "$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')" in
+        1 | true | yes | y | on) printf true ;;
+        0 | false | no | n | off) printf false ;;
+        *) die "ESDIAG_SETUP_ACTIVATE_TRIAL must be true or false, not '${value}'" ;;
+        esac
+        return
+    fi
+    if response=$(curl -fsS -u "elastic:$(env_get ELASTIC_PASSWORD)" \
+        "http://127.0.0.1:$(env_get ESDIAG_ELASTICSEARCH_PORT)/_license/trial_status" 2>/dev/null); then
+        if have jq; then
+            eligible=$(printf '%s' "$response" | jq -r '.eligible_to_start_trial' 2>/dev/null || true)
+        else eligible=$(printf '%s' "$response" | sed -nE 's/.*"eligible_to_start_trial":[[:space:]]*(true|false).*/\1/p'); fi
+        [[ "$eligible" == true ]] && printf true || printf false
+        return
+    fi
+    warn "Could not read the Elasticsearch trial status, so no trial license will be started. Run '${command_name} setup --activate-trial=true' to start one."
+    printf false
+}
+
 run_setup() {
     detect_runtime
     [[ "$(env_get ESDIAG_OUTPUT_APIKEY)" != pending ]] || die "API key is not configured; run up first"
+    local trial
+    trial=$(resolve_activate_trial)
     if [[ "$resolved_stack_mode" == full ]]; then
-        if ! "${compose[@]}" --profile setup run --rm --no-deps setup; then
+        local image
+        image=$(env_get ESDIAG_IMAGE 2>/dev/null || true)
+        if [[ "$trial" == false && "$(setup_command_args "$image")" == '["setup"]' ]]; then
+            warn "${image} predates the trial opt-in and starts a trial license on an unlicensed cluster, even with --activate-trial=false. Run '${command_name} upgrade' to keep the license unchanged."
+        fi
+        if ! "${compose[@]}" --profile setup run --rm --no-deps -e "ESDIAG_SETUP_ACTIVATE_TRIAL=${trial}" setup; then
             capture_logs
             die "ESDiag setup failed"
         fi
@@ -573,7 +632,9 @@ run_setup() {
         ESDIAG_OUTPUT_URL="http://127.0.0.1:$(env_get ESDIAG_ELASTICSEARCH_PORT)" \
         ESDIAG_OUTPUT_APIKEY="$(env_get ESDIAG_OUTPUT_APIKEY)" \
         ESDIAG_KIBANA_URL="http://127.0.0.1:$(env_get ESDIAG_KIBANA_PORT)/s/$(env_get ESDIAG_KIBANA_SPACE)" \
-        LOG_LEVEL="$(env_get LOG_LEVEL)" "$binary" setup || die "ESDiag setup failed"
+        ESDIAG_KIBANA_SPACE="$(env_get ESDIAG_KIBANA_SPACE)" \
+        ESDIAG_SETUP_ACTIVATE_TRIAL="$trial" \
+        LOG_LEVEL="$(env_get LOG_LEVEL)" "$binary" setup env || die "ESDiag setup failed"
     fi
 }
 
@@ -1143,6 +1204,13 @@ while [[ $# -gt 0 ]]; do
     --copy-password=true)
         copy_password=true
         shift
+        ;;
+    --activate-trial=false | --activate-trial=true)
+        activate_trial=${1#*=}
+        shift
+        ;;
+    --activate-trial | --activate-trial=*)
+        die "Use --activate-trial=true or --activate-trial=false, not '$1'"
         ;;
     --mount)
         [[ $# -ge 2 ]] || die "Missing --mount value"

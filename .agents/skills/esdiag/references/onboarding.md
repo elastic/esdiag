@@ -19,7 +19,8 @@ If they can, use [install a native binary](#install-a-native-binary). A native
 binary is the route to saved jobs, processing, and the Agent Skill later.
 
 If they cannot, use ESDiag Lite. It collects Elasticsearch diagnostics and can
-upload a ZIP archive. It does not process diagnostics, run a web UI, or call
+send a ZIP archive to Elastic Upload Service. It does not process diagnostics,
+run a web UI, or call
 Agent Builder.
 
 - Linux and macOS use `esdiag-lite.sh`.

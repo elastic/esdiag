@@ -63,7 +63,7 @@ materialised bundle); `Collect` + `process` without `save` → streaming.
   - `processor/` — transform: per-product diagnostic `Process` only
   - `exporter/` — load sinks, split by role: `BundleExporter` (`Save`) +
     `DocumentExporter` (`Export`)
-  - `uploader.rs` — `Send`
+  - `elastic_upload_service.rs` — Elastic Upload Service adapter for `Send`
   - `data/saved_jobs.rs` — persistence of *named* `Job`s only
 - **Retired:** `Collector`, `Processor` (as distinct operation types), `JobAction`,
   `JobCollect`, `into_collect_exporter`, and the duplicate CLI-streaming /

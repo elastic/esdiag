@@ -1,84 +1,6 @@
 {
   "attributes": {
-    "columns": [
-      "index.data_stream.name",
-      "index.name",
-      "shard.number",
-      "shard.routing.primary",
-      "shard.docs.count",
-      "shard.docs.deleted",
-      "shard.store.size_in_bytes",
-      "shard.store.total_data_set_size_in_bytes",
-      "shard.segments.count",
-      "index.ilm.phase",
-      "event.ingested",
-      "index.codec",
-      "index.mode"
-    ],
     "description": "",
-    "grid": {
-      "columns": {
-        "event.ingested": {
-          "width": 264
-        },
-        "index.codec": {
-          "width": 145
-        },
-        "index.data_stream.name": {
-          "width": 307
-        },
-        "index.ilm.phase": {
-          "width": 130
-        },
-        "index.mode": {
-          "width": 143
-        },
-        "index.name": {
-          "width": 548
-        },
-        "shard.docs.count": {
-          "width": 103
-        },
-        "shard.docs.deleted": {
-          "width": 114
-        },
-        "shard.number": {
-          "width": 82
-        },
-        "shard.routing.primary": {
-          "width": 87
-        },
-        "shard.segments.count": {
-          "width": 113
-        },
-        "shard.store.size_in_bytes": {
-          "width": 149
-        },
-        "shard.store.total_data_set_size_in_bytes": {
-          "width": 100
-        }
-      }
-    },
-    "headerRowHeight": 1,
-    "hideChart": true,
-    "isTextBasedQuery": false,
-    "kibanaSavedObjectMeta": {
-      "searchSourceJSON": {
-        "filter": [],
-        "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
-        "query": {
-          "language": "kuery",
-          "query": ""
-        }
-      }
-    },
-    "rowHeight": 1,
-    "sort": [
-      [
-        "shard.store.total_data_set_size_in_bytes",
-        "asc"
-      ]
-    ],
     "tabs": [
       {
         "attributes": {
@@ -159,7 +81,6 @@
         "label": "Untitled"
       }
     ],
-    "timeRestore": false,
     "title": "Shard List"
   },
   "coreMigrationVersion": "8.8.0",
@@ -182,5 +103,5 @@
     }
   ],
   "type": "search",
-  "typeMigrationVersion": "10.11.0"
+  "typeMigrationVersion": "10.13.0"
 }

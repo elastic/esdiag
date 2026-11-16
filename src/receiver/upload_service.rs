@@ -15,7 +15,7 @@ pub struct UploadServiceDownloader {
 }
 
 impl UploadServiceDownloader {
-    /// Downloads a file from the Elastic Uploader service given a URL and token
+    /// Downloads a file from the Elastic Upload Service given a URL and token
     /// The URL format of `https://upload.elastic.co/...` will have been validated previously.
     pub fn download(self) -> Result<ArchiveBytesReceiver> {
         ArchiveBytesReceiver::try_from(self.download_bytes()?)
@@ -55,6 +55,6 @@ impl TryFrom<Url> for UploadServiceDownloader {
 
 impl std::fmt::Display for UploadServiceDownloader {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Elastic Uploader {}", self.url)
+        write!(f, "Elastic Upload Service {}", self.url)
     }
 }

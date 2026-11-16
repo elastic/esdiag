@@ -4,7 +4,7 @@
 
 use super::{ApiKeyRequest, ServerState, UploadServiceRequest};
 use crate::{
-    data::{KnownHostBuilder, Uri},
+    data::{Auth, KnownHostBuilder, Uri},
     exporter::DocumentExporter,
     job::{
         context::{ExecutionContext, ExecutionIdentity},
@@ -88,7 +88,7 @@ pub async fn service_link(
     Query(params): Query<ServiceLinkQueryParams>,
     Json(payload): Json<UploadServiceRequest>,
 ) -> impl IntoResponse {
-    tracing::info!("Received JSON elastic uploader request for: {}", payload.url);
+    tracing::info!("Received JSON Elastic Upload Service request for: {}", payload.url);
 
     let job_id = new_job_id();
 
@@ -322,7 +322,7 @@ pub async fn api_key(
         );
     }
 
-    let host = match KnownHostBuilder::new(url).apikey(Some(payload.apikey)).build() {
+    let host = match KnownHostBuilder::new(url).auth(Auth::apikey(payload.apikey)).build() {
         Ok(host) => host,
         Err(e) => {
             tracing::error!("Failed to build host: {}", e);

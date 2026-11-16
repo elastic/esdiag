@@ -6,7 +6,10 @@ use super::{
     ApiKeyFormSignals, JobRunSignals, ServerEvent, ServerState, job_feed_event, job_runner, receiver_stream,
     signal_event, template, template_event,
 };
-use crate::{data::KnownHostBuilder, processor::new_job_id};
+use crate::{
+    data::{Auth, KnownHostBuilder},
+    processor::new_job_id,
+};
 use axum::{
     extract::{Path, State},
     http::HeaderMap,
@@ -122,7 +125,7 @@ pub(super) async fn run_api_key_form(
     }
 
     let host = match KnownHostBuilder::new(signals.es_api.url.clone().into())
-        .apikey(Some(signals.es_api.key.clone()))
+        .auth(Auth::apikey(signals.es_api.key.clone()))
         .build()
     {
         Ok(host) => host,
@@ -230,6 +233,7 @@ async fn run_api_key_id(state: Arc<ServerState>, job_id: u64, request_user: Stri
 #[cfg(all(test, feature = "keystore"))]
 mod tests {
     use super::run_api_key_form;
+    use crate::data::Credential;
     use crate::{
         data::{Application, HostRole, KnownHost, Settings, Uri, authenticate},
         exporter::Exporter,
@@ -253,14 +257,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "secure-es".to_string(),
-            KnownHost::new_legacy_apikey(
+            KnownHost::new(
                 Application::Elasticsearch,
                 Url::parse("http://localhost:9200").expect("url"),
                 vec![HostRole::Send],
                 None,
                 false,
-                Some("secure-es".to_string()),
-                None,
+                Credential::Keystore("secure-es".to_string()),
             ),
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");

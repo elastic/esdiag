@@ -43,7 +43,7 @@ Use this endpoint for an Elastic Upload Service link:
 }
 ```
 
-`token` authenticates the upload link. `url` is the Elastic Upload Service URL.
+`token` authenticates the Elastic Upload Service link. `url` is its service URL.
 
 An asynchronous request returns:
 

@@ -162,35 +162,35 @@ independent and SHALL NOT be mutually exclusive when their preconditions are met
 - **THEN** the executor MUST index the processed documents to the export destination
 - **AND** MUST also transmit the saved raw bundle via `Send` in the same run
 
-### Requirement: Collect Command Optional Upload Handoff
-The system SHALL allow `esdiag collect` to accept an optional `--upload` argument containing an Elastic Upload Service upload identifier or URL. When this argument is present, the collect command SHALL perform its normal collection behavior first and then begin an upload step for the archive it just produced. The existing `-u` shorthand SHALL remain reserved for the collect command's `--user` metadata option.
+### Requirement: Collect Command Optional Send Handoff
+The system SHALL allow `esdiag collect` to accept an optional `--send` argument containing an Elastic Upload Service identifier or URL. When this argument is present, the collect command SHALL perform its normal collection behavior first and then begin the Send stage for the archive it just produced. The existing `-u` shorthand SHALL remain reserved for the collect command's `--user` metadata option.
 
-#### Scenario: Collect succeeds with upload handoff enabled
-- **GIVEN** the user provides a valid collect host, a valid local output location, and a valid Elastic Upload Service upload identifier
-- **WHEN** the user runs `esdiag collect <host> <output> --upload <upload_id>`
+#### Scenario: Collect succeeds with Send handoff enabled
+- **GIVEN** the user provides a valid collect host, a valid local output location, and a valid Elastic Upload Service identifier
+- **WHEN** the user runs `esdiag collect <host> <output> --send <upload_id>`
 - **THEN** the system completes the collect step and writes a local diagnostic archive
-- **AND** the system begins an upload step for that collected archive using the provided `upload_id`
+- **AND** the system begins the Send stage for that collected archive using the provided `upload_id`
 
-#### Scenario: Collect without upload flag remains unchanged
+#### Scenario: Collect without send flag remains unchanged
 - **GIVEN** the user provides a valid collect host and a valid local output location
-- **WHEN** the user runs `esdiag collect <host> <output>` without `--upload`
+- **WHEN** the user runs `esdiag collect <host> <output>` without `--send`
 - **THEN** the system completes the collect step and writes a local diagnostic archive
-- **AND** the system does not invoke the Elastic Upload Service uploader
+- **AND** the system does not invoke the Elastic Upload Service adapter
 
-### Requirement: Collect Upload Handoff Uses Resolved Archive Path
-The collect upload handoff SHALL use the actual archive path produced by the collect step, including a runtime-generated filename when the final archive name is not known in advance.
+### Requirement: Collect Send Handoff Uses Resolved Archive Path
+The collect Send handoff SHALL use the actual archive path produced by the collect step, including a runtime-generated filename when the final archive name is not known in advance.
 
 #### Scenario: Collect generates the archive filename at runtime
 - **GIVEN** the collect workflow determines the final archive filename during execution
-- **WHEN** the user runs `esdiag collect <host> <output> --upload <upload_id>`
+- **WHEN** the user runs `esdiag collect <host> <output> --send <upload_id>`
 - **THEN** the system resolves the final emitted archive path from the completed collect step
-- **AND** the upload handoff uses that resolved archive path instead of requiring the user to supply the generated filename
+- **AND** the Send handoff uses that resolved archive path instead of requiring the user to supply the generated filename
 
 #### Scenario: Collect fails before producing an archive
-- **GIVEN** the user runs `esdiag collect <host> <output> --upload <upload_id>`
+- **GIVEN** the user runs `esdiag collect <host> <output> --send <upload_id>`
 - **WHEN** the collect step fails before producing a diagnostic archive
 - **THEN** the command returns the collect failure
-- **AND** the system does not attempt the upload handoff
+- **AND** the system does not attempt the Send handoff
 
 ### Requirement: Collect Stage Product Scope
 The `Collect` stage SHALL acquire live diagnostics only for the
@@ -324,7 +324,7 @@ rules.
 
 ### Requirement: Every Execution Surface Uses the One Executor
 Every production execution surface SHALL construct a `Job` and use the one
-executor: CLI `collect`, `process`, and standalone `upload`; the asynchronous
+executor: CLI `collect`, `process`, and standalone `send`; the asynchronous
 web runner; synchronous `/api/api_key` and `/api/service_link` processing;
 saved-job execution; and included-diagnostic processing. No production surface
 SHALL construct `Collector` or `Processor` as
@@ -339,7 +339,7 @@ an independent operation after convergence.
 - **WHEN** CLI collect or process runs through the executor
 - **THEN** existing input forms, source overrides, save-job behavior, output fallback, summaries, child links, and exit behavior MUST remain available
 
-#### Scenario: Standalone upload uses the executor
-- **WHEN** the user runs `esdiag upload <file> <upload_id> --api-url <url>`
+#### Scenario: Standalone send uses the executor
+- **WHEN** the user runs `esdiag send <file> <upload_id> --api-url <url>`
 - **THEN** the CLI MUST execute a `Load(File) + Send` Job through the one executor
-- **AND** the execution context's sender MUST preserve the custom upload API URL
+- **AND** the execution context's sender MUST preserve the custom Elastic Upload Service API URL

@@ -235,7 +235,19 @@ impl DataSource for IndicesSettings {
 
 #[cfg(test)]
 mod tests {
-    use super::IndexSettings;
+    use super::{IndexSettings, IndicesSettings};
+    use crate::processor::diagnostic::data_source::{DataSource, SourceContext};
+
+    #[test]
+    fn code_name_preserves_the_settings_bundle_filename() {
+        assert_eq!(IndicesSettings::name(), "indices_settings");
+
+        let paths = IndicesSettings::candidate_source_file_paths(&SourceContext::new("elasticsearch", None))
+            .expect("settings paths");
+
+        assert_eq!(paths.first().map(String::as_str), Some("settings.json"));
+        assert!(paths.iter().any(|path| path == "indices_settings.json"));
+    }
 
     #[test]
     fn age_is_zero_when_index_is_newer_than_collection_timestamp() {

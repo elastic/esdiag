@@ -204,8 +204,8 @@ async fn host_update_preserves_omitted_fields_and_applies_cert_overrides() {
     let hosts = read_hosts(&home);
     let host = hosts.get("prod-es").expect("saved host exists");
     assert!(host.accept_invalid_certs, "omitted cert flag should preserve value");
-    assert!(host.legacy_apikey.is_none());
-    assert_eq!(host.secret.as_deref(), Some("prod-secret"));
+    assert!(!host.has_legacy_credential());
+    assert_eq!(host.secret_reference(), Some("prod-secret"));
     assert_eq!(host.roles, vec![HostRole::Collect, HostRole::Send]);
 
     let disable_certs = run_esdiag_async(
@@ -386,10 +386,10 @@ async fn host_update_supports_secret_rotation_and_rejects_persisted_apikey_overr
     let hosts = read_hosts(&home);
     let host = hosts.get("prod-es").expect("saved host exists");
     assert!(
-        host.legacy_apikey.is_none(),
+        !host.has_legacy_credential(),
         "secret-backed host should not persist api key"
     );
-    assert_eq!(host.secret.as_deref(), Some("new-secret"));
+    assert_eq!(host.secret_reference(), Some("new-secret"));
 
     let override_apikey = run_esdiag_async(
         vec![
@@ -411,8 +411,8 @@ async fn host_update_supports_secret_rotation_and_rejects_persisted_apikey_overr
 
     let hosts = read_hosts(&home);
     let host = hosts.get("prod-es").expect("saved host exists");
-    assert!(host.legacy_apikey.is_none());
-    assert_eq!(host.secret.as_deref(), Some("new-secret"));
+    assert!(!host.has_legacy_credential());
+    assert_eq!(host.secret_reference(), Some("new-secret"));
 
     let _ = shutdown_tx.send(());
 }
@@ -538,10 +538,12 @@ async fn host_update_rejects_partial_basic_auth_without_secret() {
 
     let hosts = read_hosts(&home);
     assert!(
-        hosts.get("plain-es").is_some_and(|host| host.secret.is_none()
-            && host.legacy_apikey.is_none()
-            && host.legacy_username.is_none()
-            && host.legacy_password.is_none()),
+        hosts
+            .get("plain-es")
+            .is_some_and(|host| host.secret_reference().is_none()
+                && !host.has_legacy_credential()
+                && !host.has_legacy_credential()
+                && !host.has_legacy_credential()),
         "failed update should leave the saved host unchanged"
     );
 
@@ -589,14 +591,14 @@ async fn host_update_rejects_partial_basic_auth_for_existing_basic_host() {
 
     let hosts = read_hosts(&home);
     let host = hosts.get("basic-es").expect("saved host exists");
-    assert_eq!(host.legacy_username.as_deref(), Some("elastic"));
     assert_eq!(
-        host.legacy_password
-            .as_ref()
-            .map(|password| password.expose_secret().as_str()),
-        Some("old-pass")
+        host.credential().legacy_auth(),
+        Some(&esdiag::data::SecretAuth::basic("elastic", "old-pass"))
     );
-    assert!(host.secret.is_none(), "failed update should not add a secret reference");
+    assert!(
+        host.secret_reference().is_none(),
+        "failed update should not add a secret reference"
+    );
 
     let _ = shutdown_tx.send(());
 }
@@ -935,7 +937,7 @@ async fn template_host_add_defaults_same_name_secret_when_available() {
 
     let hosts = read_hosts(&home);
     let host = hosts.get("cloud-admin").expect("template host exists");
-    assert_eq!(host.secret.as_deref(), Some("cloud-admin"));
+    assert_eq!(host.secret_reference(), Some("cloud-admin"));
     assert_eq!(host.url_template.as_deref(), Some(template));
 }
 
@@ -961,7 +963,10 @@ async fn template_host_add_keeps_noauth_path_when_same_name_secret_is_missing() 
 
     let hosts = read_hosts(&home);
     let host = hosts.get("cloud-admin").expect("template host exists");
-    assert!(host.secret.is_none(), "missing same-name secret should not be invented");
+    assert!(
+        host.secret_reference().is_none(),
+        "missing same-name secret should not be invented"
+    );
     assert_eq!(host.url_template.as_deref(), Some(template));
 }
 
@@ -1018,7 +1023,7 @@ async fn template_host_add_explicit_secret_overrides_same_name_default() {
 
     let hosts = read_hosts(&home);
     let host = hosts.get("cloud-admin").expect("template host exists");
-    assert_eq!(host.secret.as_deref(), Some("platform-admin"));
+    assert_eq!(host.secret_reference(), Some("platform-admin"));
     assert_eq!(host.url_template.as_deref(), Some(template));
 }
 

@@ -8,6 +8,12 @@ mod application;
 mod application_config;
 /// Authentication methods
 mod auth;
+/// Where a saved host's credential comes from
+mod credential;
+/// Symbolic Elastic CLI context targets and resolution
+mod elastic_context;
+/// Names that select a saved host, template host, or Elastic CLI context
+mod host_reference;
 /// Encrypted secret storage
 mod keystore;
 /// Manage saving and loading hosts from a YAML file
@@ -26,15 +32,19 @@ mod uri;
 pub use application::Application;
 pub use application_config::{ApplicationConfig, JobConfig, OnboardingWorkflow, OutputConfig};
 pub use auth::{Auth, AuthType};
+pub use credential::Credential;
+pub(crate) use elastic_context::ElasticContextTarget;
+pub use elastic_context::ElasticOutputContext;
+pub use host_reference::HostReference;
 #[cfg(all(feature = "server", feature = "keystore"))]
 pub(crate) use keystore::get_active_unlock_keystore_password;
 #[cfg(all(feature = "server", feature = "keystore"))]
 pub(crate) use keystore::list_secret_entries;
 pub use keystore::{
     BasicSecret, SecretAlreadyExists, SecretAuth, SecretEntry, UnlockLease, UnlockStatus, add_secret, authenticate,
-    clear_unlock_lease, create_keystore, default_unlock_ttl, get_keystore_password, get_keystore_path,
-    get_password_for_secret_commands, get_secret, get_unlock_path, get_unlock_status, keystore_exists,
-    list_secret_names, parse_unlock_ttl, read_unlock_lease, remove_secret, resolve_secret_auth,
+    clear_unlock_lease, create_keystore, default_unlock_ttl, enable_keystore_password_prompt, get_keystore_password,
+    get_keystore_path, get_password_for_secret_commands, get_secret, get_unlock_path, get_unlock_status,
+    keystore_exists, list_secret_names, parse_unlock_ttl, read_unlock_lease, remove_secret, resolve_secret_auth,
     rotate_keystore_password, update_secret, upsert_secret_auth, validate_existing_keystore_password,
     with_scoped_keystore_password, write_unlock_lease,
 };
@@ -44,7 +54,7 @@ pub use known_host::{
     CredentialDirection, ElasticCloud, HostRole, HostRoute, KnownHost, KnownHostBuilder, KnownHostCliUpdate,
     ResolvedKnownHost,
 };
-pub use output_deployment::{OutputDeployment, OutputDeploymentSource, runtime_output_is_declared};
+pub use output_deployment::{OutputDeployment, OutputDeploymentSource, output_auth_from, runtime_output_is_declared};
 pub use platform::Platform;
 pub use saved_jobs::{
     CollectMode, CollectSource, DraftTargetAvailability, Job, JobBuilder, JobDraft, JobDraftCollect, JobDraftProcess,
@@ -67,10 +77,10 @@ pub fn collect_application(app: Option<Application>) -> Result<Application> {
             Ok(application)
         }
         Some(Application::Agent) => Err(eyre!(
-            "Collect is out of scope by design for Elastic Agent. Elastic Agent provides its own diagnostic bundle; acquire it through CLI `process` input or Web UI `Upload`."
+            "Collect is out of scope by design for Elastic Agent. Elastic Agent provides its own diagnostic bundle; acquire it through CLI `process` input or a Web UI submission."
         )),
         None => Err(eyre!(
-            "Collect is out of scope by design for platform targets (ECE, ECK, and KubernetesPlatform). Load the platform-generated bundle through CLI `process` input or Web UI `Upload`; only Elasticsearch, Kibana, and Logstash support API collection."
+            "Collect is out of scope by design for platform targets (ECE, ECK, and KubernetesPlatform). Load the platform-generated bundle through CLI `process` input or a Web UI submission; only Elasticsearch, Kibana, and Logstash support API collection."
         )),
     }
 }
@@ -289,7 +299,7 @@ mod tests {
                 .to_string();
             assert!(error.contains("out of scope by design"));
             assert!(error.contains("CLI `process` input"));
-            assert!(error.contains("Web UI `Upload`"));
+            assert!(error.contains("Web UI submission"));
             assert!(!error.contains("not yet implemented"));
         }
     }

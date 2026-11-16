@@ -119,19 +119,13 @@ fn keystore_migrate_command_scrubs_plaintext_hosts_and_preserves_reads() {
     let raw_hosts = std::fs::read_to_string(&hosts_path).expect("read hosts");
 
     let es_host = migrated_hosts.get("es-prod").expect("es host exists");
-    assert!(es_host.legacy_apikey.is_none(), "plaintext api key should be removed");
-    assert_eq!(es_host.secret.as_deref(), Some("es-prod"));
+    assert!(!es_host.has_legacy_credential(), "plaintext api key should be removed");
+    assert_eq!(es_host.secret_reference(), Some("es-prod"));
 
     let kb_host = migrated_hosts.get("kb-prod").expect("kb host exists");
-    assert!(
-        kb_host.legacy_username.is_none(),
-        "plaintext username should be removed"
-    );
-    assert!(
-        kb_host.legacy_password.is_none(),
-        "plaintext password should be removed"
-    );
-    assert_eq!(kb_host.secret.as_deref(), Some("kb-prod"));
+    assert!(!kb_host.has_legacy_credential(), "plaintext username should be removed");
+    assert!(!kb_host.has_legacy_credential(), "plaintext password should be removed");
+    assert_eq!(kb_host.secret_reference(), Some("kb-prod"));
 
     assert!(!raw_hosts.contains("apikey: apikey-1"));
     assert!(!raw_hosts.contains("username: elastic"));

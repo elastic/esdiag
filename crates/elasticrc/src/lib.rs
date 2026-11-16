@@ -295,14 +295,14 @@ impl<T: ServiceType> ServiceConfig<T> {
         let url = Url::parse(&self.url).map_err(|source| Error::InvalidServiceUrl {
             context: self.context.clone(),
             service: T::NAME,
-            value: self.url.clone(),
+            value: redact_url(&self.url),
             source,
         })?;
         if !matches!(url.scheme(), "http" | "https") {
             return Err(Error::InvalidServiceUrlScheme {
                 context: self.context.clone(),
                 service: T::NAME,
-                value: self.url.clone(),
+                value: redact_url(&self.url),
             });
         }
         if let Some(auth) = &self.auth {
@@ -321,14 +321,14 @@ impl<T: ServiceType> ServiceConfig<T> {
         let url = Url::parse(&url_value).map_err(|source| Error::InvalidServiceUrl {
             context: self.context.clone(),
             service: T::NAME,
-            value: url_value.clone(),
+            value: redact_url(&self.url),
             source,
         })?;
         if !matches!(url.scheme(), "http" | "https") {
             return Err(Error::InvalidServiceUrlScheme {
                 context: self.context.clone(),
                 service: T::NAME,
-                value: url_value,
+                value: redact_url(&self.url),
             });
         }
         let auth = if let Some(auth) = &self.auth {
@@ -509,12 +509,14 @@ pub enum Error {
     InvalidServiceUrl {
         context: Option<String>,
         service: &'static str,
+        /// The configured URL before resolution, with any userinfo redacted.
         value: String,
         source: url::ParseError,
     },
     InvalidServiceUrlScheme {
         context: Option<String>,
         service: &'static str,
+        /// The configured URL before resolution, with any userinfo redacted.
         value: String,
     },
     InvalidAuth {
@@ -524,6 +526,7 @@ pub enum Error {
     },
     InvalidResolverExpression {
         field: String,
+        /// What is wrong with the expression; never the field's value, which may be a secret.
         value: String,
     },
     UnknownResolver {
@@ -735,6 +738,21 @@ impl AuthConfig {
     }
 }
 
+/// Replace URL userinfo with `***` so credentials embedded in a configured URL stay out of errors.
+fn redact_url(value: &str) -> String {
+    let Some(scheme_end) = value.find("://") else {
+        return value.to_string();
+    };
+    let authority_start = scheme_end + 3;
+    let authority_end = value[authority_start..]
+        .find(['/', '?', '#'])
+        .map_or(value.len(), |offset| authority_start + offset);
+    match value[authority_start..authority_end].rfind('@') {
+        Some(at) => format!("{}***{}", &value[..authority_start], &value[authority_start + at..]),
+        None => value.to_string(),
+    }
+}
+
 fn is_resolver_expression(value: &str) -> bool {
     let value = value.trim();
     value.starts_with("$(") && value.ends_with(')')
@@ -761,7 +779,7 @@ fn resolve_string_expressions(value: &str, field: &str) -> Result<String, Error>
         let Some(end) = after_start.find(')') else {
             return Err(Error::InvalidResolverExpression {
                 field: field.to_string(),
-                value: value.to_string(),
+                value: "unterminated `$(`".to_string(),
             });
         };
         let expression = &after_start[..end];
@@ -777,7 +795,7 @@ fn resolve_expression(expression: &str, field: &str) -> Result<String, Error> {
         .split_once(':')
         .ok_or_else(|| Error::InvalidResolverExpression {
             field: field.to_string(),
-            value: format!("$({expression})"),
+            value: "expected `$(resolver:parameters)`".to_string(),
         })?;
     match resolver {
         "env" => env::var(params).map_err(|source| Error::ResolverFailed {
@@ -1534,6 +1552,43 @@ contexts:
                 ..
             } if context == "prod"
         ));
+    }
+
+    #[test]
+    fn resolver_and_url_errors_omit_secrets() {
+        let tmp = TempDir::new().expect("temp dir");
+        let path = tmp.path().join(".elasticrc.yml");
+        for (service, secret) in [
+            (
+                "url: https://es.example:9200\n      auth:\n        username: elastic\n        password: \"hunter2$(oops\"\n",
+                "hunter2",
+            ),
+            (
+                "url: https://es.example:9200\n      auth:\n        username: elastic\n        password: \"$(hunter2)\"\n",
+                "hunter2",
+            ),
+            ("url: \"https://elastic:hunter2@es.example:9200$(oops\"\n", "hunter2"),
+            ("url: \"ftp://elastic:hunter2@es.example:9200\"\n", "hunter2"),
+            ("url: \"http://elastic:hunter2@[::1\"\n", "hunter2"),
+        ] {
+            write(
+                &path,
+                &format!("current_context: prod\ncontexts:\n  prod:\n    elasticsearch:\n      {service}"),
+            );
+            let config = ConfigFile::load(&path).expect("load config");
+            let err = current_elasticsearch(&config)
+                .resolve()
+                .expect_err("malformed service should fail");
+            let message = format!("{err} {err:?}");
+            assert!(!message.contains(secret), "{message}");
+        }
+
+        assert_eq!(
+            super::redact_url("https://user:pass@host:9200/p@th"),
+            "https://***@host:9200/p@th"
+        );
+        assert_eq!(super::redact_url("https://host:9200"), "https://host:9200");
+        assert_eq!(super::redact_url("host:9200"), "host:9200");
     }
 
     #[test]

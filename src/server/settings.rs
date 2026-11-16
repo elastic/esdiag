@@ -160,7 +160,7 @@ pub async fn update_settings(
                     let err_msg = format!("Output target '{target}' has an invalid Kibana viewer.");
                     return settings_error_response(&state, &owner, prior_active_target.as_deref(), err_msg).await;
                 }
-                config.output.default = Some(target.clone());
+                config.output.select_saved_host(target.clone());
             }
             Some(_) => {
                 let err_msg = format!("Output target '{}' is not a send-capable host.", target);
@@ -186,7 +186,7 @@ pub async fn update_settings(
         #[cfg(feature = "keystore")]
         let keystore_password = state.keystore_password().await;
         #[cfg(not(feature = "keystore"))]
-        let keystore_password: Option<String> = None;
+        let keystore_password: Option<redact::Secret<String>> = None;
 
         let next_exporter = if !target_changed {
             Ok(current_exporter)
@@ -372,6 +372,7 @@ fn render_settings_error_script(err_msg: &str) -> String {
 #[allow(clippy::await_holding_lock)]
 mod tests {
     use super::{get_modal, update_settings};
+    use crate::data::Credential;
     use crate::{
         data::{Application, HostRole, KnownHost, Settings, Uri, authenticate},
         exporter::Exporter,
@@ -450,14 +451,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "secure-es".to_string(),
-            KnownHost::new_legacy_apikey(
+            KnownHost::new(
                 Application::Elasticsearch,
                 Url::parse("http://localhost:9200").expect("url"),
                 vec![HostRole::Send],
                 Some("secure-kb".to_string()),
                 false,
-                Some("secure-es".to_string()),
-                None,
+                Credential::Keystore("secure-es".to_string()),
             ),
         );
         hosts.insert(
@@ -734,14 +734,13 @@ mod tests {
         let mut hosts = BTreeMap::new();
         hosts.insert(
             "secure-es".to_string(),
-            KnownHost::new_legacy_apikey(
+            KnownHost::new(
                 Application::Elasticsearch,
                 Url::parse("http://localhost:9200").expect("url"),
                 vec![HostRole::Send],
                 None,
                 false,
-                Some("secure-es".to_string()),
-                None,
+                Credential::Keystore("secure-es".to_string()),
             ),
         );
         write_hosts(hosts);

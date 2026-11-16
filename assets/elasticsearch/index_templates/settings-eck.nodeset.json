@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "description": "ESDiag ECK Elasticsearch nodeSets with sizing, heap, storage, and StatefulSet rollout state"
+  },
+  "index_patterns": ["settings-eck.nodeset-esdiag*"],
+  "composed_of": [
+    "esdiag@eck-mappings",
+    "esdiag@eck-metadata",
+    "esdiag@settings"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "mappings": {
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "eck.nodeset"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "settings"
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 1
+}

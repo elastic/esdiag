@@ -9,10 +9,10 @@ pub mod agent;
 pub mod cli_output;
 /// Shared client libraries for remote connections
 pub mod client;
-/// Shell completion script generation and install helpers
-pub mod completions;
 /// Data structures and types for serializing and deserializing
 pub mod data;
+/// Send raw diagnostic archives to Elastic Upload Service
+pub mod elastic_upload_service;
 /// Embedded assets
 pub mod embeds;
 /// Environment variables
@@ -31,12 +31,9 @@ pub mod receiver;
 #[cfg(feature = "server")]
 pub mod server;
 /// Send pre-built assets (index templates, etc) to Elasticsearch
-#[cfg(feature = "setup")]
 pub mod setup;
 /// Host desktop browser and clipboard integration, including WSL.
 pub mod system_integration;
-/// Upload raw diagnostic archives to Elastic Upload Service
-pub mod uploader;
 
 /// Private to `TestEnv`, which is the only supported way to take it. Callers
 /// that locked it directly used `.expect()`, so a panicking test poisoned the

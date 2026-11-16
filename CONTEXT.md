@@ -30,8 +30,8 @@ _Avoid_: gather, receive, fetch
 
 **Load**:
 Read an *existing* diagnostic from a directory or bundle. Surfaces as a CLI
-`process` input (a file path, directory, or service link), Web UI *upload* (a
-user-supplied file), or an upload-service *download* — and is how
+`process` input (a file path, directory, or service link), Web UI *submission*
+(a user-supplied file), or an Elastic Upload Service download — and is how
 *product-provided* diagnostics enter (an Agent-generated bundle, or a
 platform-generated ECE/ECK/K8P bundle), since ESDiag does not API-collect those.
 _Avoid_: collect, receive, read (a surface form, not the canonical stage)
@@ -52,9 +52,10 @@ file/stream). Only follows Process.
 _Avoid_: load, output, send (Send is a distinct stage — do not conflate)
 
 **Send**:
-Transmit an existing *bundle* to the Elastic Uploader service. Requires a bundle to
-exist, from Save this run or from Load.
-_Avoid_: upload (that is an inbound Load surface; Send is outbound), export
+Transmit an existing *bundle* to a remote destination. Elastic Upload Service
+is the primary adapter today; object storage may be supported later. Requires a
+bundle to exist, from Save this run or from Load.
+_Avoid_: export
 
 ### Job phases
 
@@ -80,7 +81,7 @@ serialization barrier. `Process` directly after `Collect` (no `Save`) is
 
 The Web UI and saved-job signals use the deliberately friendlier verbs **collect /
 process / send**; these are UI labels, not backend stages, and do not map 1:1. UI
-*upload* is a `Load` source (inbound); UI *send* resolves to `Export` or the `Send`
+*submission* is a `Load` source (inbound); UI *send* resolves to `Export` or the `Send`
 stage depending on whether `Process` ran. The `JobSignals*` types are strictly UI
 implementation detail — the backend aligns on the six stages above.
 
@@ -116,7 +117,12 @@ persists nothing at the app layer: output credentials are injected from a
 vault/secrets service into env vars at container runtime, user identity is handled by
 the IAP (see `Authentication`), and input keys are runtime-only. Hence the keystore
 is a `User`-mode-only fixture.
-_Avoid_: secret (acceptable internally; "credentials" is the concept)
+A host's **credential source** is one of: a *keystore* reference (the only one saved
+to `hosts.yml`), a *runtime* credential (environment, Elastic CLI context, ad-hoc key;
+never saved), or *legacy* plaintext read from a pre-migration `hosts.yml`, which
+exists only to be migrated into the keystore.
+_Avoid_: secret (acceptable internally; "credentials" is the concept); calling runtime
+credentials "legacy"
 
 **Keystore unlock**:
 A time-limited grant of *use* of the keystore's credentials, without *disclosure* of
@@ -168,8 +174,8 @@ _Avoid_: product (see below), service
 **Infrastructure data**:
 Host/OS-level data whose kind is *determined by the platform*, not an independent
 axis: `SelfManaged` yields Linux system calls (opt-in, and available under no other
-platform), `ECK` yields container metrics, and managed cloud (`ElasticCloudHosted`,
-`ECE`) yields none.
+platform), `ECK` yields Kubernetes node, pod, container, and volume state, and
+managed cloud (`ElasticCloudHosted`, `ECE`) yields none.
 _Avoid_: system data, local data, host layer (it is not a product layer)
 
 **Product** (legacy):
@@ -213,6 +219,19 @@ A concrete target derived from a saved host after validating its URL, applicatio
 route, and roles. It is the only saved-host form permitted to enter runtime dispatch.
 _Avoid_: materialized template (a template is one source of a resolved host, not the
 concept itself)
+
+**Elastic CLI context**:
+A named target configuration owned by the Elastic CLI (`elasticrc.yml`), addressed as
+`.service` for the active context or `.context.service` for a named one. ESDiag reads
+it at resolve time and never persists its URL or credentials.
+_Avoid_: profile, saved host (a context is a host source, not ESDiag configuration)
+
+**Host reference**:
+The persisted, user-facing name that selects a host: a saved host name, a URL template
+reference, or an Elastic CLI context. Jobs store only the reference; every source
+resolves to a resolved host, so nothing downstream knows which source supplied it.
+Context references take precedence, so saved host names may not start with `.`.
+_Avoid_: target string, context target
 
 **Data source**:
 A named unit of diagnostic data, and the unit of extensibility — adding one is what

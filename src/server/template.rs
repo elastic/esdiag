@@ -376,7 +376,7 @@ pub struct JobCompleted<'a> {
     pub product: &'a str,
     /// The derived diagnostic outcome (ADR-0016), e.g. `complete`/`partial`.
     pub outcome: &'a str,
-    pub upload_destination: Option<&'a str>,
+    pub send_destination: Option<&'a str>,
     pub execution_error: Option<&'a str>,
     pub recorded_failures: Vec<String>,
 }
@@ -524,6 +524,7 @@ fn output_target_label(target: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{JobCompleted, JobSkipped, Jobs, build_footer_output_context};
+    use crate::data::Credential;
     use crate::{
         data::{Application, HostRole, KnownHost, Uri},
         exporter::Exporter,
@@ -548,14 +549,13 @@ mod tests {
         );
         hosts.insert(
             "secure-prod".to_string(),
-            KnownHost::new_legacy_apikey(
+            KnownHost::new(
                 Application::Elasticsearch,
                 Url::parse("https://secure.example.com:9200").expect("url"),
                 vec![HostRole::Send],
                 None,
                 false,
-                Some("secure-prod".to_string()),
-                None,
+                Credential::Keystore("secure-prod".to_string()),
             ),
         );
         KnownHost::write_hosts_yml(&hosts).expect("write hosts");
@@ -682,7 +682,7 @@ mod tests {
             kibana_link: "https://kb.example/app/dashboards#/view/child",
             product: "Elasticsearch",
             outcome: "complete",
-            upload_destination: Some("https://upload.elastic.co/g/raw-bundle"),
+            send_destination: Some("https://upload.elastic.co/g/raw-bundle"),
             execution_error: Some("Send failed"),
             recorded_failures: vec!["Error cluster_settings: request failed".to_string()],
         }
@@ -710,7 +710,7 @@ mod tests {
             kibana_link: "",
             product: "Elasticsearch",
             outcome: "complete",
-            upload_destination: None,
+            send_destination: None,
             execution_error: None,
             recorded_failures: Vec::new(),
         }

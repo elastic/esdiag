@@ -23,6 +23,10 @@ use std::{
     future::Future,
     io::{BufReader, BufWriter, IsTerminal, Write},
     path::{Path, PathBuf},
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -49,14 +53,17 @@ const MAX_UNLOCK_TTL_SECS: u64 = 30 * 24 * 60 * 60;
 const MINIMAL_UNLOCK_CONTEXT: &str = "esdiag-keystore-unlock";
 
 tokio::task_local! {
-    static SCOPED_KEYSTORE_PASSWORD: String;
+    static SCOPED_KEYSTORE_PASSWORD: Secret<String>;
 }
+
+static KEYSTORE_PASSWORD_PROMPT_ENABLED: AtomicBool = AtomicBool::new(false);
+static PROMPTED_KEYSTORE_PASSWORD: Mutex<Option<Secret<String>>> = Mutex::new(None);
 
 /// Secret-bearing types wrap their credential material in [`Secret`], whose
 /// `Debug` renders a redaction marker (ADR-0011). Serialization is opt-in per
 /// field via `expose_secret`, which is what makes the write path to the
 /// encrypted envelope below the only place these values leave the wrapper.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SecretAuth {
     ApiKey {
         #[serde(serialize_with = "expose_secret")]
@@ -624,22 +631,63 @@ pub fn get_unlock_status() -> Result<UnlockStatus> {
     })
 }
 
-pub fn get_keystore_password() -> Result<String> {
+/// Allows [`get_keystore_password`] to prompt on an interactive terminal when the
+/// keystore is locked. Only foreground CLI commands may enable this; a server
+/// runtime would block request handling on the terminal that launched it.
+pub fn enable_keystore_password_prompt() {
+    KEYSTORE_PASSWORD_PROMPT_ENABLED.store(true, Ordering::Relaxed);
+}
+
+pub fn get_keystore_password() -> Result<Secret<String>> {
+    get_keystore_password_with_prompt(
+        KEYSTORE_PASSWORD_PROMPT_ENABLED.load(Ordering::Relaxed)
+            && std::io::stdin().is_terminal()
+            && std::io::stdout().is_terminal(),
+        &PROMPTED_KEYSTORE_PASSWORD,
+        prompt_keystore_password,
+    )
+}
+
+fn prompt_keystore_password(prompt: &str) -> Result<Secret<String>> {
+    Ok(Secret::new(rpassword::prompt_password(prompt)?))
+}
+
+fn get_keystore_password_with_prompt<F>(
+    interactive: bool,
+    prompted: &Mutex<Option<Secret<String>>>,
+    prompt_fn: F,
+) -> Result<Secret<String>>
+where
+    F: FnOnce(&str) -> Result<Secret<String>>,
+{
     if let Ok(password) = SCOPED_KEYSTORE_PASSWORD.try_with(Clone::clone) {
         return Ok(password);
     }
     if let Ok(password) = env::var(ESDIAG_KEYSTORE_PASSWORD) {
-        return Ok(password);
+        return Ok(Secret::new(password));
     }
     if let Some(lease) = read_unlock_lease()? {
         let unlock_path = get_unlock_path()?;
         if !keystore_exists()? {
             remove_unlock_file_best_effort(&unlock_path, "absent keystore");
         } else if validate_existing_keystore_password(lease.password()).is_ok() {
-            return Ok(lease.password().to_string());
+            return Ok(lease.password.clone());
         } else {
             remove_unlock_file_best_effort(&unlock_path, "stale");
         }
+    }
+    if interactive && keystore_exists()? {
+        // Held across the prompt so concurrent secret lookups wait for one answer.
+        let mut prompted = prompted
+            .lock()
+            .map_err(|_| eyre!("keystore password prompt state is poisoned"))?;
+        if let Some(password) = prompted.as_ref() {
+            return Ok(password.clone());
+        }
+        let password = prompt_fn("Keystore is locked. Enter keystore password: ")?;
+        validate_existing_keystore_password(password.expose_secret())?;
+        *prompted = Some(password.clone());
+        return Ok(password);
     }
     Err(eyre!(
         "{ESDIAG_KEYSTORE_PASSWORD} is not set and no valid unlock lease is available; cannot decrypt secrets from keystore."
@@ -647,30 +695,30 @@ pub fn get_keystore_password() -> Result<String> {
 }
 
 #[cfg(all(feature = "server", feature = "keystore"))]
-pub(crate) fn get_active_unlock_keystore_password() -> Result<Option<String>> {
-    Ok(read_unlock_lease()?.map(|lease| lease.password().to_string()))
+pub(crate) fn get_active_unlock_keystore_password() -> Result<Option<Secret<String>>> {
+    Ok(read_unlock_lease()?.map(|lease| lease.password))
 }
 
-pub async fn with_scoped_keystore_password<F>(keystore_password: String, future: F) -> F::Output
+pub async fn with_scoped_keystore_password<F>(keystore_password: Secret<String>, future: F) -> F::Output
 where
     F: Future,
 {
     SCOPED_KEYSTORE_PASSWORD.scope(keystore_password, future).await
 }
 
-fn get_password_for_secret_commands_with_prompt<F>(interactive: bool, prompt_fn: F) -> Result<String>
+fn get_password_for_secret_commands_with_prompt<F>(interactive: bool, prompt_fn: F) -> Result<Secret<String>>
 where
-    F: FnOnce(&str) -> Result<String>,
+    F: FnOnce(&str) -> Result<Secret<String>>,
 {
     if let Ok(password) = env::var(ESDIAG_KEYSTORE_PASSWORD) {
-        return Ok(password);
+        return Ok(Secret::new(password));
     }
     if let Some(lease) = read_unlock_lease()? {
         let unlock_path = get_unlock_path()?;
         if !keystore_exists()? {
             remove_unlock_file_best_effort(&unlock_path, "absent keystore");
         } else if validate_existing_keystore_password(lease.password()).is_ok() {
-            return Ok(lease.password().to_string());
+            return Ok(lease.password.clone());
         } else {
             remove_unlock_file_best_effort(&unlock_path, "stale");
         }
@@ -686,10 +734,10 @@ where
     ))
 }
 
-pub fn get_password_for_secret_commands() -> Result<String> {
+pub fn get_password_for_secret_commands() -> Result<Secret<String>> {
     get_password_for_secret_commands_with_prompt(
         std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
-        |prompt| Ok(rpassword::prompt_password(prompt)?),
+        prompt_keystore_password,
     )
 }
 
@@ -1046,7 +1094,10 @@ mod tests {
             secret.apikey.as_ref().map(|key| key.expose_secret().as_str()),
             Some("secret-key")
         );
-        assert_eq!(get_keystore_password().expect("unlock lease password"), "new-pw");
+        assert_eq!(
+            get_keystore_password().expect("unlock lease password").expose_secret(),
+            "new-pw"
+        );
     }
 
     #[test]
@@ -1066,11 +1117,11 @@ mod tests {
 
         let prompted = get_password_for_secret_commands_with_prompt(true, |prompt| {
             assert_eq!(prompt, "Enter keystore password (ESDIAG_KEYSTORE_PASSWORD): ");
-            Ok("prompted-pw".to_string())
+            Ok(Secret::new("prompted-pw".to_string()))
         })
         .expect("prompted fallback");
 
-        assert_eq!(prompted, "prompted-pw");
+        assert_eq!(prompted.expose_secret(), "prompted-pw");
         assert!(
             !unlock_path.exists(),
             "stale unlock lease should be cleared before prompting"
@@ -1089,6 +1140,49 @@ mod tests {
             !unlock_path.exists(),
             "stale unlock lease should be cleared on invalid password"
         );
+    }
+
+    #[test]
+    fn locked_keystore_prompts_once_on_interactive_terminal() {
+        let (_tmp, _keystore_path, _unlock_path) = setup_env();
+        create_keystore("pw").expect("create keystore");
+        let prompted = Mutex::new(None);
+
+        let password = get_keystore_password_with_prompt(true, &prompted, |prompt| {
+            assert_eq!(prompt, "Keystore is locked. Enter keystore password: ");
+            Ok(Secret::new("pw".to_string()))
+        })
+        .expect("prompted password");
+        assert_eq!(password.expose_secret(), "pw");
+
+        let reused = get_keystore_password_with_prompt(true, &prompted, |_| panic!("should not prompt twice"))
+            .expect("cached password");
+        assert_eq!(reused.expose_secret(), "pw");
+    }
+
+    #[test]
+    fn locked_keystore_rejects_wrong_prompted_password() {
+        let (_tmp, _keystore_path, _unlock_path) = setup_env();
+        create_keystore("pw").expect("create keystore");
+        let prompted = Mutex::new(None);
+
+        let err = get_keystore_password_with_prompt(true, &prompted, |_| Ok(Secret::new("wrong".to_string())))
+            .expect_err("wrong password should be rejected");
+        assert!(err.to_string().contains("Check keystore password"));
+        assert!(
+            prompted.lock().expect("lock").is_none(),
+            "rejected password must not be cached"
+        );
+    }
+
+    #[test]
+    fn locked_keystore_fails_without_interactive_terminal() {
+        let (_tmp, _keystore_path, _unlock_path) = setup_env();
+        create_keystore("pw").expect("create keystore");
+
+        let err = get_keystore_password_with_prompt(false, &Mutex::new(None), |_| panic!("must not prompt"))
+            .expect_err("non-interactive should fail");
+        assert!(err.to_string().contains("no valid unlock lease is available"));
     }
 
     #[test]
@@ -1142,11 +1236,11 @@ mod tests {
 
         let prompted = get_password_for_secret_commands_with_prompt(true, |prompt| {
             assert_eq!(prompt, "Enter keystore password (ESDIAG_KEYSTORE_PASSWORD): ");
-            Ok("prompted-pw".to_string())
+            Ok(Secret::new("prompted-pw".to_string()))
         })
         .expect("prompted fallback");
 
-        assert_eq!(prompted, "prompted-pw");
+        assert_eq!(prompted.expose_secret(), "prompted-pw");
         assert!(
             !unlock_path.exists(),
             "unlock lease should be cleared when keystore is absent"

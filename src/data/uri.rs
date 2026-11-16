@@ -2,7 +2,10 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{Application, ElasticCloud, KnownHost, KnownHostBuilder, OutputDeployment, ResolvedKnownHost};
+use super::output_deployment::environment_auth;
+use super::{
+    Application, ElasticCloud, HostReference, KnownHost, KnownHostBuilder, OutputDeployment, ResolvedKnownHost,
+};
 use eyre::{OptionExt, Report, Result, eyre};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
@@ -22,9 +25,9 @@ pub enum Uri {
     ElasticCloudAdmin(KnownHost),
     /// An Elastic Cloud GovCloud Admin URL for the Elasticsearch API proxy
     ElasticGovCloudAdmin(KnownHost),
-    /// An Elastic Uploader service URL, embed the auth token as `token:<value>@` instead of `username:password` in the URL
+    /// An Elastic Upload Service URL; embed the auth token as `token:<value>@` instead of `username:password`
     ServiceLink(Url),
-    /// An Elastic Uploader service URL, without authentication
+    /// An Elastic Upload Service URL without authentication
     ServiceLinkNoAuth(Url),
     /// A standard URL
     Url(Url),
@@ -37,32 +40,15 @@ pub enum Uri {
     Stream,
 }
 
-/// Try reading the authentication environment variables.
-/// Returns a tuple of optional strings for (apikey, username, password)
-fn try_get_auth_env() -> Result<(Option<String>, Option<String>, Option<String>)> {
-    let apikey = std::env::var("ESDIAG_OUTPUT_APIKEY").ok();
-    let username = std::env::var("ESDIAG_OUTPUT_USERNAME").ok();
-    let password = std::env::var("ESDIAG_OUTPUT_PASSWORD").ok();
-    Ok((apikey, username, password))
-}
-
 impl Uri {
     /// Try creating a new Elasticsearch Uri from the environment variables
     /// - `ESDIAG_OUTPUT_URL` (required): The URL to use for Elasticsearch output.
     /// - `ESDIAG_OUTPUT_APIKEY` (optional): API key for authentication.
     /// - `ESDIAG_OUTPUT_USERNAME` (optional): Username for authentication.
     /// - `ESDIAG_OUTPUT_PASSWORD` (optional): Password for authentication.
+    /// - `ESDIAG_KIBANA_URL` (optional): The output's Kibana viewer.
     pub fn try_from_output_env() -> Result<Self> {
-        tracing::debug!("Creating URI from ESDIAG_OUTPUT_URL");
-        let url = std::env::var("ESDIAG_OUTPUT_URL").map_err(|_| eyre!("ESDIAG_OUTPUT_URL is not defined"))?;
-        tracing::debug!("output: Env {}", url);
-        let (apikey, username, password) = try_get_auth_env()?;
-        let host = KnownHostBuilder::new(Url::parse(&url)?)
-            .apikey(apikey)
-            .username(username)
-            .password(password)
-            .build()?;
-        host.try_into()
+        OutputDeployment::from_environment(false)?.elasticsearch.try_into()
     }
 
     /// Resolve the default output deployment without mixing runtime and saved
@@ -78,15 +64,11 @@ impl Uri {
     /// - `ESDIAG_OUTPUT_USERNAME` (optional): Username for authentication.
     /// - `ESDIAG_OUTPUT_PASSWORD` (optional): Password for authentication.
     pub fn try_from_kibana_env() -> Result<Self> {
-        tracing::debug!("Creating URI from ESDIAG_KIBANA_URL");
         let url = std::env::var("ESDIAG_KIBANA_URL").map_err(|_| eyre!("ESDIAG_KIBANA_URL is not defined"))?;
         tracing::debug!("kibana: Env {}", url);
-        let (apikey, username, password) = try_get_auth_env()?;
         let host = KnownHostBuilder::new(Url::parse(&url)?)
             .application(Application::Kibana)
-            .apikey(apikey)
-            .username(username)
-            .password(password)
+            .auth(environment_auth()?)
             .build()?;
         host.try_into()
     }
@@ -180,15 +162,8 @@ impl TryFrom<&str> for Uri {
             return Ok(Uri::Stream);
         }
 
-        if let Some(host) = KnownHost::resolve_template_reference(uri)? {
-            return host.try_into();
-        }
-
-        if let Ok(host) = KnownHost::from_str(uri) {
-            if host.is_template() {
-                return Err(eyre!(KnownHost::template_guidance(uri)));
-            }
-            return host.try_into();
+        if let Some(reference) = HostReference::parse(uri)? {
+            return reference.resolve()?.try_into();
         }
         tracing::debug!("No known host for {uri}");
 
@@ -210,11 +185,11 @@ impl TryFrom<&str> for Uri {
             let domain = url.domain().ok_or_eyre("URL is missing a domain")?;
             match (domain, url.username(), url.password()) {
                 ("upload.elastic.co", "token", Some(_)) => {
-                    tracing::debug!("Creating Uri::ElasticUploader");
+                    tracing::debug!("Creating authenticated Elastic Upload Service URI");
                     return Ok(Uri::ServiceLink(url));
                 }
                 ("upload.elastic.co", _, None) => {
-                    tracing::debug!("Missing auth token for Elastic Uploader");
+                    tracing::debug!("Missing auth token for Elastic Upload Service");
                     return Ok(Uri::ServiceLinkNoAuth(url));
                 }
                 _ => {
@@ -301,7 +276,39 @@ impl std::fmt::Display for Uri {
 #[cfg(test)]
 mod tests {
     use super::Uri;
+    use crate::data::{Application, Auth};
     use std::path::Path;
+
+    const ENV_VARS: &[&str] = &[
+        "ESDIAG_OUTPUT_URL",
+        "ESDIAG_OUTPUT_APIKEY",
+        "ESDIAG_OUTPUT_USERNAME",
+        "ESDIAG_OUTPUT_PASSWORD",
+        "ESDIAG_KIBANA_URL",
+        "ESDIAG_CLOUD_URL",
+        "ESDIAG_CLOUD_APIKEY",
+        "ELASTIC_ES_URL",
+        "ELASTIC_ES_API_KEY",
+        "ELASTIC_ES_USERNAME",
+        "ELASTIC_ES_PASSWORD",
+        "ELASTIC_KIBANA_URL",
+        "ELASTIC_KIBANA_API_KEY",
+        "ELASTIC_KIBANA_USERNAME",
+        "ELASTIC_KIBANA_PASSWORD",
+        "ELASTIC_CLOUD_URL",
+        "ELASTIC_CLOUD_API_KEY",
+        "ESDIAG_ELASTIC_CLI",
+        "ESDIAG_HOSTS",
+        "ELASTIC_CLI_CONFIG_FILE",
+    ];
+
+    fn clear_env() {
+        unsafe {
+            for name in ENV_VARS {
+                std::env::remove_var(name);
+            }
+        }
+    }
 
     #[test]
     fn parses_stdio_stdout_uri_as_stream() {
@@ -323,5 +330,102 @@ mod tests {
             Uri::try_from("file:///tmp/REPORT"),
             Ok(Uri::File(path)) if path == Path::new("/tmp/REPORT")
         ));
+    }
+
+    #[test]
+    fn output_env_rejects_mixed_esdiag_auth_values() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        clear_env();
+        unsafe {
+            std::env::set_var("ESDIAG_OUTPUT_URL", "https://esdiag.example:9200");
+            std::env::set_var("ESDIAG_OUTPUT_APIKEY", "esdiag-key");
+            std::env::set_var("ESDIAG_OUTPUT_USERNAME", "elastic");
+            std::env::set_var("ESDIAG_OUTPUT_PASSWORD", "changeme");
+        }
+
+        let err = match Uri::try_from_output_env() {
+            Ok(_) => panic!("mixed auth should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("ESDIAG_OUTPUT_APIKEY cannot be combined"));
+        clear_env();
+    }
+
+    #[test]
+    fn output_env_ignores_elastic_cli_variables() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        clear_env();
+        unsafe {
+            std::env::set_var("ESDIAG_OUTPUT_URL", "https://esdiag.example:9200");
+            std::env::set_var("ELASTIC_ES_URL", "https://active-context.example:9200");
+            std::env::set_var("ELASTIC_ES_API_KEY", "active-context-key");
+            std::env::set_var("ELASTIC_KIBANA_URL", "https://active-context.example:5601");
+        }
+
+        let Uri::KnownHost(host) = Uri::try_from_output_env().expect("output env uri") else {
+            panic!("expected known host");
+        };
+
+        assert_eq!(host.get_url().expect("url").as_str(), "https://esdiag.example:9200/");
+        assert!(matches!(host.get_auth().expect("auth"), Auth::None));
+        assert!(host.attached_viewer().is_none());
+        unsafe {
+            std::env::remove_var("ESDIAG_OUTPUT_URL");
+        }
+        assert!(Uri::try_from_output_env().is_err(), "ELASTIC_ES_URL is not an output");
+        assert!(
+            Uri::try_from_kibana_env().is_err(),
+            "ELASTIC_KIBANA_URL is not a viewer"
+        );
+        clear_env();
+    }
+
+    #[test]
+    fn output_env_attaches_its_kibana_viewer() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        clear_env();
+        unsafe {
+            std::env::set_var("ESDIAG_OUTPUT_URL", "https://esdiag.example:9200");
+            std::env::set_var("ESDIAG_OUTPUT_APIKEY", "esdiag-key");
+            std::env::set_var("ESDIAG_KIBANA_URL", "https://esdiag.example:5601");
+        }
+
+        let Uri::KnownHost(host) = Uri::try_from_output_env().expect("output env uri") else {
+            panic!("expected known host");
+        };
+
+        let viewer = host.attached_viewer().expect("environment viewer");
+        assert_eq!(viewer.app(), Some(Application::Kibana));
+        assert_eq!(viewer.get_url().expect("url").as_str(), "https://esdiag.example:5601/");
+        assert!(matches!(viewer.get_auth().expect("auth"), Auth::Apikey(key) if key.expose_secret() == "esdiag-key"));
+        clear_env();
+    }
+
+    #[test]
+    fn non_service_leading_dot_falls_through_to_path_resolution() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        clear_env();
+
+        assert!(matches!(
+            Uri::try_from(".unknown"),
+            Ok(Uri::Directory(path)) if path == Path::new(".unknown")
+        ));
+        clear_env();
+    }
+
+    #[test]
+    fn explicit_hidden_local_path_bypasses_active_context_reference() {
+        let _guard = crate::test_env_lock().lock().expect("env lock");
+        clear_env();
+        unsafe {
+            std::env::set_var("ELASTIC_ES_URL", "https://active.example:9200");
+        }
+
+        assert!(matches!(
+            Uri::try_from("./.es"),
+            Ok(Uri::Directory(path)) if path == Path::new("./.es")
+        ));
+        clear_env();
     }
 }

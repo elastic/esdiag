@@ -2,7 +2,10 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{Application, ApplicationConfig, Auth, CredentialDirection, HostRole, KnownHost, KnownHostBuilder};
+use super::{
+    Application, ApplicationConfig, Auth, CredentialDirection, ElasticContextTarget, ElasticOutputContext, HostRole,
+    KnownHost, KnownHostBuilder,
+};
 use eyre::{Result, eyre};
 use std::env;
 use url::Url;
@@ -11,6 +14,7 @@ use url::Url;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OutputDeploymentSource {
     Explicit,
+    ElasticContext,
     Environment,
     Persisted,
 }
@@ -33,26 +37,93 @@ impl OutputDeployment {
         if let Some(target) = explicit_target {
             return Self::from_explicit(target, require_kibana);
         }
+        let config = ApplicationConfig::load()?;
+        if let Some(context) = config.output.elastic_context {
+            return Self::from_elastic_context(&context, require_kibana);
+        }
         if runtime_output_is_declared() {
             return Self::from_environment(require_kibana);
         }
         Self::from_persisted(require_kibana)
     }
 
+    /// Resolve the named or persisted saved output without consulting `ESDIAG_OUTPUT_*`.
+    ///
+    /// With `include_viewer`, the linked Kibana viewer is resolved too when the output has one;
+    /// without it, a missing viewer host or viewer credential cannot block Elasticsearch-only work.
+    pub fn resolve_saved(explicit_target: Option<&str>, include_viewer: bool) -> Result<Self> {
+        let mut deployment = match explicit_target {
+            Some(target) => Self::from_explicit(target, false)?,
+            None => Self::from_persisted(false)?,
+        };
+        if !include_viewer {
+            return Ok(deployment);
+        }
+        if let Some((viewer, auth)) = linked_viewer(&deployment.elasticsearch)? {
+            deployment.elasticsearch = deployment.elasticsearch.with_attached_viewer(viewer.clone());
+            deployment.kibana = Some(viewer);
+            deployment.kibana_auth = Some(auth);
+        }
+        Ok(deployment)
+    }
+
     fn from_explicit(target: &str, require_kibana: bool) -> Result<Self> {
+        if let Some(target) = ElasticContextTarget::parse(target)? {
+            let (elasticsearch, elasticsearch_auth, kibana, kibana_auth) =
+                target.resolve_output_hosts(require_kibana)?;
+            return Ok(Self::assemble(
+                OutputDeploymentSource::Explicit,
+                elasticsearch,
+                elasticsearch_auth,
+                kibana,
+                kibana_auth,
+            ));
+        }
         let output = KnownHost::get_known(&target.to_string())
             .ok_or_else(|| eyre!("Explicit output deployment target '{target}' must be a saved Elasticsearch host"))?;
         Self::from_saved(OutputDeploymentSource::Explicit, output, require_kibana)
     }
 
+    /// The persisted output's linked Kibana viewer, resolved without the output's own Elasticsearch credential.
+    pub fn persisted_viewer() -> Result<Option<KnownHost>> {
+        let output = persisted_output()?;
+        validate_send_host(&output, "output deployment")?;
+        Ok(linked_viewer(&output)?.map(|(viewer, _)| viewer))
+    }
+
     fn from_persisted(require_kibana: bool) -> Result<Self> {
-        let config = ApplicationConfig::load()?;
-        let output_name = config.output.default.ok_or_else(|| {
-            eyre!("No output deployment is configured. Run `esdiag init` or provide an explicit output target.")
-        })?;
-        let output = KnownHost::get_known(&output_name)
-            .ok_or_else(|| eyre!("Configured output host '{output_name}' was not found"))?;
-        Self::from_saved(OutputDeploymentSource::Persisted, output, require_kibana)
+        Self::from_saved(OutputDeploymentSource::Persisted, persisted_output()?, require_kibana)
+    }
+
+    pub fn from_elastic_context(context: &ElasticOutputContext, require_kibana: bool) -> Result<Self> {
+        let (elasticsearch, elasticsearch_auth, kibana, kibana_auth) = context.resolve_output_hosts(require_kibana)?;
+        Ok(Self::assemble(
+            OutputDeploymentSource::ElasticContext,
+            elasticsearch,
+            elasticsearch_auth,
+            kibana,
+            kibana_auth,
+        ))
+    }
+
+    fn assemble(
+        source: OutputDeploymentSource,
+        elasticsearch: KnownHost,
+        elasticsearch_auth: Auth,
+        kibana: Option<KnownHost>,
+        kibana_auth: Option<Auth>,
+    ) -> Self {
+        let elasticsearch = match &kibana {
+            Some(kibana) => elasticsearch.with_attached_viewer(kibana.clone()),
+            None => elasticsearch,
+        };
+        Self {
+            source,
+            elasticsearch,
+            elasticsearch_auth,
+            kibana,
+            kibana_auth,
+        }
     }
 
     fn from_saved(source: OutputDeploymentSource, elasticsearch: KnownHost, require_kibana: bool) -> Result<Self> {
@@ -60,61 +131,73 @@ impl OutputDeployment {
         let elasticsearch_auth = elasticsearch.get_auth_for_direction(CredentialDirection::Output)?;
 
         let (kibana, kibana_auth) = if require_kibana {
-            let viewer_name = elasticsearch
-                .viewer()
-                .ok_or_else(|| eyre!("Output deployment requires a linked Kibana viewer"))?;
-            let viewer = KnownHost::get_known(&viewer_name.to_string())
-                .ok_or_else(|| eyre!("Output deployment viewer '{viewer_name}' was not found"))?;
-            validate_view_host(&viewer, viewer_name)?;
-            let auth = viewer.get_auth_for_direction(CredentialDirection::Output)?;
+            if elasticsearch.viewer().is_none() {
+                return Err(eyre!("Output deployment requires a linked Kibana viewer"));
+            }
+            let (viewer, auth) = linked_viewer(&elasticsearch)?.expect("viewer link checked");
             (Some(viewer), Some(auth))
         } else {
             (None, None)
         };
 
-        Ok(Self {
+        Ok(Self::assemble(
             source,
             elasticsearch,
             elasticsearch_auth,
             kibana,
             kibana_auth,
-        })
+        ))
     }
 
-    fn from_environment(require_kibana: bool) -> Result<Self> {
+    /// Resolve the output declared by `ESDIAG_OUTPUT_*`. `ESDIAG_KIBANA_URL`
+    /// supplies its viewer when set, and is mandatory when `require_kibana`.
+    pub(crate) fn from_environment(require_kibana: bool) -> Result<Self> {
         let output_url = required_environment("ESDIAG_OUTPUT_URL")?;
-        let (apikey, username, password) = environment_auth()?;
+        let auth = environment_auth()?;
         let elasticsearch = KnownHostBuilder::new(Url::parse(&output_url)?)
             .application(Application::Elasticsearch)
             .roles(vec![HostRole::Send])
-            .apikey(apikey.clone())
-            .username(username.clone())
-            .password(password.clone())
+            .auth(auth.clone())
             .build()?;
         let elasticsearch_auth = elasticsearch.get_auth_for_direction(CredentialDirection::Output)?;
 
-        let (kibana, kibana_auth) = if require_kibana {
-            let kibana_url = required_environment("ESDIAG_KIBANA_URL")?;
-            let kibana = KnownHostBuilder::new(Url::parse(&kibana_url)?)
+        let kibana_url = if require_kibana {
+            Some(required_environment("ESDIAG_KIBANA_URL")?)
+        } else {
+            env::var("ESDIAG_KIBANA_URL")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        };
+        let kibana = kibana_url
+            .map(|kibana_url| -> Result<(KnownHost, Auth)> {
+                let kibana = KnownHostBuilder::new(
+                    Url::parse(&kibana_url).map_err(|err| eyre!("ESDIAG_KIBANA_URL is not a valid URL: {err}"))?,
+                )
                 .application(Application::Kibana)
                 .roles(vec![HostRole::View])
-                .apikey(apikey)
-                .username(username)
-                .password(password)
+                .auth(auth)
                 .build()?;
-            let auth = kibana.get_auth_for_direction(CredentialDirection::Output)?;
-            (Some(kibana), Some(auth))
-        } else {
-            (None, None)
+                let auth = kibana.get_auth_for_direction(CredentialDirection::Output)?;
+                Ok((kibana, auth))
+            })
+            .transpose();
+        let (kibana, kibana_auth) = match kibana {
+            Ok(Some((kibana, auth))) => (Some(kibana), Some(auth)),
+            Ok(None) => (None, None),
+            Err(err) if !require_kibana => {
+                tracing::warn!("Ignoring ESDIAG_KIBANA_URL; exports will omit Kibana links: {err}");
+                (None, None)
+            }
+            Err(err) => return Err(err),
         };
 
-        Ok(Self {
-            source: OutputDeploymentSource::Environment,
+        Ok(Self::assemble(
+            OutputDeploymentSource::Environment,
             elasticsearch,
             elasticsearch_auth,
             kibana,
             kibana_auth,
-        })
+        ))
     }
 }
 
@@ -130,19 +213,21 @@ fn required_environment(name: &str) -> Result<String> {
     Ok(value)
 }
 
-fn environment_auth() -> Result<(Option<String>, Option<String>, Option<String>)> {
-    let apikey = env::var("ESDIAG_OUTPUT_APIKEY")
-        .ok()
-        .filter(|value| !value.trim().is_empty());
-    let username = env::var("ESDIAG_OUTPUT_USERNAME")
-        .ok()
-        .filter(|value| !value.trim().is_empty());
-    let password = env::var("ESDIAG_OUTPUT_PASSWORD")
-        .ok()
-        .filter(|value| !value.trim().is_empty());
+pub(crate) fn environment_auth() -> Result<Auth> {
+    output_auth_from(|name| env::var(name).ok())
+}
 
-    match (&apikey, &username, &password) {
-        (Some(_), None, None) | (None, None, None) | (None, Some(_), Some(_)) => Ok((apikey, username, password)),
+/// Read `ESDIAG_OUTPUT_APIKEY`, `_USERNAME`, and `_PASSWORD` through `lookup` and validate the combination.
+pub fn output_auth_from(lookup: impl Fn(&str) -> Option<String>) -> Result<Auth> {
+    let read = |name| lookup(name).filter(|value: &String| !value.trim().is_empty());
+    let apikey = read("ESDIAG_OUTPUT_APIKEY");
+    let username = read("ESDIAG_OUTPUT_USERNAME");
+    let password = read("ESDIAG_OUTPUT_PASSWORD");
+
+    match (apikey, username, password) {
+        (Some(apikey), None, None) => Ok(Auth::apikey(apikey)),
+        (None, Some(username), Some(password)) => Ok(Auth::basic(username, password)),
+        (None, None, None) => Ok(Auth::None),
         (Some(_), _, _) => Err(eyre!(
             "ESDIAG_OUTPUT_APIKEY cannot be combined with ESDIAG_OUTPUT_USERNAME or ESDIAG_OUTPUT_PASSWORD"
         )),
@@ -159,6 +244,25 @@ fn validate_send_host(host: &KnownHost, context: &str) -> Result<()> {
     Ok(())
 }
 
+fn persisted_output() -> Result<KnownHost> {
+    let config = ApplicationConfig::load()?;
+    let output_name = config.output.default.ok_or_else(|| {
+        eyre!("No output deployment is configured. Run `esdiag init` or provide an explicit output target.")
+    })?;
+    KnownHost::get_known(&output_name).ok_or_else(|| eyre!("Configured output host '{output_name}' was not found"))
+}
+
+fn linked_viewer(elasticsearch: &KnownHost) -> Result<Option<(KnownHost, Auth)>> {
+    let Some(viewer_name) = elasticsearch.viewer() else {
+        return Ok(None);
+    };
+    let viewer = KnownHost::get_known(&viewer_name.to_string())
+        .ok_or_else(|| eyre!("Output deployment viewer '{viewer_name}' was not found"))?;
+    validate_view_host(&viewer, viewer_name)?;
+    let auth = viewer.get_auth_for_direction(CredentialDirection::Output)?;
+    Ok(Some((viewer, auth)))
+}
+
 fn validate_view_host(host: &KnownHost, name: &str) -> Result<()> {
     if host.app() != Some(Application::Kibana) || !host.has_role(HostRole::View) {
         return Err(eyre!(
@@ -171,7 +275,7 @@ fn validate_view_host(host: &KnownHost, name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{OutputDeployment, OutputDeploymentSource};
-    use crate::data::{Application, ApplicationConfig, HostRole, KnownHostBuilder};
+    use crate::data::{Application, ApplicationConfig, Auth, ElasticOutputContext, HostRole, KnownHostBuilder};
     use std::collections::BTreeMap;
     use url::Url;
 
@@ -295,6 +399,21 @@ mod tests {
     }
 
     #[test]
+    fn active_input_context_is_not_an_implicit_output() {
+        let mut env = crate::TestEnv::new();
+        clear_output_environment(&mut env);
+        env.set("ESDIAG_ELASTIC_CLI", "1");
+        env.set("ELASTIC_ES_URL", "https://customer.example:9200");
+        env.set("ELASTIC_ES_API_KEY", "customer-key");
+
+        let error = OutputDeployment::resolve(None, false).expect_err("active input must not become output");
+
+        assert!(error.to_string().contains("No output deployment is configured"));
+        assert!(!error.to_string().contains("customer.example"));
+        assert!(!error.to_string().contains("customer-key"));
+    }
+
+    #[test]
     fn omitted_cli_output_uses_the_persisted_deployment() {
         let mut env = crate::TestEnv::new();
         clear_output_environment(&mut env);
@@ -323,6 +442,178 @@ mod tests {
         assert_eq!(
             deployment.elasticsearch.concrete_url().map(Url::as_str),
             Some("https://saved-es.example:9200/")
+        );
+    }
+
+    fn concrete(host: Option<&crate::data::KnownHost>) -> Option<String> {
+        host.and_then(|host| host.concrete_url()).map(Url::to_string)
+    }
+
+    #[test]
+    fn resolve_saved_ignores_a_complete_environment_deployment() {
+        let mut env = crate::TestEnv::new();
+        clear_output_environment(&mut env);
+        save_linked_hosts();
+        env.set("ESDIAG_OUTPUT_URL", "https://runtime-es.example:9200");
+        env.set("ESDIAG_OUTPUT_APIKEY", "runtime-key");
+        env.set("ESDIAG_KIBANA_URL", "https://runtime-kb.example:5601");
+
+        let deployment = OutputDeployment::resolve_saved(None, true).expect("persisted deployment");
+
+        assert_eq!(deployment.source, OutputDeploymentSource::Persisted);
+        assert_eq!(
+            concrete(Some(&deployment.elasticsearch)).as_deref(),
+            Some("https://saved-es.example:9200/")
+        );
+        assert_eq!(
+            concrete(deployment.kibana.as_ref()).as_deref(),
+            Some("https://saved-kb.example:5601/")
+        );
+    }
+
+    #[test]
+    fn resolve_saved_uses_a_named_output_and_tolerates_no_viewer() {
+        let mut env = crate::TestEnv::new();
+        clear_output_environment(&mut env);
+        save_linked_hosts();
+        let lab = KnownHostBuilder::new(Url::parse("https://lab-es.example:9200").expect("url"))
+            .application(Application::Elasticsearch)
+            .roles(vec![HostRole::Send])
+            .build()
+            .expect("lab output");
+        let mut hosts = crate::data::KnownHost::parse_hosts_yml().expect("hosts");
+        hosts.insert("lab-output".to_string(), lab);
+        crate::data::KnownHost::write_hosts_yml(&hosts).expect("write hosts");
+
+        let deployment = OutputDeployment::resolve_saved(Some("lab-output"), true).expect("named deployment");
+
+        assert_eq!(deployment.source, OutputDeploymentSource::Explicit);
+        assert_eq!(
+            concrete(Some(&deployment.elasticsearch)).as_deref(),
+            Some("https://lab-es.example:9200/")
+        );
+        assert!(deployment.kibana.is_none());
+    }
+
+    #[test]
+    fn resolve_saved_rejects_a_viewer_name() {
+        let mut env = crate::TestEnv::new();
+        clear_output_environment(&mut env);
+        save_linked_hosts();
+
+        let error = OutputDeployment::resolve_saved(Some("saved-kibana"), true).expect_err("viewer is not an output");
+
+        assert!(error.to_string().contains("role 'send'"), "{error}");
+    }
+
+    #[cfg(feature = "elasticrc")]
+    #[test]
+    fn configured_context_resolves_one_deployment_with_separate_credentials() {
+        let mut env = crate::TestEnv::new();
+        clear_output_environment(&mut env);
+        env.set("MONITORING_ES_KEY", "es-key");
+        env.set("MONITORING_KB_KEY", "kb-key");
+        let elasticrc_path = env.tmp.path().join(".elasticrc.yml");
+        std::fs::write(
+            &elasticrc_path,
+            "current_context: monitoring\ncontexts:\n  monitoring:\n    elasticsearch:\n      url: https://monitoring-es.example:9200\n      auth:\n        api_key: $(env:MONITORING_ES_KEY)\n    kibana:\n      url: https://monitoring-kb.example:5601\n      auth:\n        api_key: $(env:MONITORING_KB_KEY)\n",
+        )
+        .expect("write elasticrc");
+        env.set_path("ELASTIC_CLI_CONFIG_FILE", elasticrc_path);
+        ApplicationConfig {
+            version: 1,
+            output: crate::data::OutputConfig {
+                elastic_context: Some(ElasticOutputContext {
+                    context: "monitoring".to_string(),
+                }),
+                ..crate::data::OutputConfig::default()
+            },
+            ..ApplicationConfig::new()
+        }
+        .save()
+        .expect("save app config");
+
+        let deployment = OutputDeployment::resolve(None, true).expect("context deployment");
+
+        assert_eq!(deployment.source, OutputDeploymentSource::ElasticContext);
+        assert_eq!(
+            deployment.elasticsearch.concrete_url().map(Url::as_str),
+            Some("https://monitoring-es.example:9200/")
+        );
+        assert_eq!(
+            deployment
+                .kibana
+                .as_ref()
+                .and_then(|host| host.concrete_url())
+                .map(Url::as_str),
+            Some("https://monitoring-kb.example:5601/")
+        );
+        assert!(matches!(
+            deployment.elasticsearch_auth,
+            Auth::Apikey(ref key) if key.expose_secret() == "es-key"
+        ));
+        assert!(matches!(
+            deployment.kibana_auth,
+            Some(Auth::Apikey(ref key)) if key.expose_secret() == "kb-key"
+        ));
+
+        env.set("MONITORING_ES_KEY", "rotated-es-key");
+        let rotated = OutputDeployment::resolve(None, false).expect("rotated context deployment");
+        assert!(matches!(
+            rotated.elasticsearch_auth,
+            Auth::Apikey(ref key) if key.expose_secret() == "rotated-es-key"
+        ));
+    }
+
+    #[cfg(feature = "elasticrc")]
+    #[test]
+    fn explicit_context_target_precedes_configured_context() {
+        let mut env = crate::TestEnv::new();
+        clear_output_environment(&mut env);
+        let elasticrc_path = env.tmp.path().join(".elasticrc.yml");
+        std::fs::write(
+            &elasticrc_path,
+            "current_context: incident\ncontexts:\n  monitoring:\n    elasticsearch:\n      url: https://monitoring.example:9200\n  incident:\n    elasticsearch:\n      url: https://incident.example:9200\n",
+        )
+        .expect("write elasticrc");
+        env.set_path("ELASTIC_CLI_CONFIG_FILE", elasticrc_path);
+        ApplicationConfig {
+            version: 1,
+            output: crate::data::OutputConfig {
+                elastic_context: Some(ElasticOutputContext {
+                    context: "monitoring".to_string(),
+                }),
+                ..crate::data::OutputConfig::default()
+            },
+            ..ApplicationConfig::new()
+        }
+        .save()
+        .expect("save app config");
+
+        let deployment = OutputDeployment::resolve(Some(".incident.es"), false).expect("explicit context");
+
+        assert_eq!(deployment.source, OutputDeploymentSource::Explicit);
+        assert_eq!(
+            deployment.elasticsearch.concrete_url().map(Url::as_str),
+            Some("https://incident.example:9200/")
+        );
+    }
+
+    #[test]
+    fn invalid_optional_kibana_url_does_not_block_elasticsearch_output() {
+        let mut env = crate::TestEnv::new();
+        clear_output_environment(&mut env);
+        env.set("ESDIAG_OUTPUT_URL", "https://runtime-es.example:9200");
+        env.set("ESDIAG_KIBANA_URL", "not a url");
+
+        let deployment = OutputDeployment::from_environment(false).expect("Elasticsearch-only output");
+        assert!(deployment.kibana.is_none());
+        assert!(deployment.elasticsearch.attached_viewer().is_none());
+
+        let error = OutputDeployment::from_environment(true).expect_err("Kibana is required");
+        assert!(
+            error.to_string().contains("ESDIAG_KIBANA_URL is not a valid URL"),
+            "{error}"
         );
     }
 }

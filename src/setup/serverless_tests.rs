@@ -2,8 +2,13 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::*;
+use super::{elasticsearch::*, install::*, kibana::*, license::*};
+use crate::{client::Client, data::Application, embeds::Assets};
+use eyre::Result;
+use reqwest::Method;
+use serde_json::Value;
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 
 #[test]
 fn kibana_setup_targets_default_and_named_spaces_without_losing_assets() {
@@ -268,7 +273,7 @@ async fn live_serverless_asset_audit() -> Result<()> {
     })?;
     assert!(es.is_serverless().await?);
     assert!(kb.is_serverless().await?);
-    ensure_agent_builder_license(&es).await?;
+    assert_eq!(agent_builder_license_status(&es).await?, AgentBuilderLicense::Managed);
     let store = EmbeddedAssets::new()?;
     let assets = parse_assets_yml(Application::Elasticsearch, &store)?;
     let mut installed = 0;
@@ -522,7 +527,7 @@ fn serverless_templates_only_use_audited_settings() {
             count += 1;
         }
     }
-    assert_eq!(count, 34);
+    assert_eq!(count, 45);
 }
 
 #[test]
@@ -571,4 +576,66 @@ fn serverless_kibana_only_removes_stateful_space_controls() {
     assert_eq!(before.tools, after.tools);
     assert_eq!(before.skills, after.skills);
     assert_eq!(before.agents, after.agents);
+}
+
+#[tokio::test]
+async fn single_space_guard_searches_serverless_kibana_spaces() {
+    use crate::data::{KnownHostBuilder, Uri};
+    use axum::{
+        Json, Router,
+        http::{HeaderMap, StatusCode},
+        routing::get,
+    };
+
+    // Serverless Kibana rejects saved object `_find` unless the request is internal-origin.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let router = Router::new()
+        .route(
+            "/api/spaces/space",
+            get(|| async { Json(serde_json::json!([{"id": "default"}, {"id": "esdiag"}])) }),
+        )
+        .route(
+            "/api/saved_objects/_find",
+            get(|headers: HeaderMap| async move {
+                if headers.get("x-elastic-internal-origin").is_none() {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({
+                            "statusCode": 400,
+                            "message": "uri [/api/saved_objects/_find] with method [get] exists but is not available with the current configuration"
+                        })),
+                    );
+                }
+                (
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "total": 1,
+                        "saved_objects": [{"type": "dashboard", "id": "copied", "originId": "allocation-overview"}]
+                    })),
+                )
+            }),
+        );
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let host = KnownHostBuilder::new(url::Url::parse(&base).unwrap())
+        .application(Application::Kibana)
+        .build()
+        .unwrap();
+    let client = Client::try_from(Uri::KnownHost(host)).unwrap();
+    let bundle = kibana_bundle(&EmbeddedAssets::new().unwrap())
+        .unwrap()
+        .read_all()
+        .unwrap();
+
+    let error = ensure_single_kibana_space(&client, &bundle, "esdiag")
+        .await
+        .expect_err("ESDiag dashboards in the default space should block a second install");
+
+    assert!(
+        error
+            .to_string()
+            .contains("ESDiag Kibana assets are already installed in the 'default' space"),
+        "{error}"
+    );
+    server.abort();
 }

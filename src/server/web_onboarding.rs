@@ -15,6 +15,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Response, Sse},
 };
+use redact::Secret;
 use serde::Deserialize;
 use std::{process::Command, sync::Arc, time::Duration};
 use url::Url;
@@ -27,7 +28,7 @@ pub(crate) struct IdentityForm {
 
 #[derive(Deserialize, Default)]
 pub(crate) struct KeystoreForm {
-    password: String,
+    password: Secret<String>,
     confirm: Option<String>,
 }
 
@@ -59,6 +60,11 @@ pub(crate) struct DefaultJobForm {
 #[derive(Deserialize, Default)]
 pub(crate) struct ReplaceForm {
     replace: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct OutputAssetsForm {
+    activate_trial: Option<String>,
 }
 
 pub(crate) async fn page(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> Response {
@@ -117,24 +123,25 @@ pub(crate) async fn save_keystore(State(state): State<Arc<ServerState>>, Form(fo
     let migrate_legacy_hosts = !exists && super::keystore::migration_needed();
     let result = if !exists && form.confirm.is_none() {
         Err("Confirm keystore creation to continue.".to_string())
-    } else if !exists && form.password.trim().len() < 6 {
+    } else if !exists && form.password.expose_secret().trim().len() < 6 {
         Err("Keystore password must be at least 6 characters.".to_string())
-    } else if form.password.trim().is_empty() {
+    } else if form.password.expose_secret().trim().is_empty() {
         Err("Keystore password is required.".to_string())
     } else {
-        authenticate(form.password.trim())
+        let password = form.password.expose_secret().trim();
+        authenticate(password)
             .map_err(|err| format!("Failed to unlock the keystore: {err}"))
-            .map(|_| form.password.trim().to_string())
+            .map(|_| Secret::new(password.to_string()))
     };
 
     match result {
         Ok(password) => {
-            if migrate_legacy_hosts && let Err(err) = KnownHost::migrate_hosts_to_keystore(&password) {
+            if migrate_legacy_hosts && let Err(err) = KnownHost::migrate_hosts_to_keystore(password.expose_secret()) {
                 return refresh(&state, format!("Failed to migrate existing host credentials: {err}")).await;
             }
             state.set_keystore_unlocked(password).await;
             let password = state.keystore_password().await;
-            if let Err(err) = reload_configured_output(&state, password.as_deref()).await {
+            if let Err(err) = reload_configured_output(&state, password.as_ref()).await {
                 return refresh(&state, format!("Failed to reload the configured output: {err}")).await;
             }
             refresh(&state, String::new()).await
@@ -163,8 +170,11 @@ pub(crate) async fn save_output(State(state): State<Arc<ServerState>>, Form(form
     refresh(&state, result.err().unwrap_or_default()).await
 }
 
-pub(crate) async fn install_output_assets(State(state): State<Arc<ServerState>>) -> Response {
-    let result = install_output_assets_stage().await;
+pub(crate) async fn install_output_assets(
+    State(state): State<Arc<ServerState>>,
+    Form(form): Form<OutputAssetsForm>,
+) -> Response {
+    let result = install_output_assets_stage(form.activate_trial.is_some()).await;
     refresh(&state, result.err().unwrap_or_default()).await
 }
 
@@ -216,7 +226,7 @@ pub(crate) async fn save_collection(
 
 pub(crate) async fn defer_collection(State(state): State<Arc<ServerState>>) -> Response {
     let password = state.keystore_password().await;
-    let result = reload_configured_output(&state, password.as_deref())
+    let result = reload_configured_output(&state, password.as_ref())
         .await
         .and_then(|_| onboarding::defer_collection().map_err(|err| err.to_string()));
     refresh(&state, result.err().unwrap_or_default()).await
@@ -668,7 +678,10 @@ fn workflow_from_form(value: &str) -> Result<OnboardingWorkflow, eyre::Report> {
     }
 }
 
-pub(crate) async fn reload_configured_output(state: &Arc<ServerState>, password: Option<&str>) -> Result<(), String> {
+pub(crate) async fn reload_configured_output(
+    state: &Arc<ServerState>,
+    password: Option<&Secret<String>>,
+) -> Result<(), String> {
     if !state.onboarding || crate::data::runtime_output_is_declared() {
         return Ok(());
     }
@@ -688,7 +701,7 @@ pub(crate) async fn reload_configured_output(state: &Arc<ServerState>, password:
     let requires_keystore_secret = output.requires_keystore_secret();
     let exporter = if requires_keystore_secret {
         let password = password.ok_or_else(|| "Unlock the keystore before using the configured output.".to_string())?;
-        crate::data::with_scoped_keystore_password(password.to_string(), async move {
+        crate::data::with_scoped_keystore_password(password.clone(), async move {
             Exporter::try_from(output).map_err(|err| err.to_string())
         })
         .await?
@@ -712,7 +725,11 @@ fn stage_name(stage: WelcomeStage) -> &'static str {
     }
 }
 
-async fn save_output_stage(state: &Arc<ServerState>, form: OutputForm, keystore_password: &str) -> Result<(), String> {
+async fn save_output_stage(
+    state: &Arc<ServerState>,
+    form: OutputForm,
+    keystore_password: &Secret<String>,
+) -> Result<(), String> {
     let output_url = url::Url::parse(&form.output_url).map_err(|err| format!("Invalid Elasticsearch URL: {err}"))?;
     let viewer_url = url::Url::parse(&form.viewer_url).map_err(|err| format!("Invalid Kibana URL: {err}"))?;
     let api_key = form.api_key.trim();
@@ -721,7 +738,8 @@ async fn save_output_stage(state: &Arc<ServerState>, form: OutputForm, keystore_
     }
     if (KnownHost::get_known(&form.output_name).is_some()
         || KnownHost::get_known(&form.viewer_name).is_some()
-        || list_secret_names(keystore_password).is_ok_and(|names| names.iter().any(|name| name == &form.output_name)))
+        || list_secret_names(keystore_password.expose_secret())
+            .is_ok_and(|names| names.iter().any(|name| name == &form.output_name)))
         && form.replace.is_none()
     {
         return Err("A matching output name already exists. Confirm replacement to continue.".to_string());
@@ -754,7 +772,7 @@ async fn save_output_stage(state: &Arc<ServerState>, form: OutputForm, keystore_
             secret_id: form.output_name.clone(),
             auth,
         },
-        keystore_password,
+        keystore_password.expose_secret(),
     )
     .map_err(|err| err.to_string())?;
 
@@ -764,7 +782,7 @@ async fn save_output_stage(state: &Arc<ServerState>, form: OutputForm, keystore_
 
     let output = KnownHost::get_known(&form.output_name)
         .ok_or_else(|| "The saved Elasticsearch output host could not be reloaded.".to_string())?;
-    let exporter = crate::data::with_scoped_keystore_password(keystore_password.to_string(), async move {
+    let exporter = crate::data::with_scoped_keystore_password(keystore_password.clone(), async move {
         Exporter::try_from(output).map_err(|err| err.to_string())
     })
     .await?;
@@ -773,27 +791,47 @@ async fn save_output_stage(state: &Arc<ServerState>, form: OutputForm, keystore_
     Ok(())
 }
 
-async fn install_output_assets_stage() -> Result<(), String> {
+const WEB_TRIAL_OPT_IN_WARNING: &str = "Kibana assets were skipped because the Elasticsearch license does not include \
+     Agent Builder. Select \"Start an Elasticsearch trial license\" and install again, or install an Enterprise license.";
+
+async fn install_output_assets_stage(activate_trial: bool) -> Result<(), String> {
     let deployment = OutputDeployment::resolve(None, true).map_err(|err| err.to_string())?;
     let kibana = deployment
         .kibana
         .ok_or_else(|| "The environment output does not provide a Kibana endpoint.".to_string())?;
     let output_client = Client::try_from(Uri::try_from(deployment.elasticsearch).map_err(|err| err.to_string())?)
         .map_err(|err| err.to_string())?;
-    let viewer_client =
-        Client::try_from(Uri::try_from(kibana).map_err(|err| err.to_string())?).map_err(|err| err.to_string())?;
-    crate::setup::assets(&output_client)
+    let declared_space = std::env::var("ESDIAG_KIBANA_SPACE").ok();
+    let viewer = crate::setup::pipeline::KibanaTarget::from_host(kibana, declared_space.as_deref())
+        .map_err(|err| err.to_string())?;
+    let targets = crate::setup::pipeline::StackTargets {
+        elasticsearch: Some(output_client),
+        kibana: Some(viewer),
+    };
+    let setup = crate::setup::pipeline::stack(&targets, activate_trial)
         .await
         .map_err(|err| err.to_string())?;
-    crate::setup::ensure_agent_builder_license(&output_client)
-        .await
-        .map_err(|err| err.to_string())?;
-    crate::setup::assets(&viewer_client)
-        .await
-        .map_err(|err| err.to_string())
+    if setup.report.is_complete() {
+        Ok(())
+    } else {
+        Err(setup
+            .report
+            .failed_indices
+            .iter()
+            .map(|index| format!("Could not update {index}."))
+            .chain(setup.report.warnings.into_iter().map(|warning| {
+                if warning == crate::setup::pipeline::TRIAL_OPT_IN_WARNING {
+                    WEB_TRIAL_OPT_IN_WARNING.to_string()
+                } else {
+                    warning
+                }
+            }))
+            .collect::<Vec<_>>()
+            .join(" "))
+    }
 }
 
-async fn save_collection_stage(form: CollectionForm, keystore_password: &str) -> Result<(), String> {
+async fn save_collection_stage(form: CollectionForm, keystore_password: &Secret<String>) -> Result<(), String> {
     let collection_configured = onboarding::inspect()
         .map_err(|err| err.to_string())?
         .collect_host_configured;
@@ -823,9 +861,9 @@ async fn save_collection_stage(form: CollectionForm, keystore_password: &str) ->
         auth: Some(auth),
     };
     if replacing {
-        onboarding::replace_collect_host(input, Some(keystore_password))
+        onboarding::replace_collect_host(input, Some(keystore_password.expose_secret()))
     } else {
-        onboarding::save_collect_host(input, Some(keystore_password))
+        onboarding::save_collect_host(input, Some(keystore_password.expose_secret()))
     }
     .map_err(|err| err.to_string())
 }
@@ -857,7 +895,10 @@ fn save_default_job_stage(form: DefaultJobForm) -> Result<(), String> {
     Ok(())
 }
 
-async fn provision_local_output_stage(state: &Arc<ServerState>, keystore_password: &str) -> Result<(), String> {
+async fn provision_local_output_stage(
+    state: &Arc<ServerState>,
+    keystore_password: &Secret<String>,
+) -> Result<(), String> {
     let executable = std::env::current_exe().map_err(|err| err.to_string())?;
     let status = Command::new(executable)
         .args([
@@ -869,7 +910,7 @@ async fn provision_local_output_stage(state: &Arc<ServerState>, keystore_passwor
             "--copy-password=false",
             "--persist-onboarding-output",
         ])
-        .env("ESDIAG_KEYSTORE_PASSWORD", keystore_password)
+        .env("ESDIAG_KEYSTORE_PASSWORD", keystore_password.expose_secret())
         .status()
         .map_err(|err| format!("Could not start the local core stack: {err}"))?;
     if !status.success() {
@@ -893,7 +934,7 @@ async fn provision_local_output_stage(state: &Arc<ServerState>, keystore_passwor
         .concrete_url()
         .ok_or_else(|| "Local stack setup saved an invalid Kibana URL.".to_string())?
         .to_string();
-    let exporter = crate::data::with_scoped_keystore_password(keystore_password.to_string(), async move {
+    let exporter = crate::data::with_scoped_keystore_password(keystore_password.clone(), async move {
         Exporter::try_from(output).map_err(|err| err.to_string())
     })
     .await?;
@@ -1202,6 +1243,81 @@ mod tests {
         assert!(remote_section.contains(r#"class="neutral">Unknown</badge>"#));
         assert!(!remote_section.contains(r#"class="success">Installed</badge>"#));
         assert!(!remote_section.contains("Re-install Assets"));
+
+        let setup_action = html.find("/welcome/output/setup").expect("asset setup form");
+        let setup_end = setup_action + html[setup_action..].find("</form>").expect("asset setup form end");
+        let setup_form = &html[setup_action..setup_end];
+        assert!(
+            setup_form.contains(r#"<input name="activate_trial" type="checkbox" />"#),
+            "{setup_form}"
+        );
+        assert!(!setup_form.contains("checked"));
+    }
+
+    /// Elasticsearch on a basic license, accepting every asset; records `METHOD path`.
+    async fn basic_license_cluster() -> (String, std::sync::Arc<parking_lot::Mutex<Vec<String>>>) {
+        use axum::{Router, body::Body, http::Request, response::IntoResponse};
+        let paths = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let requests = paths.clone();
+        let app = Router::new().fallback(move |request: Request<Body>| {
+            let requests = requests.clone();
+            async move {
+                let path = request.uri().path().to_string();
+                requests.lock().push(format!("{} {path}", request.method()));
+                let started = requests.lock().iter().any(|p| p == "POST /_license/start_trial");
+                let body = match path.as_str() {
+                    "/" => r#"{"version":{"build_flavor":"default"}}"#.to_string(),
+                    "/_xpack/usage" => r#"{"security":{"enabled":false}}"#.to_string(),
+                    "/_license" => format!(
+                        r#"{{"license":{{"status":"active","type":"{}"}}}}"#,
+                        if started { "trial" } else { "basic" }
+                    ),
+                    path if path.ends_with("/_mapping") => "{}".to_string(),
+                    _ => r#"{"acknowledged":true}"#.to_string(),
+                };
+                (
+                    axum::http::StatusCode::OK,
+                    [
+                        ("content-type", "application/json"),
+                        ("x-elastic-product", "Elasticsearch"),
+                    ],
+                    body,
+                )
+                    .into_response()
+            }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (url, paths)
+    }
+
+    #[tokio::test]
+    async fn asset_stage_starts_a_trial_only_when_the_box_is_checked() {
+        let mut env = crate::TestEnv::new();
+        let (es_url, es_paths) = basic_license_cluster().await;
+        env.set("ESDIAG_OUTPUT_URL", &es_url);
+        env.set("ESDIAG_OUTPUT_APIKEY", "test-key");
+        // An unreachable Kibana ends the Kibana stage as soon as it is attempted.
+        env.set("ESDIAG_KIBANA_URL", "http://127.0.0.1:9");
+        env.remove("ESDIAG_OUTPUT_USERNAME");
+        env.remove("ESDIAG_OUTPUT_PASSWORD");
+        env.remove("ESDIAG_SETUP_ACTIVATE_TRIAL");
+
+        let unchecked = super::install_output_assets_stage(false)
+            .await
+            .expect_err("Kibana is skipped");
+        assert!(
+            unchecked.contains("Start an Elasticsearch trial license"),
+            "{unchecked}"
+        );
+        assert!(!es_paths.lock().iter().any(|p| p.contains("start_trial")));
+
+        let checked = super::install_output_assets_stage(true)
+            .await
+            .expect_err("Kibana is unreachable");
+        assert!(!checked.contains("Start an Elasticsearch trial license"), "{checked}");
+        assert!(es_paths.lock().iter().any(|p| p == "POST /_license/start_trial"));
     }
 
     #[test]
