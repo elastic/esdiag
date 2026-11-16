@@ -113,3 +113,21 @@ The system SHALL store bundled Kibana setup assets in the `kibana-sync` filesyst
 - **WHEN** setup runs for Kibana assets
 - **THEN** ESDiag creates the `esdiag` Kibana space using the bundled space definition
 - **AND** imports all bundled saved objects into that space through Kibana's saved-object import API
+
+### Requirement: Current Kibana API compatibility
+The system SHALL collect Kibana APIs through routes that the target Kibana version serves, including internal routes, and SHALL distinguish absent optional data from collection failures.
+
+#### Scenario: Internal route collection
+- **GIVEN** a Kibana target, such as Kibana 9, that serves internal routes like `/internal/security/me`
+- **WHEN** the system collects a Kibana API, including an internal route
+- **THEN** the request includes the `X-Elastic-Internal-Origin: Kibana` header so Kibana does not reject it as unavailable with the current configuration
+
+#### Scenario: Removed Kibana APIs
+- **GIVEN** a target Kibana version that no longer serves a source's legacy route, such as `/api/actions`, `/api/alerts/_find`, the Fleet packages `experimental` parameter, or `/api/fleet/agents/current_upgrades`
+- **WHEN** the system collects that source
+- **THEN** the system requests the replacement route for that version: `/api/actions/connectors`, `/api/alerting/rules/_find`, `withPackagePoliciesCount=true`, or `/api/fleet/agents/action_status`
+
+#### Scenario: Absent exception list
+- **GIVEN** an exception list that does not exist on the target Kibana
+- **WHEN** its exception list items request returns HTTP 404 because the list does not exist
+- **THEN** the system treats the source as absent, writes no file, and does not record a collection failure
