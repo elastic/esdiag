@@ -1466,17 +1466,27 @@ user: ada
         assert_eq!(value["docs"], 5);
     }
 
-    #[test]
-    fn processor_summary_records_successful_local_batch_as_status_200() {
-        let mut summary = ProcessorSummary::new("metrics-node-esdiag".to_string());
-        let mut batch = BatchResponse::new(3);
-        batch.status_code = 200;
+    #[tokio::test]
+    async fn processor_summary_records_local_directory_batch_as_reserved_status_0() {
+        let output = tempfile::tempdir().expect("output dir");
+        let exporter = crate::exporter::Exporter::try_from(crate::data::Uri::Directory(output.path().to_path_buf()))
+            .expect("directory exporter");
+        let docs = vec![
+            serde_json::json!({"n": 1}),
+            serde_json::json!({"n": 2}),
+            serde_json::json!({"n": 3}),
+        ];
+        let batch = exporter
+            .send("metrics-node-esdiag".to_string(), docs)
+            .await
+            .expect("directory batch");
 
+        let mut summary = ProcessorSummary::new("metrics-node-esdiag".to_string());
         summary.add_batch(batch);
 
         let value = serde_json::to_value(summary).expect("summary json");
-        assert_eq!(value["batch"]["status_codes"]["200"], 1);
-        assert_eq!(value["batch"]["status_codes"].get("0"), None);
+        assert_eq!(value["batch"]["status_codes"]["0"], 1);
+        assert_eq!(value["batch"]["status_codes"].get("200"), None);
         assert_eq!(value["docs"], 3);
     }
 

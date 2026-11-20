@@ -302,12 +302,15 @@ mod tests {
         "ELASTIC_CLI_CONFIG_FILE",
     ];
 
-    fn clear_env() {
-        unsafe {
-            for name in ENV_VARS {
-                std::env::remove_var(name);
-            }
+    /// An isolated environment (temp HOME, hosts, keystore, settings) with
+    /// every output and Elastic CLI variable unset; dropping it restores the
+    /// previous values even when the test panics.
+    fn isolated_env() -> crate::TestEnv {
+        let mut env = crate::TestEnv::new();
+        for &name in ENV_VARS {
+            env.remove(name);
         }
+        env
     }
 
     #[test]
@@ -334,14 +337,11 @@ mod tests {
 
     #[test]
     fn output_env_rejects_mixed_esdiag_auth_values() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
-        clear_env();
-        unsafe {
-            std::env::set_var("ESDIAG_OUTPUT_URL", "https://esdiag.example:9200");
-            std::env::set_var("ESDIAG_OUTPUT_APIKEY", "esdiag-key");
-            std::env::set_var("ESDIAG_OUTPUT_USERNAME", "elastic");
-            std::env::set_var("ESDIAG_OUTPUT_PASSWORD", "changeme");
-        }
+        let mut env = isolated_env();
+        env.set("ESDIAG_OUTPUT_URL", "https://esdiag.example:9200");
+        env.set("ESDIAG_OUTPUT_APIKEY", "esdiag-key");
+        env.set("ESDIAG_OUTPUT_USERNAME", "elastic");
+        env.set("ESDIAG_OUTPUT_PASSWORD", "changeme");
 
         let err = match Uri::try_from_output_env() {
             Ok(_) => panic!("mixed auth should fail"),
@@ -349,19 +349,15 @@ mod tests {
         };
 
         assert!(err.to_string().contains("ESDIAG_OUTPUT_APIKEY cannot be combined"));
-        clear_env();
     }
 
     #[test]
     fn output_env_ignores_elastic_cli_variables() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
-        clear_env();
-        unsafe {
-            std::env::set_var("ESDIAG_OUTPUT_URL", "https://esdiag.example:9200");
-            std::env::set_var("ELASTIC_ES_URL", "https://active-context.example:9200");
-            std::env::set_var("ELASTIC_ES_API_KEY", "active-context-key");
-            std::env::set_var("ELASTIC_KIBANA_URL", "https://active-context.example:5601");
-        }
+        let mut env = isolated_env();
+        env.set("ESDIAG_OUTPUT_URL", "https://esdiag.example:9200");
+        env.set("ELASTIC_ES_URL", "https://active-context.example:9200");
+        env.set("ELASTIC_ES_API_KEY", "active-context-key");
+        env.set("ELASTIC_KIBANA_URL", "https://active-context.example:5601");
 
         let Uri::KnownHost(host) = Uri::try_from_output_env().expect("output env uri") else {
             panic!("expected known host");
@@ -370,26 +366,20 @@ mod tests {
         assert_eq!(host.get_url().expect("url").as_str(), "https://esdiag.example:9200/");
         assert!(matches!(host.get_auth().expect("auth"), Auth::None));
         assert!(host.attached_viewer().is_none());
-        unsafe {
-            std::env::remove_var("ESDIAG_OUTPUT_URL");
-        }
+        env.remove("ESDIAG_OUTPUT_URL");
         assert!(Uri::try_from_output_env().is_err(), "ELASTIC_ES_URL is not an output");
         assert!(
             Uri::try_from_kibana_env().is_err(),
             "ELASTIC_KIBANA_URL is not a viewer"
         );
-        clear_env();
     }
 
     #[test]
     fn output_env_attaches_its_kibana_viewer() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
-        clear_env();
-        unsafe {
-            std::env::set_var("ESDIAG_OUTPUT_URL", "https://esdiag.example:9200");
-            std::env::set_var("ESDIAG_OUTPUT_APIKEY", "esdiag-key");
-            std::env::set_var("ESDIAG_KIBANA_URL", "https://esdiag.example:5601");
-        }
+        let mut env = isolated_env();
+        env.set("ESDIAG_OUTPUT_URL", "https://esdiag.example:9200");
+        env.set("ESDIAG_OUTPUT_APIKEY", "esdiag-key");
+        env.set("ESDIAG_KIBANA_URL", "https://esdiag.example:5601");
 
         let Uri::KnownHost(host) = Uri::try_from_output_env().expect("output env uri") else {
             panic!("expected known host");
@@ -399,33 +389,33 @@ mod tests {
         assert_eq!(viewer.app(), Some(Application::Kibana));
         assert_eq!(viewer.get_url().expect("url").as_str(), "https://esdiag.example:5601/");
         assert!(matches!(viewer.get_auth().expect("auth"), Auth::Apikey(key) if key.expose_secret() == "esdiag-key"));
-        clear_env();
     }
 
     #[test]
     fn non_service_leading_dot_falls_through_to_path_resolution() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
-        clear_env();
+        let _env = isolated_env();
 
         assert!(matches!(
             Uri::try_from(".unknown"),
             Ok(Uri::Directory(path)) if path == Path::new(".unknown")
         ));
-        clear_env();
     }
 
+    #[cfg(feature = "elasticrc")]
     #[test]
     fn explicit_hidden_local_path_bypasses_active_context_reference() {
-        let _guard = crate::test_env_lock().lock().expect("env lock");
-        clear_env();
-        unsafe {
-            std::env::set_var("ELASTIC_ES_URL", "https://active.example:9200");
-        }
+        let mut env = isolated_env();
+        env.set("ESDIAG_ELASTIC_CLI", "1");
+        env.set("ELASTIC_ES_URL", "https://active.example:9200");
+
+        let Uri::KnownHost(host) = Uri::try_from(".es").expect("active context reference") else {
+            panic!("`.es` must resolve to the active Elastic CLI context");
+        };
+        assert_eq!(host.get_url().expect("url").as_str(), "https://active.example:9200/");
 
         assert!(matches!(
             Uri::try_from("./.es"),
             Ok(Uri::Directory(path)) if path == Path::new("./.es")
         ));
-        clear_env();
     }
 }

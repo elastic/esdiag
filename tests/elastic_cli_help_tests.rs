@@ -4,6 +4,19 @@
 
 use std::process::Command;
 
+const EXTENSION_COMMANDS_HEADING: &str = "Elastic CLI extension commands:";
+
+/// Subcommand names in the `Commands:` section of a clap help page.
+fn listed_subcommands(help: &str) -> Vec<&str> {
+    help.lines()
+        .skip_while(|line| line.trim_end() != "Commands:")
+        .skip(1)
+        .take_while(|line| !line.trim().is_empty())
+        .filter_map(|line| line.strip_prefix("  ").filter(|rest| !rest.starts_with(' ')))
+        .filter_map(|entry| entry.split_whitespace().next())
+        .collect()
+}
+
 #[test]
 fn elastic_cli_invocation_without_subcommand_prints_extension_help() {
     let output = Command::new(env!("CARGO_BIN_EXE_esdiag"))
@@ -36,7 +49,7 @@ fn elastic_cli_help_keeps_extension_block_separated() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\n\nElastic CLI extension commands:"));
+    assert!(stdout.contains(&format!("\n\n{EXTENSION_COMMANDS_HEADING}")));
 }
 
 #[test]
@@ -98,9 +111,18 @@ fn standalone_help_excludes_extension_guidance_and_upload_command() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Usage: esdiag"));
-    assert!(stdout.contains("  send "));
-    assert!(!stdout.contains("Elastic CLI extension commands:"));
-    assert!(!stdout.contains("  upload "));
+    assert!(!stdout.contains(EXTENSION_COMMANDS_HEADING));
+    let commands = listed_subcommands(&stdout);
+    for present in ["collect", "send", "host", "keystore"] {
+        assert!(
+            commands.contains(&present),
+            "standalone help must list {present}: {commands:?}"
+        );
+    }
+    assert!(
+        !commands.contains(&"upload"),
+        "the retired upload command must not be listed: {commands:?}"
+    );
 }
 
 #[test]
@@ -122,11 +144,20 @@ fn elastic_diag_executable_name_selects_the_restricted_profile() {
     );
     let stdout = String::from_utf8_lossy(&help.stdout);
     assert!(stdout.contains("Usage: elastic diag"));
-    assert!(stdout.contains("  send "));
-    assert!(stdout.contains("  output "));
-    assert!(!stdout.contains("  upload "));
-    assert!(!stdout.contains("  host "));
-    assert!(!stdout.contains("  keystore "));
+    let commands = listed_subcommands(&stdout);
+    for present in ["collect", "send", "output"] {
+        assert!(
+            commands.contains(&present),
+            "elastic diag help must list {present}: {commands:?}"
+        );
+    }
+    // The standalone help lists `host` and `keystore`; the restricted profile must drop them.
+    for absent in ["upload", "host", "keystore"] {
+        assert!(
+            !commands.contains(&absent),
+            "elastic diag help must not list {absent}: {commands:?}"
+        );
+    }
 
     let rejected = Command::new(&executable)
         .args(["host", "list"])

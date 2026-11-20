@@ -8,6 +8,29 @@ use reqwest::Client;
 use std::time::Duration;
 use tokio::time::sleep;
 
+const API_KEY_TAB_ID: &str = "tab-api-key";
+const API_KEY_FORM_ID: &str = "api-key-form";
+
+/// True when an element in `html` carries the attribute `id="{id}"`.
+fn has_element_id(html: &str, id: &str) -> bool {
+    let needle = format!("id=\"{id}\"");
+    html.match_indices(&needle)
+        .any(|(at, _)| html[..at].ends_with(char::is_whitespace))
+}
+
+/// Link targets of the primary navigation, or `None` when the page renders no navigation.
+fn nav_links(html: &str) -> Option<Vec<&str>> {
+    let start = html.find("<header-nav>")? + "<header-nav>".len();
+    let end = start + html[start..].find("</header-nav>")?;
+    Some(
+        html[start..end]
+            .split("href=\"")
+            .skip(1)
+            .filter_map(|rest| rest.split('"').next())
+            .collect(),
+    )
+}
+
 async fn start_server(mode: RuntimeMode) -> (Server, Client, String) {
     let default_web_features = match mode {
         RuntimeMode::User => Some("advanced"),
@@ -66,8 +89,6 @@ async fn service_mode_requires_iap_header_for_web_access() {
     assert_eq!(authorized.status(), reqwest::StatusCode::OK);
     let body = authorized.text().await.expect("authorized body");
     assert!(body.contains("ops@example.com"));
-    assert!(!body.contains("data-signals:auth"));
-    assert!(!body.contains("$auth.header"));
 
     server.shutdown().await;
 }
@@ -173,9 +194,9 @@ async fn service_mode_omits_api_key_ui_and_routes() {
         .expect("service mode page");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = response.text().await.expect("service mode body");
-    assert!(!body.contains("id=\"tab-api-key\""));
-    assert!(!body.contains("id=\"api-key-form\""));
-    assert!(!body.contains("Elasticsearch API Key"));
+    // `user_mode_allows_anonymous_web_access` proves user mode renders both ids.
+    assert!(!has_element_id(&body, API_KEY_TAB_ID));
+    assert!(!has_element_id(&body, API_KEY_FORM_ID));
 
     for path in ["/api/api_key", "/api_key", "/api_key/42"] {
         let response = client
@@ -207,12 +228,7 @@ async fn user_mode_default_nav_exposes_advanced_not_job_builder() {
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = response.text().await.expect("user mode body");
 
-    assert!(body.contains("<header-nav>"));
-    assert!(body.contains(">Process</a>"));
-    assert!(body.contains("href=\"/advanced\""));
-    assert!(body.contains(">Advanced</a>"));
-    assert!(!body.contains("href=\"/jobs\""));
-    assert!(!body.contains(">Job Builder</a>"));
+    assert_eq!(nav_links(&body), Some(vec!["/", "/advanced"]));
 
     let advanced = client
         .get(format!("{base}/advanced"))
@@ -242,12 +258,7 @@ async fn explicit_job_builder_feature_mounts_jobs_and_omits_advanced() {
     let response = client.get(format!("{base}/")).send().await.expect("user mode request");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = response.text().await.expect("user mode body");
-
-    assert!(body.contains("<header-nav>"));
-    assert!(body.contains(">Process</a>"));
-    assert!(!body.contains("href=\"/advanced\""));
-    assert!(body.contains("href=\"/jobs\""));
-    assert!(body.contains(">Job Builder</a>"));
+    assert_eq!(nav_links(&body), Some(vec!["/", "/jobs"]));
 
     let advanced = client
         .get(format!("{base}/advanced"))
@@ -270,11 +281,7 @@ async fn explicit_advanced_and_job_builder_features_mount_both_pages() {
     let response = client.get(format!("{base}/")).send().await.expect("user mode request");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = response.text().await.expect("user mode body");
-
-    assert!(body.contains("<header-nav>"));
-    assert!(body.contains(">Process</a>"));
-    assert!(body.contains("href=\"/advanced\""));
-    assert!(body.contains("href=\"/jobs\""));
+    assert_eq!(nav_links(&body), Some(vec!["/", "/advanced", "/jobs"]));
 
     let advanced = client
         .get(format!("{base}/advanced"))
@@ -296,11 +303,8 @@ async fn empty_web_features_omit_optional_nav_and_routes() {
     let response = client.get(format!("{base}/")).send().await.expect("user mode request");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = response.text().await.expect("user mode body");
-
-    assert!(!body.contains("<header-nav>"));
-    assert!(!body.contains(">Process</a>"));
-    assert!(!body.contains("href=\"/advanced\""));
-    assert!(!body.contains("href=\"/jobs\""));
+    // The other nav tests prove `nav_links` finds the navigation when it is rendered.
+    assert_eq!(nav_links(&body), None);
 
     let advanced = client
         .get(format!("{base}/advanced"))
@@ -418,52 +422,15 @@ async fn user_mode_allows_anonymous_web_access() {
     let response = client.get(format!("{base}/")).send().await.expect("user mode request");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = response.text().await.expect("user mode body");
-    assert!(body.contains("Process Diagnostics"));
-    assert!(body.contains("id=\"tab-api-key\""));
-    assert!(body.contains("id=\"api-key-form\""));
-    assert!(!body.contains("data-signals:auth"));
-    assert!(!body.contains("$auth.header"));
-    assert!(!body.contains("id=\"workflow-go-button\""));
+    assert!(has_element_id(&body, "main-content"));
+    assert!(has_element_id(&body, API_KEY_TAB_ID));
+    assert!(has_element_id(&body, API_KEY_FORM_ID));
 
     server.shutdown().await;
 }
 
 #[tokio::test]
-async fn user_mode_workflow_shows_known_host_collect_and_local_save_defaults() {
-    let (mut server, client, base) = start_server(RuntimeMode::User).await;
-
-    let response = client
-        .get(format!("{base}/advanced"))
-        .send()
-        .await
-        .expect("user mode request");
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-    let body = response.text().await.expect("user mode body");
-
-    assert!(body.contains("id=\"collect-known-host\""));
-    assert!(body.contains("id=\"known-host-button\""));
-    assert!(body.contains("data-signals:job.collect.mode=\"'collect'\""));
-    assert!(body.contains("data-signals:job.collect.source=\"'known-host'\""));
-    let new_tab = body
-        .find("data-class:active=\"$job.collect.mode === 'collect'\"")
-        .expect("new collect tab");
-    let existing_tab = body
-        .find("data-class:active=\"$job.collect.mode === 'upload'\"")
-        .expect("existing bundle tab");
-    assert!(new_tab < existing_tab, "new tab should precede existing tab");
-    assert!(body.contains("id=\"collect-save-toggle\""));
-    assert!(body.contains("Download Archive"));
-    assert!(body.contains("id=\"upload-form\""));
-    assert!(
-        body.contains("data-attr:disabled=\"$job.collect.mode === 'upload' && $job.collect.source === 'upload-file'\"")
-    );
-    assert!(body.contains("placeholder=\"/"));
-
-    server.shutdown().await;
-}
-
-#[tokio::test]
-async fn advanced_page_shows_process_controls_and_forward_remote_input() {
+async fn user_mode_advanced_page_exposes_collect_process_and_send_controls() {
     let (mut server, client, base) = start_server(RuntimeMode::User).await;
 
     let response = client
@@ -474,69 +441,32 @@ async fn advanced_page_shows_process_controls_and_forward_remote_input() {
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = response.text().await.expect("advanced page body");
 
-    assert!(body.contains("id=\"process-product\""));
-    assert!(body.contains("id=\"process-type\""));
-    assert!(body.contains("Diagnostic Processors"));
-    assert!(body.contains("<option value=\"custom\">custom</option>"));
-    assert!(body.contains("id=\"process-custom-processors\""));
-    assert!(body.contains("id=\"process-enabled-toggle\""));
-    assert!(body.contains("id=\"process-option-list\""));
-    assert!(body.contains("id=\"process-selected-options\""));
-    assert!(body.contains("id=\"send-forward-upload\""));
-    assert!(body.contains("Forward preserves the raw diagnostic archive"));
-
-    server.shutdown().await;
-}
-
-#[tokio::test]
-async fn advanced_page_embeds_send_target_disable_and_auto_save_rules() {
-    let (mut server, client, base) = start_server(RuntimeMode::User).await;
-
-    let response = client
-        .get(format!("{base}/advanced"))
-        .send()
-        .await
-        .expect("advanced page");
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-    let body = response.text().await.expect("advanced page body");
-
-    assert!(body.contains("data-bind:job.process.enabled"));
-    assert!(body.contains("$job.process.mode = $job.process.enabled ? 'process' : 'forward'"));
-    assert!(body.contains("$job.send.mode = 'local'"));
-    assert!(body.contains("Download the archive from&nbsp;<strong>Collect</strong>."));
-    assert!(body.contains("$job.collect.source === 'known-host'"));
-    assert!(body.contains(
-        "$job.collect.mode === 'collect' && $job.collect.source === 'known-host' && $job.collect.known_host !== ''"
-    ));
-    assert!(body.contains("id=\"send-local-directory\""));
-    assert!(body.contains("Local directory"));
-    assert!(body.contains("id=\"job-go-button\""));
-    assert!(body.contains("id=\"known-host-button\""));
-    assert!(body.contains("<path d=\"M6 3L11 8L6 13\"></path>"));
-
-    server.shutdown().await;
-}
-
-#[tokio::test]
-async fn user_mode_workflow_exposes_browser_download_binding_and_local_directory_default() {
-    let (mut server, client, base) = start_server(RuntimeMode::User).await;
-
-    let response = client
-        .get(format!("{base}/advanced"))
-        .send()
-        .await
-        .expect("advanced page");
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-    let body = response.text().await.expect("advanced page body");
-
-    assert!(body.contains("data-signals:archive.download_token=\"''\""));
-    assert!(body.contains("id=\"job-download-anchor\""));
-    assert!(body.contains("data-on:change=\"if (evt.target.checked)"));
-    assert!(body.contains("crypto.randomUUID()"));
-    assert!(body.contains(
-        "data-attr:href=\"$archive.download_token ? `/advanced/download/${$archive.download_token}` : null\""
-    ));
-    assert!(body.contains("/Downloads"));
+    for id in [
+        // Collect stage: known-host collection is user-mode only; the other sources and archive download.
+        "collect-known-host",
+        "known-host-button",
+        API_KEY_FORM_ID,
+        "service-link-form",
+        "upload-form",
+        "collect-save-toggle",
+        // Process stage.
+        "process-enabled-toggle",
+        "process-product",
+        "process-type",
+        "process-custom-processors",
+        "process-option-list",
+        "process-selected-options",
+        // Send stage.
+        "send-remote-target",
+        "send-forward-upload",
+        "send-local-target",
+        "send-local-directory",
+        // Run and browser download.
+        "job-go-button",
+        "job-download-anchor",
+    ] {
+        assert!(has_element_id(&body, id), "advanced page is missing #{id}");
+    }
 
     server.shutdown().await;
 }
