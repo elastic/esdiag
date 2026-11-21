@@ -49,6 +49,7 @@ pub fn write_terminal_outcome<T: Serialize>(format: OutputFormat, value: &T) -> 
 /// The result of a finite command: a typed outcome, or output already written
 /// to stdout (processed documents or raw text) that leaves no outcome to render.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)] // one value per command run; boxing buys nothing
 pub enum CommandOutcome {
     Completed(CliOutcome),
     Streamed,

@@ -5,9 +5,9 @@
 use crate::{
     cli_output::{CliOutcome, CommandOutcome, KeystoreOperation},
     data::{
-        SecretAuth, UnlockStatus, add_secret, clear_unlock_lease, create_keystore, get_keystore_path,
-        get_unlock_path, get_unlock_status, keystore_exists, remove_secret, update_secret,
-        validate_existing_keystore_password, write_unlock_lease,
+        SecretAuth, UnlockStatus, add_secret, clear_unlock_lease, create_keystore, get_keystore_path, get_unlock_path,
+        get_unlock_status, keystore_exists, remove_secret, update_secret, validate_existing_keystore_password,
+        write_unlock_lease,
     },
 };
 use eyre::{Result, eyre};

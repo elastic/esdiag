@@ -2816,8 +2816,8 @@ mod tests {
     use super::{
         Cli, Commands, ConfiguredDefaultJob, HostCommands, KeystoreCommands, SetupCommands, cli_command,
         command_owns_stdout, configured_default_job, default_diagnostic_user_from, detected_esdiag_local_preset,
-        elastic_cli_help_text, ensure_output_deployment_valid, is_agent_mode,
-        keep_default_job, local_core_stack_start_args, missing_extension_process_input, needs_processing_default_job,
+        elastic_cli_help_text, ensure_output_deployment_valid, is_agent_mode, keep_default_job,
+        local_core_stack_start_args, missing_extension_process_input, needs_processing_default_job,
         resolve_log_file_filter, resolve_secret_input_with_prompt, resolve_tracing_filter, saved_job_fits_workflow,
         should_error_for_missing_subcommand, should_run_output_setup, should_start_local_core_stack,
         validate_extension_profile,

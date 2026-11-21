@@ -33,5 +33,5 @@
 
 ## 6. Verification
 
-- [ ] 6.1 Compare against the 1.2 baseline: help output byte-identical; structured outcomes, failures, and processed documents equal after masking run IDs and timestamps
-- [ ] 6.2 Run `cargo test --workspace` and `cargo clippy --workspace --all-targets --all-features`; tests pass and clippy reports no warnings beyond the baseline count
+- [x] 6.1 Compare against the 1.2 baseline: help output byte-identical; structured outcomes, failures, and processed documents equal after masking run IDs and timestamps
+- [x] 6.2 Run `cargo test --workspace` and `cargo clippy --workspace --all-targets --all-features`; tests pass and clippy reports no warnings beyond the baseline count
