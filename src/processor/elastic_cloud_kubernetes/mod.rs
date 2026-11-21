@@ -98,10 +98,3 @@ impl DiagnosticProcessor for ElasticCloudKubernetesDiagnostic {
         ("eck".to_string(), "".to_string(), "platform".to_string())
     }
 }
-
-impl ElasticCloudKubernetesDiagnostic {
-    #[cfg(test)]
-    pub fn uuid(&self) -> &str {
-        &self.metadata.diagnostic.uuid
-    }
-}

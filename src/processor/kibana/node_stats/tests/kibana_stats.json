@@ -1,0 +1,101 @@
+{
+  "process": {
+    "memory": {
+      "heap": {
+        "total_bytes": 980639744,
+        "used_bytes": 932663728,
+        "size_limit": 4345298944
+      },
+      "resident_set_size_bytes": 1124093952,
+      "array_buffers_bytes": 2027233,
+      "external_bytes": 6054160
+    },
+    "pid": 7,
+    "event_loop_delay": 982.515711,
+    "event_loop_delay_histogram": {
+      "min": 9.388032,
+      "max": 982.515711,
+      "mean": 33.28361972093023,
+      "exceeds": 0,
+      "stddev": 146.44381139433867,
+      "from_timestamp": "2026-04-25T21:34:54.971Z",
+      "last_updated_at": "2026-04-25T21:34:59.972Z",
+      "percentiles": {
+        "50": 10.051583,
+        "75": 10.592255,
+        "90": 12.861439,
+        "95": 15.204351,
+        "99": 982.515711
+      }
+    },
+    "event_loop_utilization": {
+      "active": 4802.274756960095,
+      "idle": 198.65166200000002,
+      "utilization": 0.9602770276229522
+    },
+    "uptime_ms": 9408.639755
+  },
+  "collection_interval_ms": 5000,
+  "os": {
+    "platform": "linux",
+    "platform_release": "linux-6.12.76-linuxkit",
+    "load": {
+      "1m": 1.82,
+      "5m": 1.97,
+      "15m": 1.85
+    },
+    "memory": {
+      "total_bytes": 12528017408,
+      "free_bytes": 3310018560,
+      "used_bytes": 9217998848
+    },
+    "uptime_ms": 411105270,
+    "distro": "Red Hat Linux",
+    "distro_release": "Red Hat Linux-9.7",
+    "cpu": {
+      "cfs_quota_micros": -1,
+      "cfs_period_micros": 100000,
+      "control_group": "/",
+      "stat": {
+        "number_of_elapsed_periods": 0,
+        "number_of_times_throttled": 0,
+        "time_throttled_nanos": 0
+      }
+    },
+    "cpuacct": {
+      "control_group": "/",
+      "usage_nanos": 11310783
+    },
+    "cgroup_memory": {
+      "current_bytes": 1448198144,
+      "swap_current_bytes": 0
+    }
+  },
+  "elasticsearch_client": {
+    "total_active_sockets": 91,
+    "total_idle_sockets": 5,
+    "total_queued_requests": 0
+  },
+  "requests": {
+    "disconnects": 0,
+    "total": 0,
+    "status_codes": {}
+  },
+  "response_times": {
+    "avg_ms": 0,
+    "max_ms": 0
+  },
+  "concurrent_connections": 12,
+  "kibana": {
+    "uuid": "95c783c2-1d9d-47ef-8109-49277b526950",
+    "name": "esdiag-kibana-9-3-3",
+    "index": ".kibana",
+    "host": "0.0.0.0",
+    "locale": "en",
+    "transport_address": "0.0.0.0:5601",
+    "version": "9.3.3",
+    "snapshot": false,
+    "status": "green"
+  },
+  "last_updated": "2026-04-25T21:35:00.070Z"
+}

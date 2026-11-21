@@ -1501,9 +1501,11 @@ fn secure_dir(path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        LocalState, StackMode, kibana_is_available, should_copy_password, stable_project_id, upgrade_confirmed,
+        LocalOptions, LocalState, StackMode, kibana_is_available, should_copy_password, stable_project_id,
+        upgrade_confirmed,
     };
     use esdiag::cli_output::CliOutcome;
+    use std::ffi::OsString;
     use std::{collections::BTreeMap, fs, path::Path};
     use tempfile::TempDir;
 
@@ -1749,6 +1751,40 @@ mod tests {
         };
         assert_eq!(mode.as_deref(), Some("core"));
         assert_eq!(native_service.as_deref(), Some("stopped"));
+    }
+
+    #[test]
+    fn status_outcome_reads_state_from_either_state_dir_form() {
+        let directory = TempDir::new().expect("temporary local state");
+        fs::write(
+            directory.path().join(".env"),
+            "STACK_MODE=full\nESDIAG_PORT=22501\nESDIAG_KIBANA_PORT=25601\nESDIAG_OUTPUT_APIKEY=local-key\n",
+        )
+        .expect("write local state");
+
+        for args in [
+            vec![
+                OsString::from("--state-dir"),
+                directory.path().as_os_str().to_os_string(),
+            ],
+            vec![OsString::from(format!("--state-dir={}", directory.path().display()))],
+        ] {
+            let options = LocalOptions::parse(&args).expect("parse local options");
+            let state = LocalState::load(options.state_dir).expect("load local state");
+            let value = serde_json::to_value(state.outcome("status")).expect("serialize local outcome");
+
+            assert_eq!(value["command"], "status");
+            assert_eq!(value["mode"], "full");
+            assert!(value.get("native_service").is_none_or(serde_json::Value::is_null));
+            assert_eq!(value["esdiag_url"], "http://127.0.0.1:22501");
+            assert!(
+                value["kibana_url"]
+                    .as_str()
+                    .expect("kibana url")
+                    .starts_with("http://127.0.0.1:25601"),
+            );
+            assert!(!value.to_string().contains("local-key"));
+        }
     }
 
     #[test]

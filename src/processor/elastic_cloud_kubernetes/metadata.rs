@@ -54,6 +54,7 @@ mod tests {
             1_000,
             "eck@2026-01-15~abcd".to_string(),
             "eck-diagnostics".to_string(),
+            None,
             "uuid".to_string(),
         ));
         let doc = metadata.document(

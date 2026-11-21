@@ -1639,22 +1639,31 @@ collect-job:
     }
 
     #[test]
-    fn incomplete_draft_is_rejected_without_losing_editable_state() {
+    fn process_draft_without_remote_output_target_is_rejected() {
+        let (_env, _) = setup_env();
+        save_collect_host("prod");
         let mut draft = JobDraft::default();
-        draft.collect.known_host = "  ".to_string();
+        draft.collect.known_host = "prod".to_string();
         draft.process.enabled = true;
+        draft.process.mode = ProcessMode::Process;
+        draft.send.mode = SendMode::Remote;
         draft.send.remote_target = None;
-        let original = serde_json::to_value(&draft).expect("serialize editable draft");
 
-        let error =
-            Job::from_signals(draft.clone(), Identifiers::default()).expect_err("incomplete draft must not compile");
-
-        assert!(error.to_string().contains("known host") || error.to_string().contains("output target"));
-        assert_eq!(
-            serde_json::to_value(&draft).expect("serialize retained draft"),
-            original,
-            "compile failures must not mutate editable draft state"
+        let error = Job::from_signals(draft.clone(), Identifiers::default())
+            .expect_err("missing output target must not compile");
+        assert!(
+            error.to_string().contains("remote output target"),
+            "unexpected error: {error}"
         );
+
+        // Supplying only the missing target makes the same draft compile, so
+        // the rejection above is attributable to that one requirement.
+        draft.send.remote_target = Some("prod".to_string());
+        let job = Job::from_signals(draft, Identifiers::default()).expect("complete draft compiles");
+        assert!(matches!(
+            &job.process().expect("process").export,
+            JobOutput::KnownHost { name } if name == "prod"
+        ));
     }
 
     #[test]

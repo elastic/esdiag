@@ -4,7 +4,7 @@
 
 use super::super::processor::{DataSource, SourceContext, StreamingDataSource};
 use super::archive::{normalize_supported_content, supports_json_normalization, with_normalized_json_reader};
-use super::{MissingSource, RawResponse, Receive, ReceiveMultiple, ReceiveRaw};
+use super::{MissingSource, RawResponse, Receive, ReceiveMultiple, ReceiveRaw, SourceInstance};
 use eyre::{Result, WrapErr, eyre};
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
@@ -219,6 +219,36 @@ impl std::fmt::Display for DirectoryReceiver {
 }
 
 impl DirectoryReceiver {
+    pub async fn get_all<T>(&self) -> Result<Vec<SourceInstance<T>>>
+    where
+        T: DataSource + DeserializeOwned,
+    {
+        let ctx = self.source_context()?;
+        let candidates = T::candidate_source_file_paths(&ctx)?;
+        let root = self.path.join(&self.work_dir);
+        let mut filenames = Vec::new();
+        let mut errors = Vec::new();
+        collect_source_files(&root, &root, &candidates, &mut filenames, &mut errors)?;
+        filenames.sort();
+
+        if filenames.is_empty() && errors.is_empty() {
+            return Err(MissingSource::NoCandidates { source: T::name() }.into());
+        }
+
+        Ok(filenames
+            .into_iter()
+            .map(|(filename, path)| SourceInstance {
+                data: read_directory_source(&filename, &path, self.scrubbed),
+                path,
+            })
+            .chain(
+                errors
+                    .into_iter()
+                    .map(|(path, error)| SourceInstance { path, data: Err(error) }),
+            )
+            .collect())
+    }
+
     pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
         Self {
             path: self.path.clone(),
@@ -340,4 +370,59 @@ fn normalize_file_content_if_needed(logical_name: &str, scrubbed: bool, content:
         logical_name
     );
     Ok(transformed.content)
+}
+
+fn read_directory_source<T>(filename: &Path, relative: &str, scrubbed: bool) -> Result<T>
+where
+    T: DataSource + DeserializeOwned,
+{
+    let file =
+        File::open(filename).wrap_err_with(|| format!("Failed to read {} for {}", filename.display(), T::name()))?;
+    let mut reader = BufReader::new(file);
+    if !crate::receiver::source_has_json(&mut reader)
+        .wrap_err_with(|| format!("Failed to read {} for {}", filename.display(), T::name()))?
+    {
+        return Err(MissingSource::Empty {
+            path: filename.display().to_string(),
+        }
+        .into());
+    }
+    with_normalized_json_reader(relative, reader, scrubbed, |reader| {
+        serde_json::from_reader(reader).map_err(Into::into)
+    })
+    .wrap_err_with(|| format!("Failed to parse {} for {}", filename.display(), T::name()))
+}
+
+/// Collects matching source files as `(absolute path, path relative to root)` pairs.
+///
+/// A subtree that cannot be read is recorded in `errors` by its relative path
+/// so the files discovered elsewhere are still processed.
+fn collect_source_files(
+    root: &Path,
+    directory: &Path,
+    candidates: &[String],
+    filenames: &mut Vec<(PathBuf, String)>,
+    errors: &mut Vec<(String, eyre::Report)>,
+) -> Result<()> {
+    for entry in std::fs::read_dir(directory)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let path = entry.path();
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|_| eyre!("Source path escaped diagnostic root: {}", path.display()))?
+            .to_string_lossy()
+            .into_owned();
+        if file_type.is_dir() && super::may_contain_source_instance(&relative, candidates) {
+            if let Err(error) = collect_source_files(root, &path, candidates, filenames, errors) {
+                errors.push((
+                    relative,
+                    error.wrap_err(format!("Failed to read directory {}", path.display())),
+                ));
+            }
+        } else if file_type.is_file() && super::is_source_instance_path(&relative, candidates) {
+            filenames.push((path, relative));
+        }
+    }
+    Ok(())
 }
