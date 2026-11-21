@@ -3,6 +3,23 @@
 This directory contains integration tests and opt-in test utilities for workflows
 that need local services or externally managed Elastic Stack instances.
 
+## Shared Elasticsearch Mock
+
+`tests/common/elasticsearch.rs` is the mock cluster for tests that write to
+Elasticsearch. Integration tests load it with `mod common;`; unit tests use the
+same file as `crate::es_mock`. It behaves like a real cluster where ESDiag
+depends on it:
+
+- `POST /{index}/_bulk` parses the (gzip) NDJSON body, answers one item per
+  action, and rejects non-`create` ops per item, as data streams do.
+- `POST /{index}/_doc` answers a write response or a failure-store capture.
+- A required `Authorization` value answers `401 security_exception` when
+  missing or wrong; it can change while running to model key rotation.
+- Unknown routes answer `400 no handler found`.
+
+Assert on the recorded requests (`bulk_requests()`, `doc_requests()`) and
+`created_documents()` rather than on request counts alone.
+
 ## ESDiag Lite Shell Tests
 
 `tests/bin/esdiag-lite.sh` validates the portable `bin/esdiag-lite.sh` helper,

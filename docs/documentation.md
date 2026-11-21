@@ -23,4 +23,5 @@ New users should start with [Set up ESDiag](setup/index.md).
 ## Reference
 
 - [Command-line interface reference](command-line.md)
+- [Kibana dashboards](reference/kibana-dashboards.md)
 - [LLM configuration guide](llm-setup-guide.md)

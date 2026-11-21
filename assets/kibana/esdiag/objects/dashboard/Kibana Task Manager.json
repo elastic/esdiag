@@ -1,0 +1,3305 @@
+{
+  "attributes": {
+    "controlGroupInput": {
+      "chainingSystem": "HIERARCHICAL",
+      "controlStyle": "oneLine",
+      "ignoreParentSettingsJSON": {
+        "ignoreFilters": false,
+        "ignoreQuery": false,
+        "ignoreTimerange": false,
+        "ignoreValidations": false
+      },
+      "panelsJSON": {},
+      "showApplySelections": false
+    },
+    "description": "Kibana Task Manager health, configuration, runtime, capacity estimation, workload, and task type metrics from Kibana diagnostics",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": {
+        "filter": [],
+        "query": {
+          "language": "kuery",
+          "query": ""
+        }
+      }
+    },
+    "optionsJSON": {
+      "hidePanelTitles": false,
+      "syncColors": false,
+      "syncCursor": true,
+      "syncTooltips": false,
+      "useMargins": true
+    },
+    "panelsJSON": [
+      {
+        "embeddableConfig": {},
+        "gridData": {
+          "h": 3,
+          "i": "6a80fdad-917d-5130-a3f7-51c9a13b8370",
+          "w": 48,
+          "x": 0,
+          "y": 0
+        },
+        "panelIndex": "6a80fdad-917d-5130-a3f7-51c9a13b8370",
+        "type": "links"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                "name": "indexpattern-datasource-layer-dc82a178-9330-5a98-a33e-0e5a119dc5f7",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                  "layers": {
+                    "dc82a178-9330-5a98-a33e-0e5a119dc5f7": {
+                      "columnOrder": [
+                        "tm-health-n",
+                        "tm-health-o",
+                        "tm-health-c",
+                        "tm-health-w",
+                        "tm-health-r",
+                        "tm-health-ce"
+                      ],
+                      "columns": {
+                        "tm-health-c": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "\"stats.configuration.status\": *"
+                          },
+                          "isBucketed": false,
+                          "label": "Configuration",
+                          "operationType": "last_value",
+                          "params": {
+                            "showArrayValues": false,
+                            "sortField": "@timestamp"
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "stats.configuration.status"
+                        },
+                        "tm-health-ce": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "\"stats.capacity_estimation.status\": *"
+                          },
+                          "isBucketed": false,
+                          "label": "Capacity estimation",
+                          "operationType": "last_value",
+                          "params": {
+                            "showArrayValues": false,
+                            "sortField": "@timestamp"
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "stats.capacity_estimation.status"
+                        },
+                        "tm-health-n": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Node",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "node.name"
+                        },
+                        "tm-health-o": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "\"status\": *"
+                          },
+                          "isBucketed": false,
+                          "label": "Overall",
+                          "operationType": "last_value",
+                          "params": {
+                            "showArrayValues": false,
+                            "sortField": "@timestamp"
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "status"
+                        },
+                        "tm-health-r": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "\"stats.runtime.status\": *"
+                          },
+                          "isBucketed": false,
+                          "label": "Runtime",
+                          "operationType": "last_value",
+                          "params": {
+                            "showArrayValues": false,
+                            "sortField": "@timestamp"
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "stats.runtime.status"
+                        },
+                        "tm-health-w": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "\"stats.workload.status\": *"
+                          },
+                          "isBucketed": false,
+                          "label": "Workload",
+                          "operationType": "last_value",
+                          "params": {
+                            "showArrayValues": false,
+                            "sortField": "@timestamp"
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "stats.workload.status"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "tm-health-n",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-health-o",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-health-c",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-health-w",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-health-r",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-health-ce",
+                    "isTransposed": false
+                  }
+                ],
+                "headerRowHeight": "auto",
+                "headerRowHeightLines": 2,
+                "layerId": "dc82a178-9330-5a98-a33e-0e5a119dc5f7",
+                "layerType": "data",
+                "rowHeight": "single"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsDatatable"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 9,
+          "i": "55d87b79-ac37-58b9-8e4c-7a65d691334b",
+          "w": 24,
+          "x": 0,
+          "y": 3
+        },
+        "panelIndex": "55d87b79-ac37-58b9-8e4c-7a65d691334b",
+        "title": "Health",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                "name": "indexpattern-datasource-layer-34cfead5-2eef-527a-bbdf-a7e5b2635a4f",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                  "layers": {
+                    "34cfead5-2eef-527a-bbdf-a7e5b2635a4f": {
+                      "columnOrder": [
+                        "tm-config-n",
+                        "tm-config-pi",
+                        "tm-config-cs",
+                        "tm-config-cap",
+                        "tm-config-cost",
+                        "tm-config-mw",
+                        "tm-config-rc"
+                      ],
+                      "columns": {
+                        "tm-config-cap": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Capacity",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.configuration.value.capacity.config"
+                        },
+                        "tm-config-cost": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Capacity (cost)",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.configuration.value.capacity.as_cost"
+                        },
+                        "tm-config-cs": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "\"stats.configuration.value.claim_strategy\": *"
+                          },
+                          "isBucketed": false,
+                          "label": "Claim strategy",
+                          "operationType": "last_value",
+                          "params": {
+                            "showArrayValues": false,
+                            "sortField": "@timestamp"
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "stats.configuration.value.claim_strategy"
+                        },
+                        "tm-config-mw": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Max workers (7.x)",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.configuration.value.max_workers"
+                        },
+                        "tm-config-n": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Node",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "node.name"
+                        },
+                        "tm-config-pi": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Poll interval",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.configuration.value.poll_interval"
+                        },
+                        "tm-config-rc": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Request capacity",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.configuration.value.request_capacity"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "tm-config-n",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-config-pi",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-config-cs",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-config-cap",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-config-cost",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-config-mw",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-config-rc",
+                    "isTransposed": false
+                  }
+                ],
+                "headerRowHeight": "auto",
+                "headerRowHeightLines": 2,
+                "layerId": "34cfead5-2eef-527a-bbdf-a7e5b2635a4f",
+                "layerType": "data",
+                "rowHeight": "single"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsDatatable"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 9,
+          "i": "4db6e8fb-b9b2-575a-8ad0-f8eb0fbb775a",
+          "w": 24,
+          "x": 24,
+          "y": 3
+        },
+        "panelIndex": "4db6e8fb-b9b2-575a-8ad0-f8eb0fbb775a",
+        "title": "Configuration",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "savedVis": {
+            "data": {
+              "aggs": [],
+              "searchSource": {
+                "filter": [],
+                "query": {
+                  "language": "kuery",
+                  "query": ""
+                }
+              }
+            },
+            "description": "",
+            "id": "",
+            "params": {
+              "fontSize": 12,
+              "markdown": "### Workload\nWorkload is cluster-wide, so every Kibana node reports the same values. Tiles show the maximum, never a sum across nodes.",
+              "openLinksInNewTab": false
+            },
+            "title": "",
+            "type": "markdown",
+            "uiState": {}
+          }
+        },
+        "gridData": {
+          "h": 3,
+          "i": "39572b21-7c6a-588e-b657-6e91f671fb85",
+          "w": 48,
+          "x": 0,
+          "y": 12
+        },
+        "panelIndex": "39572b21-7c6a-588e-b657-6e91f671fb85",
+        "type": "visualization"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                "name": "indexpattern-datasource-layer-8dc6a5c6-9196-5241-b2ea-a3b7a8b2ab56",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                  "layers": {
+                    "8dc6a5c6-9196-5241-b2ea-a3b7a8b2ab56": {
+                      "columnOrder": [
+                        "tm-wc-m"
+                      ],
+                      "columns": {
+                        "tm-wc-m": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Tasks",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.workload.value.count"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layerId": "8dc6a5c6-9196-5241-b2ea-a3b7a8b2ab56",
+                "layerType": "data",
+                "metricAccessor": "tm-wc-m"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsMetric"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 5,
+          "i": "666e8142-8d66-5b5c-b771-9ab8446e6dcc",
+          "w": 12,
+          "x": 0,
+          "y": 15
+        },
+        "panelIndex": "666e8142-8d66-5b5c-b771-9ab8446e6dcc",
+        "title": "Scheduled tasks",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                "name": "indexpattern-datasource-layer-1627e946-2338-57e3-849a-40820ae01610",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                  "layers": {
+                    "1627e946-2338-57e3-849a-40820ae01610": {
+                      "columnOrder": [
+                        "tm-wo-m"
+                      ],
+                      "columns": {
+                        "tm-wo-m": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Overdue",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.workload.value.overdue"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layerId": "1627e946-2338-57e3-849a-40820ae01610",
+                "layerType": "data",
+                "metricAccessor": "tm-wo-m"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsMetric"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 5,
+          "i": "af7c33f2-6d10-585d-8e93-e37a506773ed",
+          "w": 12,
+          "x": 12,
+          "y": 15
+        },
+        "panelIndex": "af7c33f2-6d10-585d-8e93-e37a506773ed",
+        "title": "Overdue tasks",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                "name": "indexpattern-datasource-layer-71bdea75-af50-5cff-ac67-4ebc33ba7a2f",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                  "layers": {
+                    "71bdea75-af50-5cff-ac67-4ebc33ba7a2f": {
+                      "columnOrder": [
+                        "tm-wn-m"
+                      ],
+                      "columns": {
+                        "tm-wn-m": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Non-recurring",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.workload.value.non_recurring"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layerId": "71bdea75-af50-5cff-ac67-4ebc33ba7a2f",
+                "layerType": "data",
+                "metricAccessor": "tm-wn-m"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsMetric"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 5,
+          "i": "efd8e26a-c7df-5eae-967f-4f7620b30467",
+          "w": 12,
+          "x": 24,
+          "y": 15
+        },
+        "panelIndex": "efd8e26a-c7df-5eae-967f-4f7620b30467",
+        "title": "Non-recurring tasks",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                "name": "indexpattern-datasource-layer-6a013564-913d-57c6-b1b9-7ff20691b566",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                  "layers": {
+                    "6a013564-913d-57c6-b1b9-7ff20691b566": {
+                      "columnOrder": [
+                        "tm-won-m"
+                      ],
+                      "columns": {
+                        "tm-won-m": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Overdue non-recurring",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.workload.value.overdue_non_recurring"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "layerId": "6a013564-913d-57c6-b1b9-7ff20691b566",
+                "layerType": "data",
+                "metricAccessor": "tm-won-m"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsMetric"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 5,
+          "i": "011f6d64-cd93-5434-aedb-2f1bfec6b554",
+          "w": 12,
+          "x": 36,
+          "y": 15
+        },
+        "panelIndex": "011f6d64-cd93-5434-aedb-2f1bfec6b554",
+        "title": "Overdue non-recurring tasks",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "savedVis": {
+            "data": {
+              "aggs": [],
+              "searchSource": {
+                "filter": [],
+                "query": {
+                  "language": "kuery",
+                  "query": ""
+                }
+              }
+            },
+            "description": "",
+            "id": "",
+            "params": {
+              "fontSize": 12,
+              "markdown": "### Runtime",
+              "openLinksInNewTab": false
+            },
+            "title": "",
+            "type": "markdown",
+            "uiState": {}
+          }
+        },
+        "gridData": {
+          "h": 3,
+          "i": "310b4238-3bbb-5f58-9d69-44be40d3a1a5",
+          "w": 48,
+          "x": 0,
+          "y": 20
+        },
+        "panelIndex": "310b4238-3bbb-5f58-9d69-44be40d3a1a5",
+        "type": "visualization"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                "name": "indexpattern-datasource-layer-172224ff-3875-5938-b3e8-49a6df578c21",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                  "layers": {
+                    "172224ff-3875-5938-b3e8-49a6df578c21": {
+                      "columnOrder": [
+                        "tm-drift-x",
+                        "tm-drift-50",
+                        "tm-drift-90",
+                        "tm-drift-95",
+                        "tm-drift-99"
+                      ],
+                      "columns": {
+                        "tm-drift-50": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p50",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.drift.p50"
+                        },
+                        "tm-drift-90": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p90",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.drift.p90"
+                        },
+                        "tm-drift-95": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p95",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.drift.p95"
+                        },
+                        "tm-drift-99": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p99",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.drift.p99"
+                        },
+                        "tm-drift-x": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Node",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "node.name"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": false
+                },
+                "fittingFunction": "None",
+                "gridlinesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "labelsOrientation": {
+                  "x": 0,
+                  "yLeft": 0,
+                  "yRight": 0
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "tm-drift-50",
+                      "tm-drift-90",
+                      "tm-drift-95",
+                      "tm-drift-99"
+                    ],
+                    "layerId": "172224ff-3875-5938-b3e8-49a6df578c21",
+                    "layerType": "data",
+                    "seriesType": "bar_horizontal",
+                    "xAccessor": "tm-drift-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "bottom",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal",
+                "tickLabelsVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "valueLabels": "show"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 9,
+          "i": "4d512fb4-c66a-5903-9f96-7dd4be87ad90",
+          "w": 12,
+          "x": 0,
+          "y": 23
+        },
+        "panelIndex": "4d512fb4-c66a-5903-9f96-7dd4be87ad90",
+        "title": "Drift",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                "name": "indexpattern-datasource-layer-1ef5f42e-c22b-5069-9666-ae65372f2e0f",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                  "layers": {
+                    "1ef5f42e-c22b-5069-9666-ae65372f2e0f": {
+                      "columnOrder": [
+                        "tm-load-x",
+                        "tm-load-50",
+                        "tm-load-90",
+                        "tm-load-95",
+                        "tm-load-99"
+                      ],
+                      "columns": {
+                        "tm-load-50": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p50",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 1,
+                                "suffix": "%"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.load.p50"
+                        },
+                        "tm-load-90": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p90",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 1,
+                                "suffix": "%"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.load.p90"
+                        },
+                        "tm-load-95": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p95",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 1,
+                                "suffix": "%"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.load.p95"
+                        },
+                        "tm-load-99": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p99",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 1,
+                                "suffix": "%"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.load.p99"
+                        },
+                        "tm-load-x": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Node",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "node.name"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": false
+                },
+                "fittingFunction": "None",
+                "gridlinesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "labelsOrientation": {
+                  "x": 0,
+                  "yLeft": 0,
+                  "yRight": 0
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "tm-load-50",
+                      "tm-load-90",
+                      "tm-load-95",
+                      "tm-load-99"
+                    ],
+                    "layerId": "1ef5f42e-c22b-5069-9666-ae65372f2e0f",
+                    "layerType": "data",
+                    "seriesType": "bar_horizontal",
+                    "xAccessor": "tm-load-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "bottom",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal",
+                "tickLabelsVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "valueLabels": "show"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 9,
+          "i": "7508483c-6788-58ba-8836-a1fce34b755f",
+          "w": 12,
+          "x": 12,
+          "y": 23
+        },
+        "panelIndex": "7508483c-6788-58ba-8836-a1fce34b755f",
+        "title": "Load",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                "name": "indexpattern-datasource-layer-12041ca7-a5ca-5244-854b-832ed3c19000",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                  "layers": {
+                    "12041ca7-a5ca-5244-854b-832ed3c19000": {
+                      "columnOrder": [
+                        "tm-claim-x",
+                        "tm-claim-50",
+                        "tm-claim-90",
+                        "tm-claim-95",
+                        "tm-claim-99"
+                      ],
+                      "columns": {
+                        "tm-claim-50": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p50",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.polling.claim_duration.p50"
+                        },
+                        "tm-claim-90": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p90",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.polling.claim_duration.p90"
+                        },
+                        "tm-claim-95": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p95",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.polling.claim_duration.p95"
+                        },
+                        "tm-claim-99": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p99",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.polling.claim_duration.p99"
+                        },
+                        "tm-claim-x": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Node",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "node.name"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": false
+                },
+                "fittingFunction": "None",
+                "gridlinesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "labelsOrientation": {
+                  "x": 0,
+                  "yLeft": 0,
+                  "yRight": 0
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "tm-claim-50",
+                      "tm-claim-90",
+                      "tm-claim-95",
+                      "tm-claim-99"
+                    ],
+                    "layerId": "12041ca7-a5ca-5244-854b-832ed3c19000",
+                    "layerType": "data",
+                    "seriesType": "bar_horizontal",
+                    "xAccessor": "tm-claim-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "bottom",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal",
+                "tickLabelsVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "valueLabels": "show"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 9,
+          "i": "7a933d92-109e-5592-a8c9-a5c9690ae800",
+          "w": 12,
+          "x": 24,
+          "y": 23
+        },
+        "panelIndex": "7a933d92-109e-5592-a8c9-a5c9690ae800",
+        "title": "Polling claim duration",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                "name": "indexpattern-datasource-layer-c1761fd4-d2d3-5f3d-b867-8b5c5eb80781",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                  "layers": {
+                    "c1761fd4-d2d3-5f3d-b867-8b5c5eb80781": {
+                      "columnOrder": [
+                        "tm-poll-x",
+                        "tm-poll-50",
+                        "tm-poll-90",
+                        "tm-poll-95",
+                        "tm-poll-99"
+                      ],
+                      "columns": {
+                        "tm-poll-50": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p50",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.polling.duration.p50"
+                        },
+                        "tm-poll-90": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p90",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.polling.duration.p90"
+                        },
+                        "tm-poll-95": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p95",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.polling.duration.p95"
+                        },
+                        "tm-poll-99": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "p99",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.polling.duration.p99"
+                        },
+                        "tm-poll-x": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Node",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "node.name"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": false
+                },
+                "fittingFunction": "None",
+                "gridlinesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "labelsOrientation": {
+                  "x": 0,
+                  "yLeft": 0,
+                  "yRight": 0
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "tm-poll-50",
+                      "tm-poll-90",
+                      "tm-poll-95",
+                      "tm-poll-99"
+                    ],
+                    "layerId": "c1761fd4-d2d3-5f3d-b867-8b5c5eb80781",
+                    "layerType": "data",
+                    "seriesType": "bar_horizontal",
+                    "xAccessor": "tm-poll-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "bottom",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal",
+                "tickLabelsVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "valueLabels": "show"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 9,
+          "i": "177bdf54-7e78-57d5-8aa2-d879e8a315e1",
+          "w": 12,
+          "x": 36,
+          "y": 23
+        },
+        "panelIndex": "177bdf54-7e78-57d5-8aa2-d879e8a315e1",
+        "title": "Polling cycle duration",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                "name": "indexpattern-datasource-layer-15bbd1d7-35d9-59a3-9927-5284dd5b794f",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                  "layers": {
+                    "15bbd1d7-35d9-59a3-9927-5284dd5b794f": {
+                      "columnOrder": [
+                        "tm-polling-n",
+                        "tm-polling-ls",
+                        "tm-polling-cc50",
+                        "tm-polling-cc99",
+                        "tm-polling-cm50",
+                        "tm-polling-cm99"
+                      ],
+                      "columns": {
+                        "tm-polling-cc50": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Claim conflicts p50",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 2
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.polling.claim_conflicts.p50"
+                        },
+                        "tm-polling-cc99": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Claim conflicts p99",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 2
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.polling.claim_conflicts.p99"
+                        },
+                        "tm-polling-cm50": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Claim mismatches p50",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 2
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.polling.claim_mismatches.p50"
+                        },
+                        "tm-polling-cm99": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Claim mismatches p99",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 2
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.runtime.value.polling.claim_mismatches.p99"
+                        },
+                        "tm-polling-ls": {
+                          "customLabel": true,
+                          "dataType": "date",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "\"stats.runtime.value.polling.last_successful_poll\": *"
+                          },
+                          "isBucketed": false,
+                          "label": "Last successful poll",
+                          "operationType": "last_value",
+                          "params": {
+                            "showArrayValues": false,
+                            "sortField": "@timestamp"
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "stats.runtime.value.polling.last_successful_poll"
+                        },
+                        "tm-polling-n": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Node",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "node.name"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "tm-polling-n",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-polling-ls",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-polling-cc50",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-polling-cc99",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-polling-cm50",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-polling-cm99",
+                    "isTransposed": false
+                  }
+                ],
+                "headerRowHeight": "auto",
+                "headerRowHeightLines": 2,
+                "layerId": "15bbd1d7-35d9-59a3-9927-5284dd5b794f",
+                "layerType": "data",
+                "rowHeight": "single"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsDatatable"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 9,
+          "i": "9138e999-fc31-5d62-b717-e705285ae448",
+          "w": 48,
+          "x": 0,
+          "y": 32
+        },
+        "panelIndex": "9138e999-fc31-5d62-b717-e705285ae448",
+        "title": "Polling",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "savedVis": {
+            "data": {
+              "aggs": [],
+              "searchSource": {
+                "filter": [],
+                "query": {
+                  "language": "kuery",
+                  "query": ""
+                }
+              }
+            },
+            "description": "",
+            "id": "",
+            "params": {
+              "fontSize": 12,
+              "markdown": "### Capacity estimation\nReported by Kibana 7.16 and later. Compare observed Kibana instances with the proposed number, and maximum throughput with required throughput.",
+              "openLinksInNewTab": false
+            },
+            "title": "",
+            "type": "markdown",
+            "uiState": {}
+          }
+        },
+        "gridData": {
+          "h": 3,
+          "i": "cc32be49-b37e-5640-9eaa-cc4b723eae16",
+          "w": 48,
+          "x": 0,
+          "y": 41
+        },
+        "panelIndex": "cc32be49-b37e-5640-9eaa-cc4b723eae16",
+        "type": "visualization"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                "name": "indexpattern-datasource-layer-4de81377-2228-511c-a6d2-1f1805f70191",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                  "layers": {
+                    "4de81377-2228-511c-a6d2-1f1805f70191": {
+                      "columnOrder": [
+                        "tm-inst-x",
+                        "tm-inst-o",
+                        "tm-inst-p",
+                        "tm-inst-m"
+                      ],
+                      "columns": {
+                        "tm-inst-m": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Minimum required",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.capacity_estimation.value.proposed.min_required_kibana"
+                        },
+                        "tm-inst-o": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Observed",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.capacity_estimation.value.observed.observed_kibana_instances"
+                        },
+                        "tm-inst-p": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Proposed provisioned",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.capacity_estimation.value.proposed.provisioned_kibana"
+                        },
+                        "tm-inst-x": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Node",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "node.name"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": false
+                },
+                "fittingFunction": "None",
+                "gridlinesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "labelsOrientation": {
+                  "x": 0,
+                  "yLeft": 0,
+                  "yRight": 0
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "tm-inst-o",
+                      "tm-inst-p",
+                      "tm-inst-m"
+                    ],
+                    "layerId": "4de81377-2228-511c-a6d2-1f1805f70191",
+                    "layerType": "data",
+                    "seriesType": "bar_horizontal",
+                    "xAccessor": "tm-inst-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "bottom",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal",
+                "tickLabelsVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "valueLabels": "show"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 8,
+          "i": "07ca28e4-2512-5276-b5cc-bc3adcc6ba36",
+          "w": 24,
+          "x": 0,
+          "y": 44
+        },
+        "panelIndex": "07ca28e4-2512-5276-b5cc-bc3adcc6ba36",
+        "title": "Kibana instances",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                "name": "indexpattern-datasource-layer-11dcc98c-264e-51d7-9c71-b0cf823cbab5",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                  "layers": {
+                    "11dcc98c-264e-51d7-9c71-b0cf823cbab5": {
+                      "columnOrder": [
+                        "tm-tput-x",
+                        "tm-tput-m",
+                        "tm-tput-a",
+                        "tm-tput-r"
+                      ],
+                      "columns": {
+                        "tm-tput-a": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Average required",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 2
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.capacity_estimation.value.observed.avg_required_throughput_per_minute_per_kibana"
+                        },
+                        "tm-tput-m": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Maximum",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 2
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.capacity_estimation.value.observed.max_throughput_per_minute_per_kibana"
+                        },
+                        "tm-tput-r": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Average recurring required",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 2
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "stats.capacity_estimation.value.observed.avg_recurring_required_throughput_per_minute_per_kibana"
+                        },
+                        "tm-tput-x": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Node",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "node.name"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": false
+                },
+                "fittingFunction": "None",
+                "gridlinesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "labelsOrientation": {
+                  "x": 0,
+                  "yLeft": 0,
+                  "yRight": 0
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "tm-tput-m",
+                      "tm-tput-a",
+                      "tm-tput-r"
+                    ],
+                    "layerId": "11dcc98c-264e-51d7-9c71-b0cf823cbab5",
+                    "layerType": "data",
+                    "seriesType": "bar_horizontal",
+                    "xAccessor": "tm-tput-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "bottom",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal",
+                "tickLabelsVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "valueLabels": "show"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 8,
+          "i": "5eec15ed-d56e-5126-a972-d1b89ee853c5",
+          "w": 24,
+          "x": 24,
+          "y": 44
+        },
+        "panelIndex": "5eec15ed-d56e-5126-a972-d1b89ee853c5",
+        "title": "Throughput per minute per Kibana",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          },
+          "savedVis": {
+            "data": {
+              "aggs": [],
+              "searchSource": {
+                "filter": [],
+                "query": {
+                  "language": "kuery",
+                  "query": ""
+                }
+              }
+            },
+            "description": "",
+            "id": "",
+            "params": {
+              "fontSize": 12,
+              "markdown": "### Task types",
+              "openLinksInNewTab": false
+            },
+            "title": "",
+            "type": "markdown",
+            "uiState": {}
+          }
+        },
+        "gridData": {
+          "h": 3,
+          "i": "cb242a99-aa35-5135-92d7-c54e6c7b6fee",
+          "w": 48,
+          "x": 0,
+          "y": 52
+        },
+        "panelIndex": "cb242a99-aa35-5135-92d7-c54e6c7b6fee",
+        "type": "visualization"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "eaf5db15-3867-5524-b6ba-4eec123b0544",
+                "name": "indexpattern-datasource-layer-a85d4808-e514-5bae-be23-9d4dd090682b",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "eaf5db15-3867-5524-b6ba-4eec123b0544",
+                  "layers": {
+                    "a85d4808-e514-5bae-be23-9d4dd090682b": {
+                      "columnOrder": [
+                        "tm-failed-x",
+                        "tm-failed-m"
+                      ],
+                      "columns": {
+                        "tm-failed-m": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Failed",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 1,
+                                "suffix": "%"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "task_type.result_frequency.Failed"
+                        },
+                        "tm-failed-x": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Task type",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "tm-failed-m",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 10
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "task_type.name"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "eaf5db15-3867-5524-b6ba-4eec123b0544",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": false
+                },
+                "fittingFunction": "None",
+                "gridlinesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "labelsOrientation": {
+                  "x": 0,
+                  "yLeft": 0,
+                  "yRight": 0
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "tm-failed-m"
+                    ],
+                    "layerId": "a85d4808-e514-5bae-be23-9d4dd090682b",
+                    "layerType": "data",
+                    "seriesType": "bar_horizontal",
+                    "xAccessor": "tm-failed-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": false,
+                  "position": "bottom",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal",
+                "tickLabelsVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "valueLabels": "show"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 10,
+          "i": "2230ecfa-4b02-5b36-aef7-3d9bebd6f9fc",
+          "w": 24,
+          "x": 0,
+          "y": 55
+        },
+        "panelIndex": "2230ecfa-4b02-5b36-aef7-3d9bebd6f9fc",
+        "title": "Top 10 task types by failed percentage",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "eaf5db15-3867-5524-b6ba-4eec123b0544",
+                "name": "indexpattern-datasource-layer-aa6271bb-705d-5e5b-b8b7-183b7bce7f02",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "eaf5db15-3867-5524-b6ba-4eec123b0544",
+                  "layers": {
+                    "aa6271bb-705d-5e5b-b8b7-183b7bce7f02": {
+                      "columnOrder": [
+                        "tm-tdrift-x",
+                        "tm-tdrift-m"
+                      ],
+                      "columns": {
+                        "tm-tdrift-m": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Drift p99",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "task_type.drift.p99"
+                        },
+                        "tm-tdrift-x": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Task type",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "tm-tdrift-m",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 10
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "task_type.name"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "eaf5db15-3867-5524-b6ba-4eec123b0544",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": false,
+                  "yLeft": false,
+                  "yRight": false
+                },
+                "fittingFunction": "None",
+                "gridlinesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "labelsOrientation": {
+                  "x": 0,
+                  "yLeft": 0,
+                  "yRight": 0
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "tm-tdrift-m"
+                    ],
+                    "layerId": "aa6271bb-705d-5e5b-b8b7-183b7bce7f02",
+                    "layerType": "data",
+                    "seriesType": "bar_horizontal",
+                    "xAccessor": "tm-tdrift-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": false,
+                  "position": "bottom",
+                  "showSingleSeries": false
+                },
+                "preferredSeriesType": "bar_horizontal",
+                "tickLabelsVisibilitySettings": {
+                  "x": true,
+                  "yLeft": true,
+                  "yRight": true
+                },
+                "valueLabels": "show"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 10,
+          "i": "119b8074-c9a7-523f-9208-66dc1426091b",
+          "w": 24,
+          "x": 24,
+          "y": 55
+        },
+        "panelIndex": "119b8074-c9a7-523f-9208-66dc1426091b",
+        "title": "Top 10 task types by p99 drift",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "eaf5db15-3867-5524-b6ba-4eec123b0544",
+                "name": "indexpattern-datasource-layer-1eb60a04-ab73-5d43-acc7-e9a2799b60ce",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "currentIndexPatternId": "eaf5db15-3867-5524-b6ba-4eec123b0544",
+                  "layers": {
+                    "1eb60a04-ab73-5d43-acc7-e9a2799b60ce": {
+                      "columnOrder": [
+                        "tm-types-n",
+                        "tm-types-c",
+                        "tm-types-si",
+                        "tm-types-sc",
+                        "tm-types-sr",
+                        "tm-types-sf",
+                        "tm-types-d50",
+                        "tm-types-d99",
+                        "tm-types-u50",
+                        "tm-types-u99",
+                        "tm-types-rs",
+                        "tm-types-rr",
+                        "tm-types-rf",
+                        "tm-types-st"
+                      ],
+                      "columns": {
+                        "tm-types-c": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Tasks",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "task_type.workload.count"
+                        },
+                        "tm-types-d50": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Drift p50",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "task_type.drift.p50"
+                        },
+                        "tm-types-d99": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Drift p99",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "task_type.drift.p99"
+                        },
+                        "tm-types-n": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Task type",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "columnId": "tm-types-d99",
+                              "type": "column"
+                            },
+                            "orderDirection": "desc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "size": 500
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "task_type.name"
+                        },
+                        "tm-types-rf": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Failed",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 1,
+                                "suffix": "%"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "task_type.result_frequency.Failed"
+                        },
+                        "tm-types-rr": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Retry scheduled",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 1,
+                                "suffix": "%"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "task_type.result_frequency.RetryScheduled"
+                        },
+                        "tm-types-rs": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Success",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 1,
+                                "suffix": "%"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "task_type.result_frequency.Success"
+                        },
+                        "tm-types-sc": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Claiming",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "task_type.workload.status.claiming"
+                        },
+                        "tm-types-sf": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Failed status",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "task_type.workload.status.failed"
+                        },
+                        "tm-types-si": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Idle",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "task_type.workload.status.idle"
+                        },
+                        "tm-types-sr": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Running",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 0
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "task_type.workload.status.running"
+                        },
+                        "tm-types-st": {
+                          "customLabel": true,
+                          "dataType": "string",
+                          "filter": {
+                            "language": "kuery",
+                            "query": "\"task_type.result_frequency.status\": *"
+                          },
+                          "isBucketed": false,
+                          "label": "Result status",
+                          "operationType": "last_value",
+                          "params": {
+                            "showArrayValues": false,
+                            "sortField": "@timestamp"
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "task_type.result_frequency.status"
+                        },
+                        "tm-types-u50": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Duration p50",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "task_type.duration.p50"
+                        },
+                        "tm-types-u99": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Duration p99",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "duration",
+                              "params": {
+                                "compact": true,
+                                "decimals": 1,
+                                "fromUnit": "milliseconds",
+                                "toUnit": "humanizePrecise"
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "task_type.duration.p99"
+                        }
+                      },
+                      "incompleteColumns": {},
+                      "indexPatternId": "eaf5db15-3867-5524-b6ba-4eec123b0544",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": ""
+              },
+              "visualization": {
+                "columns": [
+                  {
+                    "columnId": "tm-types-n",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-types-c",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-types-si",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-types-sc",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-types-sr",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-types-sf",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-types-d50",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-types-d99",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-types-u50",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-types-u99",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-types-rs",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-types-rr",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-types-rf",
+                    "isTransposed": false
+                  },
+                  {
+                    "columnId": "tm-types-st",
+                    "isTransposed": false
+                  }
+                ],
+                "headerRowHeight": "auto",
+                "headerRowHeightLines": 2,
+                "layerId": "1eb60a04-ab73-5d43-acc7-e9a2799b60ce",
+                "layerType": "data",
+                "rowHeight": "single",
+                "sorting": {
+                  "columnId": "tm-types-d99",
+                  "direction": "desc"
+                }
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsDatatable"
+          },
+          "enhancements": {
+            "dynamicActions": {
+              "events": []
+            }
+          }
+        },
+        "gridData": {
+          "h": 14,
+          "i": "e235b83b-e2ec-5881-a8f7-f7ba9b08cef1",
+          "w": 48,
+          "x": 0,
+          "y": 65
+        },
+        "panelIndex": "e235b83b-e2ec-5881-a8f7-f7ba9b08cef1",
+        "title": "Task types",
+        "type": "lens"
+      }
+    ],
+    "timeRestore": false,
+    "title": "Kibana Task Manager",
+    "version": 2
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "kibana-task-manager",
+  "references": [
+    {
+      "id": "8228e4fe-7cfb-4bba-9123-70608082c624",
+      "name": "tag-ref-8228e4fe-7cfb-4bba-9123-70608082c624",
+      "type": "tag"
+    },
+    {
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "type": "tag"
+    },
+    {
+      "id": "11ffb732-bed1-4aa4-8867-189e74792cdd",
+      "name": "tag-ref-11ffb732-bed1-4aa4-8867-189e74792cdd",
+      "type": "tag"
+    },
+    {
+      "id": "d4f90b10-5d7b-5742-acc1-3bf40b4ee5b6",
+      "name": "6a80fdad-917d-5130-a3f7-51c9a13b8370:savedObjectRef",
+      "type": "links"
+    },
+    {
+      "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+      "name": "55d87b79-ac37-58b9-8e4c-7a65d691334b:indexpattern-datasource-layer-dc82a178-9330-5a98-a33e-0e5a119dc5f7",
+      "type": "index-pattern"
+    },
+    {
+      "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+      "name": "4db6e8fb-b9b2-575a-8ad0-f8eb0fbb775a:indexpattern-datasource-layer-34cfead5-2eef-527a-bbdf-a7e5b2635a4f",
+      "type": "index-pattern"
+    },
+    {
+      "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+      "name": "666e8142-8d66-5b5c-b771-9ab8446e6dcc:indexpattern-datasource-layer-8dc6a5c6-9196-5241-b2ea-a3b7a8b2ab56",
+      "type": "index-pattern"
+    },
+    {
+      "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+      "name": "af7c33f2-6d10-585d-8e93-e37a506773ed:indexpattern-datasource-layer-1627e946-2338-57e3-849a-40820ae01610",
+      "type": "index-pattern"
+    },
+    {
+      "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+      "name": "efd8e26a-c7df-5eae-967f-4f7620b30467:indexpattern-datasource-layer-71bdea75-af50-5cff-ac67-4ebc33ba7a2f",
+      "type": "index-pattern"
+    },
+    {
+      "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+      "name": "011f6d64-cd93-5434-aedb-2f1bfec6b554:indexpattern-datasource-layer-6a013564-913d-57c6-b1b9-7ff20691b566",
+      "type": "index-pattern"
+    },
+    {
+      "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+      "name": "4d512fb4-c66a-5903-9f96-7dd4be87ad90:indexpattern-datasource-layer-172224ff-3875-5938-b3e8-49a6df578c21",
+      "type": "index-pattern"
+    },
+    {
+      "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+      "name": "7508483c-6788-58ba-8836-a1fce34b755f:indexpattern-datasource-layer-1ef5f42e-c22b-5069-9666-ae65372f2e0f",
+      "type": "index-pattern"
+    },
+    {
+      "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+      "name": "7a933d92-109e-5592-a8c9-a5c9690ae800:indexpattern-datasource-layer-12041ca7-a5ca-5244-854b-832ed3c19000",
+      "type": "index-pattern"
+    },
+    {
+      "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+      "name": "177bdf54-7e78-57d5-8aa2-d879e8a315e1:indexpattern-datasource-layer-c1761fd4-d2d3-5f3d-b867-8b5c5eb80781",
+      "type": "index-pattern"
+    },
+    {
+      "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+      "name": "9138e999-fc31-5d62-b717-e705285ae448:indexpattern-datasource-layer-15bbd1d7-35d9-59a3-9927-5284dd5b794f",
+      "type": "index-pattern"
+    },
+    {
+      "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+      "name": "07ca28e4-2512-5276-b5cc-bc3adcc6ba36:indexpattern-datasource-layer-4de81377-2228-511c-a6d2-1f1805f70191",
+      "type": "index-pattern"
+    },
+    {
+      "id": "10524061-35c5-58c7-8cf6-f5df9551cba7",
+      "name": "5eec15ed-d56e-5126-a972-d1b89ee853c5:indexpattern-datasource-layer-11dcc98c-264e-51d7-9c71-b0cf823cbab5",
+      "type": "index-pattern"
+    },
+    {
+      "id": "eaf5db15-3867-5524-b6ba-4eec123b0544",
+      "name": "2230ecfa-4b02-5b36-aef7-3d9bebd6f9fc:indexpattern-datasource-layer-a85d4808-e514-5bae-be23-9d4dd090682b",
+      "type": "index-pattern"
+    },
+    {
+      "id": "eaf5db15-3867-5524-b6ba-4eec123b0544",
+      "name": "119b8074-c9a7-523f-9208-66dc1426091b:indexpattern-datasource-layer-aa6271bb-705d-5e5b-b8b7-183b7bce7f02",
+      "type": "index-pattern"
+    },
+    {
+      "id": "eaf5db15-3867-5524-b6ba-4eec123b0544",
+      "name": "e235b83b-e2ec-5881-a8f7-f7ba9b08cef1:indexpattern-datasource-layer-1eb60a04-ab73-5d43-acc7-e9a2799b60ce",
+      "type": "index-pattern"
+    }
+  ],
+  "type": "dashboard",
+  "typeMigrationVersion": "10.3.0"
+}

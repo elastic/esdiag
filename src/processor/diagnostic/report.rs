@@ -27,6 +27,15 @@ impl DiagnosticReportBuilder {
         DiagnosticReport::try_from(self)
     }
 
+    /// Carry the manifest's failed requested APIs into the report, for
+    /// builders created from already-resolved `DiagnosticMetadata`.
+    pub fn collection_events_from(self, manifest: &DiagnosticManifest) -> Self {
+        Self {
+            collection_events: manifest_collection_events(manifest),
+            ..self
+        }
+    }
+
     pub fn application(self, application: Application) -> Self {
         Self {
             application: Some(application),
@@ -67,24 +76,7 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
 
     fn try_from(manifest: DiagnosticManifest) -> Result<Self> {
         let application = manifest.application();
-        // Collection failures recorded at collect time persist as report
-        // events (ADR-0016): a non-2xx request is a warning with its source.
-        let collection_events = manifest
-            .requested_apis
-            .as_ref()
-            .map(|apis| {
-                apis.iter()
-                    .filter(|(_, api)| !api.status.is_some_and(|status| (200..300).contains(&status)))
-                    .map(|(name, api)| {
-                        let reason = match api.status {
-                            Some(status) => format!("collection failed with HTTP {status}"),
-                            None => "collection failed without an HTTP response".to_string(),
-                        };
-                        DiagnosticEvent::warning(name.clone(), reason)
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let collection_events = manifest_collection_events(&manifest);
         let metadata = DiagnosticMetadata::try_from(manifest)?;
         Ok(Self {
             cluster: None,
@@ -95,6 +87,27 @@ impl TryFrom<DiagnosticManifest> for DiagnosticReportBuilder {
             collection_events,
         })
     }
+}
+
+/// Collection failures recorded at collect time persist as report events
+/// (ADR-0016): a non-2xx request is a warning with its source.
+fn manifest_collection_events(manifest: &DiagnosticManifest) -> Vec<DiagnosticEvent> {
+    manifest
+        .requested_apis
+        .as_ref()
+        .map(|apis| {
+            apis.iter()
+                .filter(|(_, api)| !api.status.is_some_and(|status| (200..300).contains(&status)))
+                .map(|(name, api)| {
+                    let reason = match api.status {
+                        Some(status) => format!("collection failed with HTTP {status}"),
+                        None => "collection failed without an HTTP response".to_string(),
+                    };
+                    DiagnosticEvent::warning(name.clone(), reason)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Identifiers associated with a diagnostic report
@@ -1118,6 +1131,7 @@ mod tests {
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =
@@ -1142,6 +1156,7 @@ mod tests {
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =
@@ -1282,6 +1297,7 @@ user: ada
             id: "test".into(),
             collection_date: 0,
             runner: "test".into(),
+            version: None,
             uuid: "test".into(),
         };
         let mut report =
@@ -1303,6 +1319,7 @@ user: ada
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =
@@ -1337,6 +1354,7 @@ user: ada
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =
@@ -1448,17 +1466,27 @@ user: ada
         assert_eq!(value["docs"], 5);
     }
 
-    #[test]
-    fn processor_summary_records_successful_local_batch_as_status_200() {
-        let mut summary = ProcessorSummary::new("metrics-node-esdiag".to_string());
-        let mut batch = BatchResponse::new(3);
-        batch.status_code = 200;
+    #[tokio::test]
+    async fn processor_summary_records_local_directory_batch_as_reserved_status_0() {
+        let output = tempfile::tempdir().expect("output dir");
+        let exporter = crate::exporter::Exporter::try_from(crate::data::Uri::Directory(output.path().to_path_buf()))
+            .expect("directory exporter");
+        let docs = vec![
+            serde_json::json!({"n": 1}),
+            serde_json::json!({"n": 2}),
+            serde_json::json!({"n": 3}),
+        ];
+        let batch = exporter
+            .send("metrics-node-esdiag".to_string(), docs)
+            .await
+            .expect("directory batch");
 
+        let mut summary = ProcessorSummary::new("metrics-node-esdiag".to_string());
         summary.add_batch(batch);
 
         let value = serde_json::to_value(summary).expect("summary json");
-        assert_eq!(value["batch"]["status_codes"]["200"], 1);
-        assert_eq!(value["batch"]["status_codes"].get("0"), None);
+        assert_eq!(value["batch"]["status_codes"]["0"], 1);
+        assert_eq!(value["batch"]["status_codes"].get("200"), None);
         assert_eq!(value["docs"], 3);
     }
 
@@ -1538,6 +1566,7 @@ user: ada
             id: "test".to_string(),
             collection_date: 0,
             runner: "test".to_string(),
+            version: None,
             uuid: "test".to_string(),
         };
         let mut report =

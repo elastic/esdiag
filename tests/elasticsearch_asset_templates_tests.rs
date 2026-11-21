@@ -331,6 +331,91 @@ fn emitted_output_streams_and_index_templates_stay_in_sync() {
 }
 
 #[test]
+fn kibana_metrics_template_maps_dashboard_metadata_and_keeps_payload_dynamic() {
+    let template = index_template("metrics-kibana.json");
+    let mappings = &template["template"]["mappings"];
+    let properties = &mappings["properties"];
+    let diagnostic = component_template("esdiag@metadata.json");
+
+    assert_eq!(mappings["dynamic"], true);
+    assert_eq!(properties["@timestamp"]["type"], "date");
+    assert_eq!(
+        properties["data_stream"]["properties"]["dataset"]["type"],
+        "constant_keyword"
+    );
+    assert_eq!(properties["data_stream"]["properties"]["type"]["value"], "metrics");
+    assert_eq!(properties["node"]["properties"]["id"]["type"], "keyword");
+    assert_eq!(properties["node"]["properties"]["name"]["type"], "keyword");
+    assert_eq!(
+        properties["node"]["properties"]["version"]["properties"]["number"]["type"],
+        "version"
+    );
+    assert_eq!(diagnostic_properties(&diagnostic)["version"]["type"], "keyword");
+
+    let explicitly_mapped: BTreeSet<&str> = properties
+        .as_object()
+        .expect("Kibana template properties")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(explicitly_mapped, BTreeSet::from(["@timestamp", "data_stream", "node"]));
+    assert!(
+        template["composed_of"]
+            .as_array()
+            .expect("composed_of")
+            .iter()
+            .any(|component| component == "esdiag@mappings"),
+        "version-dependent Kibana payloads must use the shared dynamic mappings"
+    );
+}
+
+/// Kibana dashboard fields stay chartable: explicit properties must override the
+/// shared `skip_histograms` dynamic template, and every Kibana template that
+/// outranks `metrics-kibana.json` must keep its streams' metadata mappings.
+#[test]
+fn kibana_dashboard_templates_keep_dashboard_fields_aggregatable() {
+    let base = index_template("metrics-kibana.json");
+    let percentiles = &base["template"]["mappings"]["properties"]["node"]["properties"]["process"]["properties"]["event_loop_delay_histogram"]
+        ["properties"]["percentiles"]["properties"];
+    for percentile in ["50", "95", "99"] {
+        assert_eq!(percentiles[percentile]["type"], "double", "event loop p{percentile}");
+    }
+
+    for (file_name, streams) in [
+        (
+            "metrics-kibana.task_manager.json",
+            &[
+                "metrics-kibana.task_manager-esdiag",
+                "metrics-kibana.task_manager.task_type-esdiag",
+            ][..],
+        ),
+        ("metrics-kibana.status.json", &["metrics-kibana.status-esdiag"][..]),
+    ] {
+        let template = index_template(file_name);
+        assert!(
+            template["priority"].as_u64() > base["priority"].as_u64(),
+            "{file_name} priority"
+        );
+        assert_eq!(template["composed_of"], base["composed_of"], "{file_name} components");
+        let pattern = template["index_patterns"][0].as_str().expect("index pattern");
+        for stream in streams {
+            assert!(wildcard_matches(pattern, stream), "{file_name} must match {stream}");
+        }
+        let properties = &template["template"]["mappings"]["properties"];
+        for field in ["@timestamp", "data_stream"] {
+            assert_eq!(
+                properties[field], base["template"]["mappings"]["properties"][field],
+                "{file_name} {field}"
+            );
+        }
+        assert_eq!(
+            properties["node"]["properties"]["name"]["type"], "keyword",
+            "{file_name} node.name"
+        );
+    }
+}
+
+#[test]
 fn stream_template_drift_check_reports_injected_drift() {
     let streams = BTreeSet::from(["metrics-node-esdiag".to_string(), "metrics-missing-esdiag".to_string()]);
     let patterns = BTreeSet::from([

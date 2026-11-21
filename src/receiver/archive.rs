@@ -2,8 +2,11 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use crate::processor::{DataSource, SourceContext, StreamingDataSource};
-use crate::receiver::{MissingSource, source_has_json};
+use crate::processor::{
+    DataSource, SourceContext, StreamingDataSource,
+    diagnostic::{DiagnosticManifest, Manifest},
+};
+use crate::receiver::{MissingSource, SourceInstance, is_source_instance_path, source_has_json};
 use eyre::{Result, WrapErr, eyre};
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
@@ -25,6 +28,76 @@ pub use bytes::*;
 pub use file::*;
 pub(crate) use scrub::with_normalized_json_reader;
 pub use scrub::{normalize_supported_content, supports_json_normalization};
+
+pub fn get_all_from_archive<R, T>(
+    archive: &mut ZipArchive<R>,
+    subdir: Option<&PathBuf>,
+    ctx: &SourceContext,
+    scrubbed: bool,
+) -> Result<Vec<SourceInstance<T>>>
+where
+    R: Read + Seek,
+    T: DataSource + DeserializeOwned,
+{
+    let candidates = T::candidate_source_file_paths(ctx)?;
+    let mut root = archive_root(archive)?;
+    if let Some(subdir) = subdir {
+        root.push(subdir);
+    }
+    let root = root.to_string_lossy().replace('\\', "/");
+    let root = root.trim_matches('/');
+
+    // `(relative path, entry name)`: entries are read by their stored name,
+    // which may use `\` separators.
+    let mut filenames: Vec<(String, String)> = archive
+        .file_names()
+        .filter_map(|filename| {
+            let normalized = filename.replace('\\', "/");
+            let relative = strip_archive_root(&normalized, root)?.to_string();
+            is_source_instance_path(&relative, &candidates).then(|| (relative, filename.to_string()))
+        })
+        .collect();
+    filenames.sort();
+    filenames.dedup_by(|a, b| a.0 == b.0);
+
+    if filenames.is_empty() {
+        return Err(MissingSource::NoCandidates { source: T::name() }.into());
+    }
+
+    Ok(filenames
+        .into_iter()
+        .map(|(path, filename)| SourceInstance {
+            data: read_archive_source(archive, filename, scrubbed),
+            path,
+        })
+        .collect())
+}
+
+fn read_archive_source<R, T>(archive: &mut ZipArchive<R>, filename: String, scrubbed: bool) -> Result<T>
+where
+    R: Read + Seek,
+    T: DataSource + DeserializeOwned,
+{
+    let file = archive
+        .by_name(&filename)
+        .wrap_err_with(|| format!("Failed to read {filename} from archive"))?;
+    let mut reader = BufReader::new(file);
+    if !source_has_json(&mut reader).wrap_err_with(|| format!("Failed to read {filename} for {}", T::name()))? {
+        return Err(MissingSource::Empty { path: filename }.into());
+    }
+    with_normalized_json_reader(&filename, reader, scrubbed, |reader| {
+        serde_json::from_reader(reader).map_err(Into::into)
+    })
+    .wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()))
+}
+
+fn strip_archive_root<'a>(filename: &'a str, root: &str) -> Option<&'a str> {
+    if root.is_empty() {
+        return Some(filename);
+    }
+    let relative = filename.strip_prefix(root)?.strip_prefix('/')?;
+    Some(relative.trim_start_matches('/'))
+}
 
 /// A ZIP archive with its irregular entry names indexed once at open. ECK
 /// writes entries such as `name//file`; the index maps each one's
@@ -176,6 +249,33 @@ where
     })))
 }
 
+/// A bundle root is the archive root or a single top-level directory.
+const MAX_BUNDLE_ROOT_DEPTH: usize = 1;
+
+/// The bundle root inside an archive.
+///
+/// Collectors write entries concurrently, so the first entry can be a scoped
+/// file such as `spaces/default/kibana_alerts.json`. Prefer the directory of
+/// a manifest within `MAX_BUNDLE_ROOT_DEPTH`; deeper manifests belong to
+/// included diagnostics.
+fn archive_root<A: Read + Seek>(archive: &mut ZipArchive<A>) -> Result<PathBuf> {
+    let manifest_root = archive
+        .file_names()
+        .filter_map(|name| {
+            let components: Vec<&str> = name.split(['/', '\\']).filter(|c| !c.is_empty()).collect();
+            let (file, parents) = components.split_last()?;
+            let is_manifest = *file == Manifest::FILENAME || *file == DiagnosticManifest::FILENAME;
+            (is_manifest && parents.len() <= MAX_BUNDLE_ROOT_DEPTH).then(|| (parents.len(), parents.join("/")))
+        })
+        .min();
+    if let Some((_, root)) = manifest_root {
+        return Ok(PathBuf::from(root));
+    }
+    let mut root = PathBuf::from(archive.by_index(0)?.name());
+    trim_to_working_directory(&mut root);
+    Ok(root)
+}
+
 /// Stream the lines of one archive entry. The archive stays locked while the
 /// stream is being read, so consumers must drain it before issuing other reads
 /// on the same receiver.
@@ -221,8 +321,7 @@ pub fn list_archive_dirs<A: Read + Seek>(
     archive: &mut IndexedArchive<A>,
     dir: &str,
 ) -> Result<Vec<String>> {
-    let mut root = PathBuf::from(archive.by_index(0)?.name().to_string());
-    trim_to_working_directory(&mut root);
+    let root = archive_root(archive)?;
     let mut prefix = path_components(&root.to_string_lossy());
     if let Some(subdir) = subdir {
         prefix.extend(path_components(&subdir.to_string_lossy()));
@@ -301,7 +400,6 @@ pub(crate) fn archive_has_dir<'a>(
             // top-level bundle directory. Accepting it at any depth would let an
             // unrelated subtree that repeats the same component names answer for
             // this receiver.
-            const MAX_BUNDLE_ROOT_DEPTH: usize = 1;
             match components
                 .windows(subdir_components.len())
                 .position(|window| window.iter().zip(&subdir_components).all(|(a, b)| a == b))
@@ -325,8 +423,7 @@ pub fn resolve_archive_path<A: Read + Seek>(
         path.replace('\\', "/")
     }
 
-    let mut workdir = PathBuf::from(archive.by_index(0)?.name().to_string());
-    trim_to_working_directory(&mut workdir);
+    let mut workdir = archive_root(archive)?;
     if let Some(dir) = subdir {
         workdir.push(dir);
     }
@@ -481,11 +578,74 @@ mod tests {
     }
 
     #[test]
+    fn archive_root_ignores_scoped_first_entries() {
+        for prefix in ["", "bundle/"] {
+            let mut buf = Vec::new();
+            {
+                let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+                for name in [
+                    "spaces/default/kibana_alerts.json",
+                    "pages/page-0001/kibana_fleet_agents.json",
+                    "diagnostic_manifest.json",
+                    "kibana_status.json",
+                ] {
+                    zip.start_file(format!("{prefix}{name}"), SimpleFileOptions::default())
+                        .unwrap();
+                    zip.write_all(b"{}").unwrap();
+                }
+                zip.finish().unwrap();
+            }
+
+            let mut archive = IndexedArchive::new(ZipArchive::new(Cursor::new(buf)).unwrap());
+            let result = resolve_archive_path(None, &mut archive, "kibana_status.json").unwrap();
+            assert_eq!(result, format!("{prefix}kibana_status.json"));
+        }
+    }
+
+    #[test]
+    fn archive_root_ignores_included_diagnostic_manifests() {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut buf));
+            for name in [
+                "eck/namespace/kibana/kb/diagnostic_manifest.json",
+                "eck/manifest.json",
+                "eck/namespace/kibana/kb/kibana_status.json",
+            ] {
+                zip.start_file(name, SimpleFileOptions::default()).unwrap();
+                zip.write_all(b"{}").unwrap();
+            }
+            zip.finish().unwrap();
+        }
+
+        let mut archive = IndexedArchive::new(ZipArchive::new(Cursor::new(buf)).unwrap());
+        let subdir = PathBuf::from("namespace/kibana/kb");
+        let result = resolve_archive_path(Some(&subdir), &mut archive, "kibana_status.json").unwrap();
+        assert_eq!(result, "eck/namespace/kibana/kb/kibana_status.json");
+    }
+
+    #[test]
     fn missing_file_returns_err() {
         let archive_data = create_test_archive_with_single_slash();
         let mut archive = IndexedArchive::new(ZipArchive::new(Cursor::new(archive_data)).unwrap());
         let result = resolve_archive_path(None, &mut archive, "missing.json");
         assert!(result.unwrap_err().to_string().contains("File not found"));
+    }
+
+    #[test]
+    fn archive_root_requires_a_component_boundary() {
+        assert_eq!(
+            strip_archive_root("bundle/spaces/default/kibana_alerts.json", "bundle"),
+            Some("spaces/default/kibana_alerts.json")
+        );
+        assert_eq!(
+            strip_archive_root("bundle//spaces/default/kibana_alerts.json", "bundle"),
+            Some("spaces/default/kibana_alerts.json")
+        );
+        assert_eq!(
+            strip_archive_root("bundlespaces/default/kibana_alerts.json", "bundle"),
+            None
+        );
     }
 
     #[test]

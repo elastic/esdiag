@@ -20,6 +20,8 @@ use std::time::Instant;
 use tokio::sync::OnceCell;
 use url::Url;
 
+const INTERNAL_ORIGIN_HEADER: &str = "X-Elastic-Internal-Origin";
+
 #[derive(Clone)]
 pub struct KibanaReceiver {
     client: KibanaClient,
@@ -145,6 +147,9 @@ impl KibanaReceiver {
         let started = Instant::now();
 
         let mut headers = HashMap::new();
+        // Kibana 9 rejects internal routes, such as `/internal/security/me`,
+        // with HTTP 400 unless the request declares an internal origin.
+        headers.insert(INTERNAL_ORIGIN_HEADER.to_string(), "Kibana".to_string());
         if extension == ".txt" {
             headers.insert("Accept".to_string(), "text/plain".to_string());
         } else {
@@ -302,6 +307,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn raw_requests_declare_an_internal_origin() {
+        let (receiver, server) = receiver_with_single_response(
+            b"HTTP/1.1 200 OK\r\nconnection: close\r\ncontent-type: application/json\r\n\r\n{}",
+        )
+        .await;
+
+        receiver
+            .get_raw_response_by_path("/internal/security/me", ".json")
+            .await
+            .expect("response");
+        let request = server.await.expect("server").to_ascii_lowercase();
+
+        assert!(request.contains("x-elastic-internal-origin: kibana\r\n"), "{request}");
+    }
+
+    #[tokio::test]
     async fn raw_response_errors_preserve_status_body_and_metrics() {
         let (receiver, server) = receiver_with_single_response(
             b"HTTP/1.1 429 Too Many Requests\r\nconnection: close\r\ncontent-type: text/plain\r\n\r\nslow down",
@@ -321,20 +342,23 @@ mod tests {
         assert!(request_error.response_time_ms < 60_000);
     }
 
-    async fn receiver_with_single_response(response: &'static [u8]) -> (KibanaReceiver, tokio::task::JoinHandle<()>) {
+    async fn receiver_with_single_response(
+        response: &'static [u8],
+    ) -> (KibanaReceiver, tokio::task::JoinHandle<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("listener");
         let url = Url::parse(&format!("http://{}", listener.local_addr().expect("addr"))).expect("url");
         let client = KibanaClient::try_new(url.clone(), Auth::None).expect("client");
         let receiver = KibanaReceiver::new(url, client);
         let server = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.expect("accept");
-            read_request(&mut stream).await;
+            let request = read_request(&mut stream).await;
             stream.write_all(response).await.expect("write response");
+            request
         });
         (receiver, server)
     }
 
-    async fn read_request(stream: &mut TcpStream) {
+    async fn read_request(stream: &mut TcpStream) -> String {
         const MAX_TEST_REQUEST_BYTES: usize = 64 * 1024;
 
         let mut request = Vec::new();
@@ -351,5 +375,6 @@ mod tests {
                 break;
             }
         }
+        String::from_utf8_lossy(&request).into_owned()
     }
 }

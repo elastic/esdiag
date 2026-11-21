@@ -2,10 +2,13 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::{ArchiveOpeningError, IndexedArchive, get_from_archive, normalize_supported_content, resolve_archive_path};
+use super::{
+    ArchiveOpeningError, IndexedArchive, get_from_archive, normalize_supported_content, resolve_archive_path,
+    with_normalized_json_reader,
+};
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
-    receiver::{MissingSource, RawResponse, Receive, ReceiveMultiple, ReceiveRaw},
+    receiver::{MissingSource, RawResponse, Receive, ReceiveMultiple, ReceiveRaw, SourceInstance},
 };
 use eyre::{Result, eyre};
 use futures::stream::BoxStream;
@@ -186,6 +189,15 @@ impl std::fmt::Display for ArchiveFileReceiver {
 }
 
 impl ArchiveFileReceiver {
+    pub async fn get_all<T>(&self) -> Result<Vec<SourceInstance<T>>>
+    where
+        T: DataSource + DeserializeOwned,
+    {
+        let mut archive = self.archive.write().await;
+        let ctx = self.source_context()?;
+        super::get_all_from_archive::<File, T>(&mut archive, self.subdir.as_ref(), &ctx, self.scrubbed)
+    }
+
     pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
         Self {
             archive: self.archive.clone(),
@@ -209,7 +221,9 @@ impl ArchiveFileReceiver {
         if !crate::receiver::source_has_json(&mut reader)? {
             return Err(MissingSource::Empty { path: filename }.into());
         }
-        serde_json::from_reader(reader).map_err(Into::into)
+        with_normalized_json_reader(&filename, reader, self.scrubbed, |reader| {
+            serde_json::from_reader(reader).map_err(Into::into)
+        })
     }
 
     pub async fn list_bundle_dirs(&self, dir: &str) -> Result<Vec<String>> {

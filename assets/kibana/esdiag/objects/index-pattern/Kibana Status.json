@@ -1,0 +1,15 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fields": "[]",
+    "name": "Kibana Status",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "metrics-kibana.status-esdiag*"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "a2caceae-5826-5762-92da-7505da0b970a",
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

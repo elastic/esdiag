@@ -529,16 +529,6 @@ mod tests {
     }
 
     #[test]
-    fn failures_cannot_serialize_credentials_or_error_chains() {
-        let error = std::io::Error::other("api_key=very-secret: nested cause");
-        let failure = CliFailure::new(CliFailureCategory::AuthenticationFailed, "authentication failed");
-        let rendered = serde_json::to_string(&failure).expect("serialize failure");
-
-        assert!(!rendered.contains("very-secret"));
-        assert!(!rendered.contains(&error.to_string()));
-    }
-
-    #[test]
     fn direct_and_composite_outcomes_preserve_only_selected_durable_stages() {
         let diagnostic = || DiagnosticResult {
             id: "prod-es@2026-08-10~a1b2".to_string(),

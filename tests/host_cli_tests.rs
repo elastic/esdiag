@@ -1,10 +1,11 @@
-use axum::{Json, Router, routing::get};
+mod common;
+
+use common::elasticsearch::ElasticsearchMock;
 use esdiag::data::{Application, HostRole, KnownHost, Settings};
 use std::{
     collections::BTreeMap,
     path::PathBuf,
     process::{Command, Output},
-    time::Duration,
 };
 use tempfile::TempDir;
 
@@ -106,50 +107,15 @@ fn write_settings(home: &TempDir, settings: &Settings) {
     std::fs::write(path, content).expect("write settings");
 }
 
-async fn start_mock_elasticsearch() -> (String, tokio::sync::oneshot::Sender<()>) {
-    async fn root_handler() -> Json<serde_json::Value> {
-        Json(serde_json::json!({
-            "tagline": "You Know, for Search"
-        }))
-    }
-
-    let app = Router::new()
-        .route("/", get(root_handler))
-        .route("/{*path}", get(root_handler));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind mock elasticsearch");
-    let addr = listener.local_addr().expect("listener addr");
-    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-    tokio::spawn(async move {
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async {
-                let _ = shutdown_rx.await;
-            })
-            .await
-            .expect("serve mock elasticsearch");
-    });
-
-    let url = format!("http://{addr}");
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        if let Ok(response) = reqwest::get(&url).await
-            && response.status().is_success()
-        {
-            break;
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "mock elasticsearch did not become ready in time"
-        );
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-    (url, shutdown_tx)
+/// Cluster for hosts saved without credentials.
+async fn start_noauth_elasticsearch() -> String {
+    ElasticsearchMock::new().serve().await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_update_preserves_omitted_fields_and_applies_cert_overrides() {
-    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let mock = ElasticsearchMock::new().require_authorization("ApiKey legacy-key");
+    let url = mock.serve().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
     let secret_env = vec![("ESDIAG_KEYSTORE_PASSWORD".to_string(), "pw".to_string())];
@@ -247,13 +213,11 @@ async fn host_update_preserves_omitted_fields_and_applies_cert_overrides() {
         hosts.get("prod-es").expect("saved host exists").accept_invalid_certs(),
         "explicit true should set accept_invalid_certs"
     );
-
-    let _ = shutdown_tx.send(());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_update_applies_cert_overrides_for_noauth_hosts() {
-    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let url = start_noauth_elasticsearch().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
 
@@ -313,13 +277,12 @@ async fn host_update_applies_cert_overrides_for_noauth_hosts() {
         hosts.get("plain-es").expect("saved host exists").accept_invalid_certs,
         "explicit true should set accept_invalid_certs for noauth hosts"
     );
-
-    let _ = shutdown_tx.send(());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_update_supports_secret_rotation_and_rejects_persisted_apikey_override() {
-    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let mock = ElasticsearchMock::new().require_authorization("ApiKey old-key");
+    let url = mock.serve().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
     let secret_env = vec![("ESDIAG_KEYSTORE_PASSWORD".to_string(), "pw".to_string())];
@@ -369,6 +332,16 @@ async fn host_update_supports_secret_rotation_and_rejects_persisted_apikey_overr
     .await;
     assert_success(&create, "create secret-backed host");
 
+    // The cluster now only accepts the rotated key, so the old secret must fail.
+    mock.set_required_authorization("ApiKey new-secret-key");
+    let stale_auth = run_esdiag_async(
+        vec!["host".to_string(), "auth".to_string(), "prod-es".to_string()],
+        home_path.clone(),
+        secret_env.clone(),
+    )
+    .await;
+    assert_failure_contains(&stale_auth, "Host connection failed", "auth with pre-rotation secret");
+
     let rotate_secret = run_esdiag_async(
         vec![
             "host".to_string(),
@@ -391,6 +364,8 @@ async fn host_update_supports_secret_rotation_and_rejects_persisted_apikey_overr
     );
     assert_eq!(host.secret_reference(), Some("new-secret"));
 
+    // Even a key the cluster accepts must not be persisted inline.
+    mock.set_required_authorization("ApiKey override-key");
     let override_apikey = run_esdiag_async(
         vec![
             "host".to_string(),
@@ -413,13 +388,11 @@ async fn host_update_supports_secret_rotation_and_rejects_persisted_apikey_overr
     let host = hosts.get("prod-es").expect("saved host exists");
     assert!(!host.has_legacy_credential());
     assert_eq!(host.secret_reference(), Some("new-secret"));
-
-    let _ = shutdown_tx.send(());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_remove_deletes_saved_host_and_updates_settings() {
-    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let url = start_noauth_elasticsearch().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
 
@@ -475,8 +448,6 @@ async fn host_remove_deletes_saved_host_and_updates_settings() {
 
     let settings = read_settings(&home);
     assert_eq!(settings.active_target.as_deref(), Some("other-es"));
-
-    let _ = shutdown_tx.send(());
 }
 
 #[test]
@@ -499,7 +470,7 @@ fn host_add_guardrails_and_missing_host_updates_fail() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_update_rejects_partial_basic_auth_without_secret() {
-    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let url = start_noauth_elasticsearch().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
 
@@ -540,19 +511,14 @@ async fn host_update_rejects_partial_basic_auth_without_secret() {
     assert!(
         hosts
             .get("plain-es")
-            .is_some_and(|host| host.secret_reference().is_none()
-                && !host.has_legacy_credential()
-                && !host.has_legacy_credential()
-                && !host.has_legacy_credential()),
+            .is_some_and(|host| host.secret_reference().is_none() && !host.has_legacy_credential()),
         "failed update should leave the saved host unchanged"
     );
-
-    let _ = shutdown_tx.send(());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_update_rejects_partial_basic_auth_for_existing_basic_host() {
-    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let url = start_noauth_elasticsearch().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
     let hosts_path = home.path().join(".esdiag").join("hosts.yml");
@@ -599,13 +565,11 @@ async fn host_update_rejects_partial_basic_auth_for_existing_basic_host() {
         host.secret_reference().is_none(),
         "failed update should not add a secret reference"
     );
-
-    let _ = shutdown_tx.send(());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_remove_succeeds_even_if_settings_cleanup_fails() {
-    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let url = start_noauth_elasticsearch().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
 
@@ -652,13 +616,11 @@ async fn host_remove_succeeds_even_if_settings_cleanup_fails() {
 
     let hosts = read_hosts(&home);
     assert!(!hosts.contains_key("prod-es"));
-
-    let _ = shutdown_tx.send(());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_add_rejects_duplicate_names() {
-    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let url = start_noauth_elasticsearch().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
 
@@ -691,13 +653,11 @@ async fn host_add_rejects_duplicate_names() {
     )
     .await;
     assert_failure_contains(&duplicate, "already exists", "duplicate add");
-
-    let _ = shutdown_tx.send(());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_list_emits_typed_empty_and_populated_outcomes() {
-    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let url = start_noauth_elasticsearch().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
 
@@ -732,15 +692,29 @@ async fn host_list_emits_typed_empty_and_populated_outcomes() {
         stdout.contains("prod-es"),
         "expected saved host row in list output:\n{stdout}"
     );
-
-    let _ = shutdown_tx.send(());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_auth_tests_saved_host_without_mutating_it() {
-    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let mock = ElasticsearchMock::new().require_authorization("ApiKey auth-key");
+    let url = mock.serve().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
+    let secret_env = vec![("ESDIAG_KEYSTORE_PASSWORD".to_string(), "pw".to_string())];
+
+    let add_secret = run_esdiag_async(
+        vec![
+            "keystore".to_string(),
+            "add".to_string(),
+            "prod-secret".to_string(),
+            "--apikey".to_string(),
+            "auth-key".to_string(),
+        ],
+        home_path.clone(),
+        secret_env.clone(),
+    )
+    .await;
+    assert_success(&add_secret, "add host secret");
 
     let create = run_esdiag_async(
         vec![
@@ -750,9 +724,11 @@ async fn host_auth_tests_saved_host_without_mutating_it() {
             url,
             "--app".to_string(),
             "elasticsearch".to_string(),
+            "--secret".to_string(),
+            "prod-secret".to_string(),
         ],
         home_path.clone(),
-        vec![],
+        secret_env.clone(),
     )
     .await;
     assert_success(&create, "add host for auth");
@@ -762,7 +738,7 @@ async fn host_auth_tests_saved_host_without_mutating_it() {
     let auth = run_esdiag_async(
         vec!["host".to_string(), "auth".to_string(), "prod-es".to_string()],
         home_path,
-        vec![],
+        secret_env,
     )
     .await;
     assert_success(&auth, "auth host");
@@ -771,8 +747,6 @@ async fn host_auth_tests_saved_host_without_mutating_it() {
 
     let after = std::fs::read_to_string(&hosts_path).expect("read hosts after auth");
     assert_eq!(before, after, "auth should not mutate saved hosts");
-
-    let _ = shutdown_tx.send(());
 }
 
 #[test]
@@ -792,7 +766,7 @@ fn host_auth_missing_host_and_legacy_syntax_fail() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_subcommands_emit_typed_agent_outcomes() {
-    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let url = start_noauth_elasticsearch().await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
 
@@ -854,13 +828,14 @@ async fn host_subcommands_emit_typed_agent_outcomes() {
     .await;
     assert_stdout_contains(&remove, "result: host_removed", "agent host remove");
     assert_stdout_contains(&remove, "name: prod-es", "agent host remove");
-
-    let _ = shutdown_tx.send(());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn host_add_infers_app_from_concrete_url_and_requires_app_for_ambiguous_targets() {
-    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let url = ElasticsearchMock::new()
+        .path_prefix("/api/v1/deployments/test/elasticsearch")
+        .serve()
+        .await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
     let inferred_url = format!("{url}/api/v1/deployments/test/elasticsearch");
@@ -896,8 +871,6 @@ async fn host_add_infers_app_from_concrete_url_and_requires_app_for_ambiguous_ta
     )
     .await;
     assert_failure_contains(&ambiguous, "does not determine the app", "ambiguous host add");
-
-    let _ = shutdown_tx.send(());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1029,7 +1002,10 @@ async fn template_host_add_explicit_secret_overrides_same_name_default() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn template_hosts_auth_materialize_and_preserve_transport_on_update() {
-    let (url, shutdown_tx) = start_mock_elasticsearch().await;
+    let url = ElasticsearchMock::new()
+        .path_prefix("/deployments/cluster-1/elasticsearch")
+        .serve()
+        .await;
     let home = setup_home();
     let home_path = home.path().to_path_buf();
     let template = format!("{url}/deployments/{{id}}/{{product}}");
@@ -1129,6 +1105,4 @@ async fn template_hosts_auth_materialize_and_preserve_transport_on_update() {
         Some(&format!("{url}/deployments/cluster-1/elasticsearch")[..])
     );
     assert_eq!(materialized.roles, vec![HostRole::Collect, HostRole::Send]);
-
-    let _ = shutdown_tx.send(());
 }

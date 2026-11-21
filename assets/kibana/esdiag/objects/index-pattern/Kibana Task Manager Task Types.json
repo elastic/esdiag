@@ -1,0 +1,15 @@
+{
+  "attributes": {
+    "allowHidden": false,
+    "fields": "[]",
+    "name": "Kibana Task Manager Task Types",
+    "sourceFilters": "[]",
+    "timeFieldName": "@timestamp",
+    "title": "metrics-kibana.task_manager.task_type-esdiag*"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "eaf5db15-3867-5524-b6ba-4eec123b0544",
+  "references": [],
+  "type": "index-pattern",
+  "typeMigrationVersion": "8.0.0"
+}

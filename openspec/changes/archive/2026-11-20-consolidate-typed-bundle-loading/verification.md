@@ -16,6 +16,10 @@ Tasks 1.1–4.2 are complete (12/13). The native replacement is layer 2, PR437, 
 
 Read-only design assessment found all seven compatibility sections mapped to implementation and tests, with no implementation gap. The shared function is private and generic over existing archive storage; no public interface, synchronization, raw/directory/streaming contract or payload materialization change. Nearby operator documentation and changelog are intentionally unchanged because behavior is preserved.
 
+## Stack completion
+
+PR437 had no unresolved review threads. PR436's merge of upstream/main and its scrubbed multi-instance and bundle-JSON reads were propagated with a merge commit (no replayed parent commits); the consolidated loader kept its shared archive imports. Formatting, clippy (no warnings in changed files) and the full test suite passed on the combined head before archival.
+
 ## Scope
 
 Native strict OpenSpec validation is the syntax gate, not proof of behavior. Requirements are intentionally skipped (`skip_specs: true`); existing main specs and this design's acceptance cases are the retained contracts. Review/archival completion remains separate from verified implementation.

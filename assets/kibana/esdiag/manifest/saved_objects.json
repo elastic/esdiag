@@ -98,6 +98,14 @@
     },
     {
       "type": "dashboard",
+      "id": "kibana-host-health"
+    },
+    {
+      "type": "dashboard",
+      "id": "kibana-task-manager"
+    },
+    {
+      "type": "dashboard",
       "id": "kubernetes-hosts"
     },
     {
@@ -166,7 +174,15 @@
     },
     {
       "type": "index-pattern",
+      "id": "0729e524-c1dc-5729-b0a3-4c5de8e4bbe8"
+    },
+    {
+      "type": "index-pattern",
       "id": "07f20cf1-21c4-4383-a522-573cc8f0fab3"
+    },
+    {
+      "type": "index-pattern",
+      "id": "10524061-35c5-58c7-8cf6-f5df9551cba7"
     },
     {
       "type": "index-pattern",
@@ -238,6 +254,10 @@
     },
     {
       "type": "index-pattern",
+      "id": "a2caceae-5826-5762-92da-7505da0b970a"
+    },
+    {
+      "type": "index-pattern",
       "id": "a738e381-1538-4fb5-a7c1-eebbdff4623b"
     },
     {
@@ -267,6 +287,10 @@
     {
       "type": "index-pattern",
       "id": "e8de195c-287f-45ed-bbfd-45eace1e037c"
+    },
+    {
+      "type": "index-pattern",
+      "id": "eaf5db15-3867-5524-b6ba-4eec123b0544"
     },
     {
       "type": "index-pattern",
@@ -331,6 +355,10 @@
     {
       "type": "links",
       "id": "d277872a-9c33-4d95-84f0-6dba30dcbdf1"
+    },
+    {
+      "type": "links",
+      "id": "d4f90b10-5d7b-5742-acc1-3bf40b4ee5b6"
     },
     {
       "type": "links",
