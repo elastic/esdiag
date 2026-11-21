@@ -2,7 +2,7 @@
 
 ## Completeness
 
-Tasks 1.1–4.2 are complete (12/13). The native replacement is layer 2, PR437, with head `elastic/esdiag:stack/pr330-typed-loading` and base `stack/pr330-scrubbing` (PR436), not main. The source implementation is unchanged by stack migration; the standalone evidence below is retained. Task 4.3 remains pending for final stack review, re-verification and required archival before native stack merge.
+All 13 tasks are complete. The native replacement is layer 2, PR437, with head `elastic/esdiag:stack/pr330-typed-loading` and base `stack/pr330-scrubbing` (PR436), not main. The source implementation is unchanged by stack migration; the standalone evidence below is retained. At first verification, task 4.3 (stack review, re-verification and archival) was pending; its final result is recorded under Stack completion.
 
 ## Correctness
 
