@@ -236,11 +236,6 @@ impl KibanaDiagnostic {
             .is_none_or(|selected| selected.contains(key))
     }
 
-    #[cfg(test)]
-    pub fn uuid(&self) -> &str {
-        &self.metadata.diagnostic.uuid
-    }
-
     async fn process_datasource<T>(&self, summary_tx: mpsc::Sender<ProcessorSummary>) -> Result<()>
     where
         T: DataSource + DocumentExporter<Lookups, KibanaMetadata> + DeserializeOwned + Send + Sync,

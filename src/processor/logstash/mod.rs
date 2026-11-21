@@ -154,11 +154,6 @@ impl LogstashDiagnostic {
             eyre!(err)
         })
     }
-
-    #[cfg(test)]
-    pub fn uuid(&self) -> &str {
-        &self.metadata.diagnostic.uuid
-    }
 }
 
 impl DiagnosticProcessor for LogstashDiagnostic {
