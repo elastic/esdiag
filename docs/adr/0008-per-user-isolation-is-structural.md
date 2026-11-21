@@ -41,7 +41,7 @@ remembering to use `targeted_*`.
 - **A job's events auto-target its owner** — no per-emission opt-in, so new UI code
   is isolated by construction rather than by remembering to scope it.
 - **`Owner` propagates to child diagnostics.** When a diagnostic spawns included
-  children (`spawn_sub_processors`), the owner is threaded to each child alongside the
+  children (`run_child_jobs`), the owner is threaded to each child alongside the
   existing `parent_id`/platform inheritance, so a child's events are owner-scoped too.
 - **Aggregate stats stay a shared, server-wide view** — all users see total
   throughput; this is intentional and the sole broadcast category.
