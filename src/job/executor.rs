@@ -829,15 +829,22 @@ mod tests {
     }
 
     fn parent_with_children(children: &[(&str, &str)]) -> tempfile::TempDir {
+        let root = parent_declaring(&children.iter().map(|(path, _)| *path).collect::<Vec<_>>());
+        for (path, archive) in children {
+            extract_fixture(archive, &root.path().join(path));
+        }
+        root
+    }
+
+    /// An ESDiag ECK parent bundle that declares `paths` as included
+    /// diagnostics without creating them.
+    fn parent_declaring(paths: &[&str]) -> tempfile::TempDir {
         let root = tempfile::tempdir().expect("parent dir");
-        let included: Vec<crate::processor::diagnostic::DiagPath> = children
+        let included: Vec<crate::processor::diagnostic::DiagPath> = paths
             .iter()
-            .map(|(path, archive)| {
-                extract_fixture(archive, &root.path().join(path));
-                crate::processor::diagnostic::DiagPath {
-                    diag_type: "diagnostic".to_string(),
-                    diag_path: (*path).to_string(),
-                }
+            .map(|path| crate::processor::diagnostic::DiagPath {
+                diag_type: "diagnostic".to_string(),
+                diag_path: (*path).to_string(),
             })
             .collect();
         let manifest = serde_json::json!({
@@ -861,6 +868,78 @@ mod tests {
         )
         .expect("write parent manifest");
         root
+    }
+
+    /// Platform collectors write a legacy `manifest.json` with no `product`,
+    /// next to a root `version.json` that describes the collector, not a cluster.
+    fn collector_parent_with_child(diag_type: &str, child_path: &str, archive: &str) -> tempfile::TempDir {
+        let root = tempfile::tempdir().expect("parent dir");
+        extract_fixture(archive, &root.path().join(child_path));
+        let manifest = serde_json::json!({
+            "diagType": diag_type,
+            "diagVersion": "1.0.0 (abc1234)",
+            "collectionDate": "2026-01-01T00:00:00.1234567-05:00",
+            "includedDiagnostics": [{"diagType": "elasticsearch", "diagPath": child_path}]
+        });
+        std::fs::write(
+            root.path().join(crate::processor::Manifest::FILENAME),
+            serde_json::to_vec(&manifest).expect("serialize collector manifest"),
+        )
+        .expect("write collector manifest");
+        let version = serde_json::json!({
+            "DiagnosticsVersion": {"Version": "1.0.0 (abc1234)", "Hash": "abc1234"},
+            "ServerVersion": {"major": "1", "minor": "30", "gitVersion": "v1.30.0"}
+        });
+        std::fs::write(
+            root.path().join("version.json"),
+            serde_json::to_vec(&version).expect("serialize collector version"),
+        )
+        .expect("write collector version");
+        root
+    }
+
+    /// A child diagnostic ESDiag recognizes but has no processor for. Written as
+    /// a manifest rather than extracted from a fixture archive because dispatch
+    /// happens on the declared application, before any product diagnostic is
+    /// constructed.
+    fn write_child_manifest(dir: &std::path::Path, product: &str) {
+        std::fs::create_dir_all(dir).expect("create child diagnostic dir");
+        let manifest = serde_json::json!({
+            "mode": "support",
+            "product": product,
+            "diagnostic": "esdiag-test",
+            "type": format!("{product}-diagnostics"),
+            "runner": "esdiag",
+            "version": "9.3.3",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "collection_date_millis": 1767225600000u64,
+        });
+        std::fs::write(
+            dir.join(crate::processor::DiagnosticManifest::FILENAME),
+            serde_json::to_vec_pretty(&manifest).expect("serialize child manifest"),
+        )
+        .expect("write child manifest");
+    }
+
+    /// Load `bundle` and process it into a local directory.
+    async fn process_bundle(bundle: &std::path::Path) -> ExecutionOutcome {
+        let output = tempfile::tempdir().expect("output");
+        let job = Job::try_new(
+            Identifiers::default(),
+            Input::Load {
+                uri: Uri::Directory(bundle.to_path_buf()),
+            },
+            None,
+            Some(Process {
+                selection: None,
+                export: ExportTarget::Directory {
+                    output_dir: output.path().to_path_buf(),
+                },
+            }),
+            None,
+        )
+        .expect("parent process job");
+        execute_with_context(job, ExecutionContext::default()).await
     }
 
     #[derive(Default)]
@@ -1154,6 +1233,14 @@ mod tests {
         for child in &outcome.children {
             let report = child.report().expect("child report");
             assert_eq!(child.platform(), Platform::ECK);
+            // Fixture bundles may omit optional selectable sources; absence in
+            // an imported bundle is not a processing failure.
+            assert_eq!(child.diagnostic_outcome, DiagnosticOutcome::Complete);
+            assert_eq!(report.diagnostic.application, Some(Application::Elasticsearch));
+            assert_eq!(report.diagnostic.display_label(), "Elasticsearch");
+            assert!(report.diagnostic.docs.created > 0);
+            // Child inherits the parent's platform (ADR-0001)
+            assert_eq!(report.diagnostic.identifiers.platform, Some(Platform::ECK));
             assert_eq!(child.execution.identity.parent_job_id, Some(42));
             assert_eq!(child.execution.stage(Stage::Load), Some(&StageStatus::Succeeded));
             assert_eq!(child.execution.stage(Stage::Process), Some(&StageStatus::Succeeded));
@@ -1197,12 +1284,86 @@ mod tests {
 
         assert!(outcome.succeeded());
         let child = outcome.children.first().expect("child outcome");
+        // The 9.3.3 fixture records failed Kibana API requests in its manifest.
         assert_eq!(child.diagnostic_outcome, DiagnosticOutcome::Partial);
+        assert_eq!(child.platform(), Platform::ECK);
+        assert_eq!(
+            outcome.report.as_ref().map(crate::processor::DiagnosticReport::outcome),
+            Some(DiagnosticOutcome::Complete),
+            "a partial child does not degrade the parent"
+        );
         assert_eq!(child.application(), Some(Application::Kibana));
         assert_eq!(child.execution.stage(Stage::Process), Some(&StageStatus::Succeeded));
         assert_eq!(child.execution.stage(Stage::Export), Some(&StageStatus::Succeeded));
         assert!(child.report().is_some_and(|report| report.diagnostic.docs.created > 0));
         assert_eq!(child.execution_error(), None);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn platform_collector_manifest_without_product_processes_children() {
+        for (diag_type, platform) in [
+            ("eck-diagnostics", Platform::ECK),
+            ("k8s-platform-diagnostics", Platform::KubernetesPlatform),
+        ] {
+            let bundle = collector_parent_with_child(
+                diag_type,
+                "ns/elasticsearch/cluster",
+                "elasticsearch-api-diagnostics-9.3.3.zip",
+            );
+
+            let outcome = process_bundle(bundle.path()).await;
+
+            assert!(outcome.succeeded(), "{diag_type}: {:?}", outcome.stages);
+            let parent = outcome.report.as_ref().expect("parent report");
+            assert_eq!(parent.diagnostic.application, None, "{diag_type}");
+            assert_eq!(parent.diagnostic.platform(), platform, "{diag_type}");
+            assert_eq!(outcome.children.len(), 1, "{diag_type}");
+            let child = &outcome.children[0];
+            assert_eq!(child.diagnostic_outcome, DiagnosticOutcome::Complete, "{diag_type}");
+            let report = child.report().expect("completed child carries its report");
+            assert_eq!(report.diagnostic.application, Some(Application::Elasticsearch));
+            assert_eq!(report.diagnostic.platform(), platform);
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn agent_child_is_skipped_as_work_in_progress_not_a_scope_boundary() {
+        let bundle = parent_declaring(&["agent-child"]);
+        write_child_manifest(&bundle.path().join("agent-child"), "agent");
+
+        let outcome = process_bundle(bundle.path()).await;
+
+        assert!(outcome.succeeded(), "a skipped child does not fail the parent");
+        let child = outcome.children.first().expect("child outcome");
+        // Elastic Agent is out of scope for `Collect` by design, but its
+        // *processing* is unwritten work (PR293). Reporting the skip as
+        // by-design would say the opposite (ADR-0016/0019).
+        assert_eq!(
+            child.diagnostic_outcome,
+            DiagnosticOutcome::Skipped(crate::processor::SkipKind::NotImplemented)
+        );
+        assert_eq!(child.application(), Some(Application::Agent));
+        assert!(child.report().is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn unreadable_only_child_fails_without_failing_platform_parent() {
+        let bundle = parent_declaring(&["missing-child"]);
+
+        let outcome = process_bundle(bundle.path()).await;
+
+        assert!(outcome.succeeded(), "child failures do not fail the parent");
+        // A platform-only diagnostic: no application, label falls back to platform
+        let parent = outcome.report.as_ref().expect("parent report");
+        assert_eq!(parent.diagnostic.application, None);
+        assert_eq!(parent.diagnostic.platform(), Platform::ECK);
+        assert_eq!(parent.diagnostic.display_label(), "ECK");
+        assert_eq!(outcome.children.len(), 1);
+        let child = &outcome.children[0];
+        assert_eq!(child.path, "missing-child");
+        assert_eq!(child.diagnostic_outcome, DiagnosticOutcome::Failed);
+        assert!(child.report().is_none());
+        assert!(child.execution_error().is_some());
     }
 
     #[tokio::test(flavor = "multi_thread")]
