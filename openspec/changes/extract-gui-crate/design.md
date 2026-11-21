@@ -42,7 +42,7 @@ The binary must call the server and the desktop wrapper, so `esdiag` depends on 
 
 | Package | Location | Contents |
 |---|---|---|
-| `esdiag-core` | `crates/esdiag-core/` | Everything in `src/` except `main.rs`, `local.rs`, `local/`, and `server/`; `Assets`, `EsdiagSkillAssets`, `KIBANA_ASSETS_BUNDLE` and its build step; `TestEnv` and the Elasticsearch mock behind a `test-support` feature |
+| `esdiag-core` | `crates/esdiag-core/` | Everything in `src/` except `main.rs`, `local.rs`, `local/`, and `server/`; `Assets`, `EsdiagSkillAssets`, `KIBANA_ASSETS_BUNDLE` and its build step; `TestEnv` behind a `test-support` feature; the Elasticsearch mock, test-only, which `tests/common/` includes by path |
 | `esdiag-gui` | `crates/esdiag-gui/` | `src/server/` (including `server/assets/`), `templates/`, `DocsAssets`, `ServerAssets`, the Tauri wrapper in a `desktop` module |
 | `esdiag` | repository root | `main.rs`, `local.rs`, `local/`, facade `lib.rs`, `build.rs` (Windows stack args, NOTICE/SBOM, Tauri context), `tauri.conf.json`, `desktop/`, `tests/` |
 

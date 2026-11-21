@@ -1,17 +1,31 @@
 [package]
 name = "esdiag"
-version = "0.18.0-SNAPSHOT"
+version.workspace = true
 description = "Elastic Stack diagnostic collector and processor"
-repository = "https://github.com/elastic/esdiag"
-homepage = "https://github.com/elastic/esdiag"
+repository.workspace = true
+homepage.workspace = true
 documentation = "https://github.com/elastic/esdiag/tree/main/docs"
-edition = "2024"
-rust-version = "1.89"
-license = "Elastic-2.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 
 [workspace]
 members = [".", "crates/elasticrc", "crates/repo-tools"]
 resolver = "3"
+
+[workspace.package]
+version = "0.18.0-SNAPSHOT"
+edition = "2024"
+rust-version = "1.89"
+license = "Elastic-2.0"
+repository = "https://github.com/elastic/esdiag"
+homepage = "https://github.com/elastic/esdiag"
+
+[workspace.dependencies]
+clap = { version = "4.6", features = ["derive"] }
+eyre = "0.6.14"
+semver = { version = "1.0.28", features = ["serde"] }
+yaml_serde = "0.10.7"
 
 [features]
 default = ["full"]
@@ -32,13 +46,13 @@ axum-server = "0.8.0"
 base64 = "0.22.1"
 bytes = "1.12.1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
-clap = { version = "4.6", features = ["derive"] }
+clap.workspace = true
 clap_complete = "4.6"
 datastar = { version = "0.3.1", features = ["axum"] }
 dotenvy = { version = "0.15.7", optional = true }
 elasticrc = { path = "crates/elasticrc", version = "0.1.0", optional = true }
 elasticsearch = "9.1.0-alpha.1"
-eyre = "0.6.14"
+eyre.workspace = true
 futures = "0.3"
 indexmap = { version = "2.14.2", features = ["serde"] }
 json-patch = "4.2"
@@ -56,7 +70,7 @@ regex = "1.13"
 reqwest = { version = "0.12.28", features = ["json", "blocking", "multipart", "stream"] }
 rpassword = "7.5.4"
 rust-embed = { version = "8.13.0", features = ["compression", "include-exclude"] }
-semver = { version = "1.0.28", features = ["serde"] }
+semver.workspace = true
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = { version = "1.0.154", features = ["float_roundtrip", "raw_value"] }
 serde_with = { version = "3.24.0", default-features = false, features = ["macros"] }
@@ -79,7 +93,7 @@ uuid = { version = "1.28", features = ["v4", "fast-rng"] }
 zip = { version = "8.6.0", default-features = false, features = [
     "deflate-flate2",
 ] }
-yaml_serde = "0.10.7"
+yaml_serde.workspace = true
 tempfile = "3.27.0"
 
 [target.'cfg(windows)'.dependencies]
