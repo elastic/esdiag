@@ -17,8 +17,8 @@
 - [x] 3.4 Move `collect` and `process` (including `ask` and `ProcessInput::writes_stdout`); verify `cargo test --workspace` and that the archive processing comparison from 1.2 matches
 - [x] 3.5 Move `setup_elasticsearch/kibana/output/env/context` and `run_stack_setup`; move setup tests; verify `cargo build --no-default-features --features setup` and `cargo test --workspace`
 - [x] 3.6 Move `agent_ask` with its failure handling and Kibana helpers; move agent tests; verify `cargo build --no-default-features --features agent`
-- [ ] 3.7 Move `keystore_status/add/update/remove/unlock/lock` with keystore password and secret values passed in as resolved `Secret<String>` fields; keep all prompts in `main.rs`; verify `cargo build --no-default-features --features keystore` and `cargo test --workspace`
-- [ ] 3.8 Switch `run_init_wizard` to the operations whose bodies it duplicates; verify the wizard unit tests in `main.rs` pass unchanged and that a manual `esdiag init` with `HOME` set to a temporary directory completes and writes the same `hosts.yml`, `jobs.yml`, and settings as the baseline binary
+- [x] 3.7 Move `keystore_status/add/update/remove/unlock/lock` with keystore password and secret values passed in as resolved `Secret<String>` fields; keep all prompts in `main.rs`; verify `cargo build --no-default-features --features keystore` and `cargo test --workspace`
+- [x] 3.8 Switch `run_init_wizard` to the operations whose bodies it duplicates; verify the wizard unit tests in `main.rs` pass unchanged and that a manual `esdiag init` with `HOME` set to a temporary directory completes and writes the same `hosts.yml`, `jobs.yml`, and settings as the baseline binary
 
 ## 4. Guards and cleanup
 
