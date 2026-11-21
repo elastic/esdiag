@@ -2,14 +2,17 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
+mod common;
+
 use axum::{
     Json, Router,
     body::Body,
     extract::{OriginalUri, State},
-    http::{HeaderMap, Method, Response, header},
+    http::{HeaderMap, Response, header},
     response::IntoResponse,
     routing::any,
 };
+use common::elasticsearch::ElasticsearchMock;
 use std::{
     fs,
     path::Path,
@@ -21,13 +24,13 @@ use tokio::net::TcpListener;
 #[derive(Clone, Default)]
 struct Requests {
     authorizations: Arc<Mutex<Vec<String>>>,
-    paths: Arc<Mutex<Vec<String>>>,
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn active_input_configured_output_and_saved_job_run_successfully() {
     let (source_url, source_requests, source_server) = mock_elasticsearch("source").await;
-    let (output_url, output_requests, output_server) = mock_elasticsearch("output").await;
+    let output = ElasticsearchMock::new().cluster_name("output");
+    let output_url = output.serve().await;
     let home = tempfile::TempDir::new().expect("temp home");
     let state_dir = home.path().join(".esdiag");
     fs::create_dir_all(&state_dir).expect("state directory");
@@ -62,6 +65,9 @@ async fn active_input_configured_output_and_saved_job_run_successfully() {
     );
     assert_success(&first, "process active context");
     assert!(String::from_utf8_lossy(&first.stdout).contains("diagnostic_processed"));
+    let first_requests = output.bulk_requests().len();
+    assert!(first_requests > 0, "processing must send bulk requests to the output");
+    assert!(output.created_documents() > 0, "processing must index documents");
 
     let rerun = run(
         home.path(),
@@ -77,20 +83,28 @@ async fn active_input_configured_output_and_saved_job_run_successfully() {
     let source_auth = source_requests.authorizations.lock().expect("source requests");
     assert!(source_auth.iter().any(|value| value == "ApiKey source-key-one"));
     assert!(source_auth.iter().any(|value| value == "ApiKey source-key-two"));
-    let output_auth = output_requests.authorizations.lock().expect("output requests");
-    assert!(output_auth.iter().any(|value| value == "ApiKey monitoring-key-one"));
-    assert!(output_auth.iter().any(|value| value == "ApiKey monitoring-key-two"));
+    let bulk_requests = output.bulk_requests();
+    let (first_run, rerun_requests) = bulk_requests.split_at(first_requests);
+    assert!(!rerun_requests.is_empty(), "saved job must send bulk requests");
     assert!(
-        output_requests
-            .paths
-            .lock()
-            .expect("output paths")
+        first_run
             .iter()
-            .any(|path| path.ends_with("/_bulk"))
+            .all(|request| request.authorization.as_deref() == Some("ApiKey monitoring-key-one"))
+    );
+    assert!(
+        rerun_requests
+            .iter()
+            .all(|request| request.authorization.as_deref() == Some("ApiKey monitoring-key-two")),
+        "saved job must resolve the output key at run time"
+    );
+    assert!(
+        bulk_requests
+            .iter()
+            .flat_map(|request| &request.actions)
+            .all(|action| action.op == "create" && action.pipeline.as_deref() == Some("esdiag"))
     );
 
     source_server.abort();
-    output_server.abort();
 }
 
 fn run(
@@ -143,7 +157,6 @@ async fn mock_elasticsearch(cluster_name: &'static str) -> (String, Requests, to
 async fn elasticsearch_response(
     State((cluster_name, requests)): State<(&'static str, Requests)>,
     OriginalUri(uri): OriginalUri,
-    method: Method,
     headers: HeaderMap,
 ) -> Response<Body> {
     if let Some(value) = headers.get(header::AUTHORIZATION).and_then(|value| value.to_str().ok()) {
@@ -153,12 +166,6 @@ async fn elasticsearch_response(
             .expect("authorization requests")
             .push(value.to_string());
     }
-    requests
-        .paths
-        .lock()
-        .expect("request paths")
-        .push(uri.path().to_string());
-
     let value = if uri.path() == "/" {
         serde_json::json!({
             "name": format!("{cluster_name}-node"),
@@ -177,8 +184,6 @@ async fn elasticsearch_response(
             },
             "tagline": "You Know, for Search"
         })
-    } else if uri.path().ends_with("/_bulk") && method == Method::POST {
-        serde_json::json!({"errors": false, "items": [], "took": 1})
     } else if uri.path().contains("_cluster/health") {
         serde_json::json!({"cluster_name": cluster_name, "status": "green"})
     } else {
