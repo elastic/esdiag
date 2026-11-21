@@ -18,10 +18,9 @@ pub mod outcome;
 
 pub use executor::{FailedStage, JobExecutionFailure, JobOutcome};
 
-use crate::data::{Job as SavedJob, KnownHost, load_saved_jobs, save_saved_jobs};
+use crate::data::{Job as SavedJob, load_saved_jobs, save_saved_jobs};
 use crate::job::model::Input;
 use eyre::{Result, eyre};
-use std::io::IsTerminal;
 
 /// A saved-job lookup failed before execution began.
 ///
@@ -39,47 +38,6 @@ impl std::fmt::Display for SavedJobNotFound {
 }
 
 impl std::error::Error for SavedJobNotFound {}
-
-pub fn handle_job_list() -> Result<()> {
-    let jobs = load_saved_jobs()?;
-    if jobs.is_empty() {
-        return Ok(());
-    }
-
-    let hosts = KnownHost::parse_hosts_yml()?;
-
-    #[allow(clippy::literal_string_with_formatting_args)]
-    let header = format!(
-        "{:<24} {:<24} {:<16} {}",
-        "Name", "Collection target", "Processing", "Send target"
-    );
-    println!("{header}");
-    let separator: String = "-".repeat(80);
-    println!("{separator}");
-    let use_color = std::io::stdout().is_terminal();
-
-    for (name, job) in &jobs {
-        let collect_target = job.collect_host();
-        let stale = matches!(job.input(), Input::Collect { .. })
-            && !collect_target.is_empty()
-            && !hosts.contains_key(&collect_target);
-        let collect_display = if stale && use_color {
-            format!("\x1b[31m{collect_target}\x1b[0m")
-        } else {
-            collect_target.to_string()
-        };
-
-        let processing = job.processing_label();
-        let send_target = job.send_target_label();
-
-        println!(
-            "{:<24} {:<24} {:<16} {}",
-            name, collect_display, processing, send_target
-        );
-    }
-
-    Ok(())
-}
 
 pub async fn handle_job_run(name: &str) -> Result<JobOutcome> {
     let jobs = load_saved_jobs()?;
