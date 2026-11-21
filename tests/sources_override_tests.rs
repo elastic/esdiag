@@ -1,7 +1,7 @@
 use std::fs;
-use std::net::TcpListener;
 use std::path::Path;
 use std::process::{Command, Output};
+use tokio::net::TcpSocket;
 
 use tempfile::tempdir;
 
@@ -96,12 +96,14 @@ fn test_process_sources_override_accepts_matching_manifest_product() {
 
 fn run_collect_with_override(override_yaml: &str) -> Output {
     let home = tempdir().expect("temp home");
+    // Held until the command finishes so no other process can take the port.
+    let (_reserved, port) = closed_local_port();
     let hosts_path = home.path().join("hosts.yml");
     fs::write(
         &hosts_path,
         format!(
             "logstash-local:\n  auth: NoAuth\n  app: logstash\n  roles:\n    - collect\n  url: http://127.0.0.1:{}\n",
-            closed_local_port()
+            port
         ),
     )
     .expect("write hosts");
@@ -161,10 +163,15 @@ fn run_process_with_override(override_yaml: &str) -> Output {
     )
 }
 
-/// A loopback port with no listener: bind an ephemeral port, then release it.
-fn closed_local_port() -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
-    listener.local_addr().expect("ephemeral port address").port()
+/// A loopback port that refuses connections: bound but never listening, so the
+/// port stays reserved for as long as the returned socket is alive.
+fn closed_local_port() -> (TcpSocket, u16) {
+    let socket = TcpSocket::new_v4().expect("create socket");
+    socket
+        .bind("127.0.0.1:0".parse().expect("loopback address"))
+        .expect("bind ephemeral port");
+    let port = socket.local_addr().expect("ephemeral port address").port();
+    (socket, port)
 }
 
 fn parse_failure(output: &Output) -> serde_json::Value {

@@ -40,6 +40,9 @@ pub enum BulkReply {
     /// Explicit per-item results; one entry per action, each the inner item
     /// object (`status`, `_index`, `error`, `failure_store`, ...).
     Items(Vec<Value>),
+    /// Reject the whole request with a non-JSON body and no Elasticsearch
+    /// product header, as an intermediate proxy would.
+    Proxy(u16, &'static str),
 }
 
 /// Scripted answer for one `_doc` request. Requests beyond the script get
@@ -405,6 +408,12 @@ fn parse_bulk(path_index: &str, query: Option<&str>, body: &str) -> Result<(Vec<
                 number + 1
             )));
         }
+        let Value::Object(metadata) = metadata else {
+            return Err(malformed(format!(
+                "Malformed action/metadata line [{}], expected START_OBJECT",
+                number + 1
+            )));
+        };
         let index = metadata
             .get("_index")
             .and_then(Value::as_str)
@@ -467,6 +476,10 @@ async fn bulk(
     let reply = recorded.bulk_replies.pop_front().unwrap_or(BulkReply::Created);
     let items: Vec<Value> = match reply {
         BulkReply::Status(code) => return status_error(code),
+        BulkReply::Proxy(code, body) => {
+            let status = StatusCode::from_u16(code).expect("valid HTTP status");
+            return (status, body).into_response();
+        }
         BulkReply::Items(items) if items.len() != actions.len() => {
             return error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,

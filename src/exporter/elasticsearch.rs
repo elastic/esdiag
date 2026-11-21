@@ -938,7 +938,8 @@ mod tests {
 
     #[tokio::test]
     async fn request_too_large_reports_status_without_decoding_body() {
-        let (url, _mock) = mock_bulk_server(vec![BulkReply::Status(413)]).await;
+        // Proxies answer 413 with plain text; the status must be handled before any body decoding.
+        let (url, _mock) = mock_bulk_server(vec![BulkReply::Proxy(413, "request entity too large")]).await;
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
 
         let result = exporter
@@ -949,7 +950,10 @@ mod tests {
             Ok(_) => panic!("expected 413 to fail"),
             Err(err) => err,
         };
-        assert!(err.to_string().contains("http 413"), "unexpected error: {err}");
+        assert!(
+            err.to_string().contains("test-index - http 413 request too large"),
+            "unexpected error: {err}"
+        );
     }
 
     #[tokio::test]
