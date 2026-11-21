@@ -20,7 +20,7 @@
 use axum::{
     Json, Router,
     body::Bytes,
-    extract::{OriginalUri, Path, RawQuery, State},
+    extract::{DefaultBodyLimit, OriginalUri, Path, RawQuery, State},
     http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -28,6 +28,9 @@ use axum::{
 use serde_json::{Map, Value, json};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
+
+/// Elasticsearch's default `http.max_content_length` (100 MiB).
+const ES_MAX_CONTENT_LENGTH: usize = 100 * 1024 * 1024;
 
 /// Scripted answer for one `_bulk` request. Requests beyond the script get
 /// [`BulkReply::Created`].
@@ -163,7 +166,9 @@ impl ElasticsearchMock {
         let routes = Router::new()
             .route(&format!("{prefix}/"), get(root))
             .route(&format!("{prefix}/{{index}}/_bulk"), post(bulk))
-            .route(&format!("{prefix}/{{index}}/_doc"), post(doc));
+            .route(&format!("{prefix}/{{index}}/_doc"), post(doc))
+            // Elasticsearch's default `http.max_content_length`, not axum's 2 MiB.
+            .layer(DefaultBodyLimit::max(ES_MAX_CONTENT_LENGTH));
         if prefix.is_empty() {
             routes
         } else {

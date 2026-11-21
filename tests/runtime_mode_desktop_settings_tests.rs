@@ -45,6 +45,15 @@ fn element_tag<'a>(html: &'a str, id: &str) -> Option<&'a str> {
     Some(&html[open..close])
 }
 
+/// Whether `tag` carries the attribute `name`, with or without a value. Quoted values are
+/// skipped so their contents cannot be mistaken for attribute names.
+fn has_attribute(tag: &str, name: &str) -> bool {
+    tag.split('"')
+        .step_by(2)
+        .flat_map(str::split_whitespace)
+        .any(|token| token.split('=').next() == Some(name))
+}
+
 /// Requests the settings modal and returns whether the output-target control in the modal patch
 /// pushed over the browser's event stream is disabled.
 async fn pushed_target_select_disabled(client: &Client, base: &str, identity: Option<(&str, &str)>) -> bool {
@@ -78,7 +87,7 @@ async fn pushed_target_select_disabled(client: &Client, base: &str, identity: Op
     .await
     .expect("settings modal was not pushed within five seconds");
 
-    tag.split_whitespace().any(|token| token == "disabled")
+    has_attribute(&tag, "disabled")
 }
 
 #[tokio::test]
