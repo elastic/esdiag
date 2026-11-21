@@ -3376,53 +3376,6 @@ struct EsdiagLocalPreset {
     apikey: Option<String>,
 }
 
-#[cfg(test)]
-fn local_stack_outcome(command: String, args: &[OsString]) -> CliOutcome {
-    let state_dir = args
-        .iter()
-        .enumerate()
-        .find_map(|(index, argument)| {
-            if argument == "--state-dir" {
-                args.get(index + 1).cloned().map(PathBuf::from)
-            } else {
-                argument
-                    .to_str()
-                    .and_then(|argument| argument.strip_prefix("--state-dir="))
-                    .map(PathBuf::from)
-            }
-        })
-        .or_else(|| std::env::var_os("ESDIAG_LOCAL_DIR").map(PathBuf::from))
-        .or_else(default_esdiag_local_state_dir);
-    let values = state_dir
-        .and_then(|dir| std::fs::read_to_string(dir.join(".env")).ok())
-        .map(|contents| {
-            contents
-                .lines()
-                .filter_map(|line| line.split_once('='))
-                .map(|(key, value)| (key.to_string(), value.to_string()))
-                .collect::<std::collections::HashMap<_, _>>()
-        });
-    let mode = values
-        .as_ref()
-        .and_then(|values| values.get("STACK_MODE"))
-        .map(ToString::to_string);
-    let esdiag_url = values
-        .as_ref()
-        .and_then(|values| values.get("ESDIAG_PORT"))
-        .map(|port| format!("http://127.0.0.1:{port}"));
-    let kibana_url = values
-        .as_ref()
-        .and_then(|values| values.get("ESDIAG_KIBANA_PORT"))
-        .map(|port| format!("http://127.0.0.1:{port}"));
-    CliOutcome::LocalStack {
-        command,
-        mode,
-        native_service: None,
-        esdiag_url,
-        kibana_url,
-    }
-}
-
 fn detected_esdiag_local_preset() -> Option<EsdiagLocalPreset> {
     if std::env::var("ESDIAG_CONTAINER_LOCAL_STACK").ok().as_deref() == Some("full") {
         let elasticsearch_url = std::env::var("ESDIAG_OUTPUT_URL").ok()?;
@@ -3861,42 +3814,6 @@ fn format_remaining_duration_from(now_epoch: i64, expires_at_epoch: i64) -> Stri
     } else {
         format!("{minutes}m remaining")
     }
-}
-
-#[cfg(test)]
-fn format_keystore_lock_status(status: &esdiag::data::UnlockStatus) -> String {
-    format_keystore_lock_status_at(chrono::Utc::now().timestamp(), status)
-}
-
-#[cfg(test)]
-fn format_keystore_lock_status_at(now_epoch: i64, status: &esdiag::data::UnlockStatus) -> String {
-    if status.unlock_active {
-        if let Some(expires_at_epoch) = status.expires_at_epoch {
-            return format!(
-                "Keystore: unlocked until {} ({})",
-                format_epoch(expires_at_epoch),
-                format_remaining_duration_from(now_epoch, expires_at_epoch)
-            );
-        }
-        return "Keystore: unlocked".to_string();
-    }
-
-    "Keystore: locked".to_string()
-}
-
-#[cfg(test)]
-fn colorize_keystore_lock_status(status: &str, colorize: bool) -> String {
-    if !colorize {
-        return status.to_string();
-    }
-
-    if status.contains("Keystore: unlocked") {
-        return status.replacen("unlocked", "\x1b[32munlocked\x1b[0m", 1);
-    }
-    if status.contains("Keystore: locked") {
-        return status.replacen("locked", "\x1b[31mlocked\x1b[0m", 1);
-    }
-    status.to_string()
 }
 
 fn ensure_host_role(host: &KnownHost, role: HostRole, context: &str) -> Result<()> {
@@ -4338,12 +4255,11 @@ mod tests {
     };
     use super::{
         Cli, Commands, ConfiguredDefaultJob, HostCommands, KeystoreCommands, SetupCommands, classify_failure,
-        cli_command, colorize_keystore_lock_status, command_owns_stdout, configured_default_job,
-        default_diagnostic_user_from, detected_esdiag_local_preset, elastic_cli_help_text,
-        ensure_output_deployment_valid, format_keystore_lock_status, format_keystore_lock_status_at,
+        cli_command, command_owns_stdout, configured_default_job, default_diagnostic_user_from,
+        detected_esdiag_local_preset, elastic_cli_help_text, ensure_output_deployment_valid,
         format_remaining_duration_from, host_connection_uses_receiver, is_agent_mode, keep_default_job,
-        local_core_stack_start_args, local_stack_outcome, missing_extension_process_input,
-        needs_processing_default_job, resolve_add_host_secret_auth, resolve_host_secret_auth, resolve_log_file_filter,
+        local_core_stack_start_args, missing_extension_process_input, needs_processing_default_job,
+        resolve_add_host_secret_auth, resolve_host_secret_auth, resolve_log_file_filter,
         resolve_secret_input_with_prompt, resolve_tracing_filter, saved_job_fits_workflow,
         should_error_for_missing_subcommand, should_run_output_setup, should_start_local_core_stack,
         structured_failure, validate_extension_profile,
@@ -4353,9 +4269,7 @@ mod tests {
     #[cfg(feature = "server")]
     use super::{resolve_serve_bind, resolve_serve_exporter, resolve_serve_runtime_mode};
     use clap::{FromArgMatches, Parser, error::ErrorKind};
-    use esdiag::data::{
-        Application, HostRole, KnownHost, KnownHostCliUpdate, SecretAuth, UnlockStatus, Uri, upsert_secret_auth,
-    };
+    use esdiag::data::{Application, HostRole, KnownHost, KnownHostCliUpdate, SecretAuth, Uri, upsert_secret_auth};
     #[cfg(feature = "server")]
     use esdiag::server::RuntimeMode;
     #[cfg(feature = "agent")]
@@ -5575,35 +5489,6 @@ mod tests {
         assert_eq!(preset.kibana_url, "http://localhost:15601");
         assert_eq!(preset.kibana_api_url, "http://localhost:15601");
         assert_eq!(preset.apikey.as_deref(), Some("local-key"));
-        let outcome = serde_json::to_string(&local_stack_outcome("status".to_string(), &[OsString::from("status")]))
-            .expect("serialize local outcome");
-        assert!(outcome.contains("\"mode\":\"core\""));
-        assert!(outcome.contains("http://127.0.0.1:12501"));
-        assert!(!outcome.contains("local-key"));
-
-        let forwarded_state = TempDir::new().expect("temporary forwarded local state");
-        std::fs::write(
-            forwarded_state.path().join(".env"),
-            "STACK_MODE=full\nESDIAG_PORT=22501\nESDIAG_KIBANA_PORT=25601\n",
-        )
-        .expect("write forwarded local state");
-        for args in [
-            vec![
-                OsString::from("status"),
-                OsString::from("--state-dir"),
-                forwarded_state.path().as_os_str().to_os_string(),
-            ],
-            vec![
-                OsString::from("status"),
-                OsString::from(format!("--state-dir={}", forwarded_state.path().display())),
-            ],
-        ] {
-            let outcome = serde_json::to_string(&local_stack_outcome("status".to_string(), &args))
-                .expect("serialize forwarded local outcome");
-            assert!(outcome.contains("\"mode\":\"full\""));
-            assert!(outcome.contains("http://127.0.0.1:22501"));
-            assert!(outcome.contains("http://127.0.0.1:25601"));
-        }
 
         std::fs::write(state.path().join(".env"), "STACK_MODE=unknown\n").expect("write unsupported state");
         assert!(detected_esdiag_local_preset().is_none());
@@ -5720,54 +5605,18 @@ mod tests {
     }
 
     #[test]
-    fn keystore_status_reports_locked_state() {
-        let status = UnlockStatus {
-            keystore_exists: true,
-            unlock_active: false,
-            expires_at_epoch: None,
-            unlock_path: std::path::PathBuf::from("/tmp/keystore.unlock"),
-        };
+    fn structured_failure_never_serializes_secret_bearing_error_chains() {
+        let error = eyre::Report::new(std::io::Error::other("api_key=very-secret: nested cause"))
+            .wrap_err("authorization header ApiKey very-secret-too was rejected");
 
-        assert_eq!(format_keystore_lock_status(&status), "Keystore: locked");
-    }
+        let failure = structured_failure(&error);
+        let json = serde_json::to_string(&failure).expect("serialize failure");
+        let yaml = yaml_serde::to_string(&failure).expect("serialize failure as YAML");
 
-    #[test]
-    fn keystore_status_reports_unlock_expiry() {
-        let status = UnlockStatus {
-            keystore_exists: true,
-            unlock_active: true,
-            expires_at_epoch: Some(1_700_003_660),
-            unlock_path: std::path::PathBuf::from("/tmp/keystore.unlock"),
-        };
-
-        assert_eq!(
-            format_keystore_lock_status_at(1_700_000_000, &status),
-            "Keystore: unlocked until 2023-11-14T23:14:20+00:00 (1h 1m remaining)"
-        );
-    }
-
-    #[test]
-    fn keystore_status_colorizes_locked_state_when_enabled() {
-        assert_eq!(
-            colorize_keystore_lock_status("Keystore: locked", true),
-            "Keystore: \u{1b}[31mlocked\u{1b}[0m"
-        );
-    }
-
-    #[test]
-    fn keystore_status_colorizes_unlocked_state_when_enabled() {
-        assert_eq!(
-            colorize_keystore_lock_status("Keystore: unlocked until later", true),
-            "Keystore: \u{1b}[32munlocked\u{1b}[0m until later"
-        );
-    }
-
-    #[test]
-    fn keystore_status_leaves_plain_text_when_color_disabled() {
-        assert_eq!(
-            colorize_keystore_lock_status("Keystore: locked", false),
-            "Keystore: locked"
-        );
+        for rendered in [json, yaml] {
+            assert!(!rendered.contains("very-secret"), "secret leaked: {rendered}");
+            assert!(!rendered.contains("nested cause"), "error chain leaked: {rendered}");
+        }
     }
 
     #[test]
@@ -6088,43 +5937,20 @@ mod tests {
 
     #[cfg(feature = "server")]
     #[test]
-    fn serve_bind_defaults_to_loopback() {
-        unsafe {
-            std::env::remove_var("ESDIAG_BIND");
-        }
-
+    fn serve_bind_resolves_flag_env_and_loopback_default() {
+        let mut env = TestEnv::new();
+        env.remove("ESDIAG_BIND");
         assert_eq!(resolve_serve_bind(None).expect("resolve bind"), Ipv4Addr::LOCALHOST);
-    }
 
-    #[cfg(feature = "server")]
-    #[test]
-    fn serve_bind_uses_env_when_flag_missing() {
-        unsafe {
-            std::env::set_var("ESDIAG_BIND", "0.0.0.0");
-        }
+        env.set("ESDIAG_BIND", "0.0.0.0");
+        assert_eq!(resolve_serve_bind(None).expect("resolve bind"), Ipv4Addr::UNSPECIFIED);
+        assert_eq!(
+            resolve_serve_bind(Some(Ipv4Addr::LOCALHOST)).expect("resolve bind"),
+            Ipv4Addr::LOCALHOST
+        );
 
-        let env_bind = resolve_serve_bind(None).expect("resolve bind");
-        let flag_bind = resolve_serve_bind(Some(Ipv4Addr::LOCALHOST)).expect("resolve bind");
-
-        unsafe {
-            std::env::remove_var("ESDIAG_BIND");
-        }
-        assert_eq!(env_bind, Ipv4Addr::UNSPECIFIED);
-        assert_eq!(flag_bind, Ipv4Addr::LOCALHOST);
-    }
-
-    #[cfg(feature = "server")]
-    #[test]
-    fn serve_bind_rejects_invalid_env() {
-        unsafe {
-            std::env::set_var("ESDIAG_BIND", "localhost");
-        }
-
+        env.set("ESDIAG_BIND", "localhost");
         let err = resolve_serve_bind(None).expect_err("invalid bind");
-
-        unsafe {
-            std::env::remove_var("ESDIAG_BIND");
-        }
         assert!(err.to_string().contains("ESDIAG_BIND"));
     }
 

@@ -35,6 +35,11 @@ pub mod setup;
 /// Host desktop browser and clipboard integration, including WSL.
 pub mod system_integration;
 
+/// Elasticsearch mock shared with the integration tests.
+#[cfg(test)]
+#[path = "../tests/common/elasticsearch.rs"]
+pub(crate) mod es_mock;
+
 /// Private to `TestEnv`, which is the only supported way to take it. Callers
 /// that locked it directly used `.expect()`, so a panicking test poisoned the
 /// mutex and every later environment test failed with `PoisonError` instead of

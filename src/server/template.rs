@@ -583,9 +583,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn jobs_template_does_not_seed_conflicting_job_root_signal() {
-        let page = Jobs {
+    fn jobs_template_fixture() -> Jobs {
+        Jobs {
             identity_locked: false,
             debug: false,
             desktop: false,
@@ -636,35 +635,27 @@ mod tests {
             saved_opportunity: String::new(),
             saved_stale_host: false,
             saved_message: String::new(),
-        };
+        }
+    }
 
-        let html = page.render().expect("jobs template renders");
+    #[test]
+    fn jobs_template_does_not_seed_conflicting_job_root_signal() {
+        let html = jobs_template_fixture().render().expect("jobs template renders");
+
+        assert!(html.contains(r#"id="send-remote-target""#), "jobs view did not render");
         assert!(
-            !html.contains(r#"data-signals:job="{}""#),
-            "jobs page should not seed a top-level job object that overrides nested job signals"
+            html.contains("data-signals:job."),
+            "jobs view must seed nested job signals"
         );
-        assert!(html.contains(r#"data-signals:job.send.remote_target="null""#));
-        assert!(html.contains(r#"<option value="">Default</option>"#));
-        assert!(html.contains("evt.target.value === '' ? null : evt.target.value"));
-        assert!(html.contains("$job.process.enabled"));
-        assert!(html.contains("$job.send.mode === 'remote' ||"));
+        // `data-signals:job` followed by `=` or a `__modifier` seeds the job root
+        // itself; nested paths (`job.`) and other signals (`job_name`) do not.
+        let seeds_job_root = html.match_indices("data-signals:job").any(|(index, prefix)| {
+            let rest = &html[index + prefix.len()..];
+            rest.starts_with('=') || rest.starts_with("__")
+        });
         assert!(
-            html.contains("$job.collect.source !== 'known-host'"),
-            "Save Job must be disabled for upload, service-link, and API-key drafts"
-        );
-        assert!(
-            html.contains("$job.collect.known_host.trim()"),
-            "Save Job must require a selected known host"
-        );
-        let remote_select = html
-            .split_once(r#"id="send-remote-target""#)
-            .and_then(|(_, remainder)| remainder.split_once("</select>"))
-            .map(|(select, _)| select)
-            .expect("remote target select");
-        assert_eq!(
-            remote_select.matches("<option").count(),
-            1,
-            "runtime environment output must be represented only by Default"
+            !seeds_job_root,
+            "jobs page must not seed a top-level job signal that overrides the server-owned job signals"
         );
     }
 

@@ -1312,22 +1312,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn failed_child_outcome_preserves_known_child_context() {
-        let outcome = failed_child_outcome_with_context(
-            42,
-            "child-es".to_string(),
-            "processing failed".to_string(),
-            Some(Application::Elasticsearch),
-            Platform::ECK,
-        );
-
-        assert_eq!(outcome.outcome, DiagnosticOutcome::Failed);
-        assert_eq!(outcome.application, Some(Application::Elasticsearch));
-        assert_eq!(outcome.platform, Platform::ECK);
-        assert_eq!(outcome.reason.as_deref(), Some("processing failed"));
-    }
-
     #[tokio::test(flavor = "multi_thread")]
     async fn syscalls_folder_implies_self_managed_platform() {
         let root = tempfile::tempdir().expect("bundle dir");

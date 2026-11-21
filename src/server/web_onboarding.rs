@@ -1162,36 +1162,140 @@ mod tests {
         assert!(model.show_complete);
     }
 
-    #[test]
-    fn output_stage_never_renders_a_submitted_api_key() {
-        let html = Welcome {
-            stage: "output".to_string(),
-            user: "operator@example.com".to_string(),
-            workflow_value: "process-existing".to_string(),
-            processes_diagnostics: true,
-            show_cluster: true,
-            keystore_ready: true,
-            keystore_unlocked: true,
-            message: "saved".to_string(),
-            ..Welcome::default()
-        }
-        .render()
-        .expect("render output stage");
+    /// Serves `/` for Elasticsearch or `/api/status` for Kibana. Like a secured
+    /// cluster, it answers only requests carrying `expected_authorization` and
+    /// rejects the rest with a 401 `security_exception`. Every request is
+    /// recorded as `product path authorization`.
+    async fn secured_endpoint(
+        product: &'static str,
+        expected_authorization: String,
+        requests: std::sync::Arc<parking_lot::Mutex<Vec<String>>>,
+    ) -> String {
+        use axum::{Router, body::Body, http::Request, http::StatusCode, response::IntoResponse};
+        let app = Router::new().fallback(move |request: Request<Body>| {
+            let expected_authorization = expected_authorization.clone();
+            let requests = requests.clone();
+            async move {
+                let path = request.uri().path().to_string();
+                let authorization = request
+                    .headers()
+                    .get("authorization")
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default()
+                    .to_string();
+                requests.lock().push(format!("{product} {path} {authorization}"));
+                let (status, body) = if authorization != expected_authorization {
+                    (
+                        StatusCode::UNAUTHORIZED,
+                        r#"{"error":{"type":"security_exception","reason":"unable to authenticate"},"status":401}"#,
+                    )
+                } else {
+                    match (product, path.as_str()) {
+                        ("Elasticsearch", "/") => (
+                            StatusCode::OK,
+                            r#"{"name":"es-01","cluster_name":"output","version":{"number":"8.15.0","build_flavor":"default"},"tagline":"You Know, for Search"}"#,
+                        ),
+                        ("Kibana", "/api/status") => (
+                            StatusCode::OK,
+                            r#"{"name":"kibana-01","version":{"number":"8.15.0"},"status":{"overall":{"level":"available"}}}"#,
+                        ),
+                        _ => (StatusCode::NOT_FOUND, "{}"),
+                    }
+                };
+                (
+                    status,
+                    [("content-type", "application/json"), ("x-elastic-product", product)],
+                    body,
+                )
+                    .into_response()
+            }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        url
+    }
 
-        let local_action = html.find("/welcome/output/local").expect("local stack action");
-        let local_start = html[..local_action].rfind("<form").expect("local stack form start");
-        let local_end = local_action + html[local_action..].find("</form>").expect("local stack form end");
-        let local_form = &html[local_start..local_end];
-        assert!(html.contains(r#"aria-label="Choose a diagnostic cluster""#));
-        assert!(html.contains(r#"data-show="$welcome.outputLocation === 'local'""#));
-        assert!(html.contains(r#"data-show="$welcome.outputLocation === 'remote'""#));
-        assert!(html.contains("Starting Elasticsearch and Kibana…"));
-        assert!(html.contains(r#"class="spinner" aria-hidden="true""#));
-        assert!(html.contains(r#"class="neutral">Unknown</badge>"#));
-        assert!(!local_form.contains("api_key"));
-        assert!(!local_form.contains("output_url"));
-        assert!(html.contains(r#"type="password""#));
-        assert!(!html.contains("api-key-that-must-not-escape"));
+    #[tokio::test]
+    async fn output_stage_never_renders_a_submitted_api_key() {
+        const API_KEY: &str = "api-key-that-must-not-escape";
+        let mut env = crate::TestEnv::new();
+        for key in [
+            "ESDIAG_OUTPUT_URL",
+            "ESDIAG_KIBANA_URL",
+            "ESDIAG_KIBANA_PUBLIC_URL",
+            "ESDIAG_CONTAINER_LOCAL_STACK",
+        ] {
+            env.remove(key);
+        }
+        save_user("operator@example.com".to_string()).expect("save user");
+        save_workflow(OnboardingWorkflow::ProcessExisting).expect("save workflow");
+        authenticate("password").expect("create keystore");
+        let state = test_server_state();
+        state
+            .set_keystore_unlocked(redact::Secret::new("password".to_string()))
+            .await;
+        assert_eq!(
+            journey_model(&state).await.expect("journey model").stage,
+            WelcomeStage::Output
+        );
+
+        let requests = std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let expected_authorization = format!("ApiKey {API_KEY}");
+        let es_url = secured_endpoint("Elasticsearch", expected_authorization.clone(), requests.clone()).await;
+        let kibana_url = secured_endpoint("Kibana", expected_authorization.clone(), requests.clone()).await;
+        let mut events = state.subscribe_events();
+
+        let response = super::save_output(
+            axum::extract::State(state.clone()),
+            axum::extract::Form(super::OutputForm {
+                output_name: "diagnostic-output".to_string(),
+                output_url: es_url,
+                viewer_name: "diagnostic-viewer".to_string(),
+                viewer_url: kibana_url.clone(),
+                api_key: format!("  {API_KEY}  "),
+                replace: None,
+            }),
+        )
+        .await;
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read onboarding response");
+        let body = String::from_utf8(body.to_vec()).expect("UTF-8 response");
+        assert!(body.contains("event: datastar-patch-elements"), "{body}");
+        assert!(!body.contains(API_KEY), "{body}");
+        while let Ok(event) = events.try_recv() {
+            assert!(!format!("{event:?}").contains(API_KEY), "{event:?}");
+        }
+
+        // The trimmed key reached both endpoints, so the submission was validated.
+        let requests = requests.lock().clone();
+        assert!(
+            requests.contains(&format!("Elasticsearch / {expected_authorization}")),
+            "{requests:?}"
+        );
+        assert!(
+            requests.contains(&format!("Kibana /api/status {expected_authorization}")),
+            "{requests:?}"
+        );
+
+        // The output was saved by secret reference, never as plaintext.
+        assert_eq!(
+            journey_model(&state).await.expect("journey model").stage,
+            WelcomeStage::Complete
+        );
+        let output = crate::data::KnownHost::get_known(&"diagnostic-output".to_string()).expect("saved output host");
+        assert_eq!(output.secret_reference(), Some("diagnostic-output"));
+        assert!(!output.has_legacy_credential());
+        let hosts_yml = std::fs::read_to_string(&env.hosts_path).expect("read hosts.yml");
+        assert!(!hosts_yml.contains(API_KEY), "{hosts_yml}");
+        assert!(matches!(
+            *state.exporter.read().await,
+            crate::exporter::Exporter::Elasticsearch(_)
+        ));
+        assert_eq!(*state.kibana_url.read().await, format!("{kibana_url}/"));
     }
 
     #[test]

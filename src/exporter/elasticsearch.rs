@@ -619,92 +619,22 @@ async fn parse_response(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, routing::post};
+    use crate::es_mock::{BulkReply, DocReply, ElasticsearchMock};
     use serde_json::json;
-    use std::sync::Arc;
-    use tokio::net::TcpListener;
     use tokio::sync::Mutex;
 
-    /// Spin up a minimal Axum server that returns `status_sequence` in order,
-    /// falling back to 200 once the sequence is exhausted.
-    async fn mock_bulk_server(status_sequence: Vec<u16>) -> (Url, Arc<Mutex<usize>>) {
-        #[derive(Clone)]
-        struct MockState {
-            call_count: Arc<Mutex<usize>>,
-            statuses: Arc<Vec<u16>>,
-        }
-
-        async fn bulk_handler(State(state): State<MockState>) -> impl IntoResponse {
-            let idx = {
-                let mut c = state.call_count.lock().await;
-                let v = *c;
-                *c += 1;
-                v
-            };
-            let status = state.statuses.get(idx).copied().unwrap_or(200);
-            let body = match status {
-                200 => json!({
-                    "took": 1,
-                    "errors": false,
-                    "items": [{"create": {"_index": "test", "status": 201}}]
-                }),
-                429 => json!({
-                    "status": 429,
-                    "error": {
-                        "type": "es_rejected_execution_exception",
-                        "reason": "rejected execution of coordinating operation"
-                    }
-                }),
-                _ => json!({
-                    "status": status,
-                    "error": {"type": "error", "reason": "error"}
-                }),
-            };
-            (StatusCode::from_u16(status).unwrap(), axum::Json(body))
-        }
-
-        let call_count = Arc::new(Mutex::new(0usize));
-        let state = MockState {
-            call_count: call_count.clone(),
-            statuses: Arc::new(status_sequence),
-        };
-
-        let app = Router::new().route("/{*path}", post(bulk_handler)).with_state(state);
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-
-        tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
-        });
-
-        let url = format!("http://{addr}").parse().unwrap();
-        (url, call_count)
+    /// Serve the shared Elasticsearch mock with scripted `_bulk` replies;
+    /// requests beyond the script create every document.
+    async fn mock_bulk_server(replies: Vec<BulkReply>) -> (Url, ElasticsearchMock) {
+        let mock = ElasticsearchMock::new().bulk_replies(replies);
+        let url = mock.serve().await.parse().unwrap();
+        (url, mock)
     }
 
-    async fn mock_bulk_server_raw(status: u16, body: &'static str) -> Url {
-        #[derive(Clone)]
-        struct MockState {
-            status: u16,
-            body: &'static str,
-        }
-
-        async fn bulk_handler(State(state): State<MockState>) -> impl IntoResponse {
-            (StatusCode::from_u16(state.status).unwrap(), state.body)
-        }
-
-        let app = Router::new()
-            .route("/{*path}", post(bulk_handler))
-            .with_state(MockState { status, body });
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-
-        tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
-        });
-
-        format!("http://{addr}").parse().unwrap()
+    async fn mock_doc_server(reply: DocReply) -> (Url, ElasticsearchMock) {
+        let mock = ElasticsearchMock::new().doc_replies([reply]);
+        let url = mock.serve().await.parse().unwrap();
+        (url, mock)
     }
 
     fn test_report() -> DiagnosticReport {
@@ -742,6 +672,8 @@ mod tests {
 
     #[tokio::test]
     async fn rerouted_failures_reach_the_diagnostic_report() {
+        // Bulk split settings are process-wide; other tests change them.
+        let _lock = ENV_LOCK.lock().await;
         let mut env = crate::TestEnv::new();
         env.set_path("ESDIAG_HOME", env.tmp.path().to_path_buf());
         std::fs::create_dir_all(env.tmp.path().join("last_run")).unwrap();
@@ -749,15 +681,12 @@ mod tests {
             ProcessorSummary,
             diagnostic::{DiagnosticMetadata, DiagnosticReportBuilder},
         };
-        let url = mock_bulk_server_raw(
-            200,
-            r#"{"items":[
-            {"create":{"_index":".ds-health-indicator-esdiag-2026.09.06-000001","status":201}},
-            {"create":{"_index":".ds-health-impact-esdiag-2026.09.06-000001","status":400,"error":{"type":"document_parsing_exception","reason":"Cannot write to a field alias [diagnostic.platform]"}}},
-            {"create":{"_index":"health-diagnosis-esdiag","status":400}},
-            {"create":{"_index":".fs-health-impact-esdiag-2026.09.06-000002","status":201,"failure_store":"used"}}
-        ]}"#,
-        )
+        let (url, mock) = mock_bulk_server(vec![BulkReply::Items(vec![
+            json!({"_index":".ds-health-indicator-esdiag-2026.09.06-000001","_id":"a","_version":1,"result":"created","status":201}),
+            json!({"_index":".ds-health-impact-esdiag-2026.09.06-000001","_id":"b","status":400,"error":{"type":"document_parsing_exception","reason":"Cannot write to a field alias [diagnostic.platform]"}}),
+            json!({"_index":"health-diagnosis-esdiag","_id":"c","status":400,"error":{"type":"illegal_argument_exception","reason":"only write ops with an op_type of create are allowed in data streams"}}),
+            json!({"_index":".fs-health-impact-esdiag-2026.09.06-000002","_id":"d","_version":1,"result":"created","status":201,"failure_store":"used"}),
+        ])])
         .await;
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
         let batch = exporter
@@ -766,6 +695,7 @@ mod tests {
             .unwrap();
         assert_eq!(batch.docs, 1);
         assert_eq!(batch.errors, 3);
+        assert_eq!(mock.bulk_requests()[0].documents.len(), 4);
         let mut summary = ProcessorSummary::new("health-indicator-esdiag".into());
         summary.add_batch(batch);
         // Include a request failure with no resolved destination.
@@ -799,11 +729,7 @@ mod tests {
     async fn save_report_failure_store_capture_is_not_report_success() {
         let mut env = crate::TestEnv::new();
         env.set_path("ESDIAG_HOME", env.tmp.path().to_path_buf());
-        let url = mock_bulk_server_raw(
-            201,
-            r#"{"_index":".fs-metrics-diagnostic-esdiag-2026.09.18-000001","failure_store":"used","error":{"message":"report rejected"}}"#,
-        )
-        .await;
+        let (url, mock) = mock_doc_server(DocReply::FailureStore).await;
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
 
         let error = exporter
@@ -819,13 +745,17 @@ mod tests {
             message.contains("error.message"),
             "missing failure-store inspection guidance: {message}"
         );
+        let requests = mock.doc_requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].index, "metrics-diagnostic-esdiag");
+        assert_eq!(requests[0].pipeline.as_deref(), Some("esdiag"));
     }
 
     #[tokio::test]
     async fn save_report_regular_http_and_transport_failures_are_errors() {
         let mut env = crate::TestEnv::new();
         env.set_path("ESDIAG_HOME", env.tmp.path().to_path_buf());
-        let url = mock_bulk_server_raw(400, r#"{"error":{"reason":"mapping rejected"}}"#).await;
+        let (url, _mock) = mock_doc_server(DocReply::Status(400)).await;
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
         let error = exporter
             .save_report(&test_report())
@@ -928,21 +858,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bulk_requests_create_documents_through_the_esdiag_pipeline() {
+        let _lock = ENV_LOCK.lock().await;
+        let (url, mock) = mock_bulk_server(vec![]).await;
+        let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
+        let docs = vec![json!({"x": 1}), json!({"x": 2}), json!({"x": 3})];
+
+        let response = exporter
+            .batch_send("metrics-node-esdiag".to_string(), docs.clone())
+            .await
+            .expect("bulk send");
+
+        assert_eq!(response.docs, 3);
+        assert_eq!(response.errors, 0);
+        let requests = mock.bulk_requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].path_index, "metrics-node-esdiag");
+        assert_eq!(requests[0].documents, docs);
+        for action in &requests[0].actions {
+            assert_eq!(action.op, "create", "data streams only accept create");
+            assert_eq!(action.index, "metrics-node-esdiag");
+            assert_eq!(action.pipeline.as_deref(), Some("esdiag"));
+        }
+    }
+
+    #[tokio::test]
     async fn retries_on_429_then_succeeds() {
         let _lock = ENV_LOCK.lock().await;
         let _env = RetryEnvGuard::set("5");
-        let (url, call_count) = mock_bulk_server(vec![429, 429, 200]).await;
+        let (url, mock) = mock_bulk_server(vec![BulkReply::Status(429), BulkReply::Status(429)]).await;
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
 
-        let result = exporter
+        let br = exporter
             .batch_send("test-index".to_string(), vec![json!({"x": 1})])
-            .await;
+            .await
+            .expect("retried send succeeds");
 
-        assert!(result.is_ok(), "expected Ok");
-        let br = result.unwrap();
         assert_eq!(br.retries, 2, "expected 2 retries");
+        assert_eq!(br.docs, 1);
         assert_eq!(br.errors, 0);
-        assert_eq!(*call_count.lock().await, 3, "expected 3 total attempts");
+        assert_eq!(mock.bulk_requests().len(), 3, "expected 3 total attempts");
     }
 
     #[tokio::test]
@@ -950,25 +905,27 @@ mod tests {
         let _lock = ENV_LOCK.lock().await;
         // max_retries=2 → 1 initial + 2 retries = 3 total, all 429
         let _env = RetryEnvGuard::set("2");
-        let (url, call_count) = mock_bulk_server(vec![429, 429, 429]).await;
+        let (url, mock) = mock_bulk_server(vec![BulkReply::Status(429); 3]).await;
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
 
         let docs = vec![json!({"a": 1}), json!({"b": 2})];
-        let result = exporter.batch_send("test-index".to_string(), docs).await;
+        let br = exporter
+            .batch_send("test-index".to_string(), docs)
+            .await
+            .expect("exhaustion should return Ok, not Err");
 
-        assert!(result.is_ok(), "exhaustion should return Ok, not Err");
-        let br = result.unwrap();
+        assert_eq!(br.docs, 0);
         assert_eq!(br.errors, 2, "all docs should be counted as errors");
         assert_eq!(br.retries, 2);
         assert_eq!(br.status_code, 429);
-        assert_eq!(*call_count.lock().await, 3, "expected 3 total attempts");
+        assert_eq!(mock.bulk_requests().len(), 3, "expected 3 total attempts");
     }
 
     #[tokio::test]
     async fn fatal_status_not_retried() {
         let _lock = ENV_LOCK.lock().await;
         let _env = RetryEnvGuard::set("5");
-        let (url, call_count) = mock_bulk_server(vec![400]).await;
+        let (url, mock) = mock_bulk_server(vec![BulkReply::Status(400)]).await;
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
 
         let result = exporter
@@ -976,12 +933,13 @@ mod tests {
             .await;
 
         assert!(result.is_err(), "expected Err for 400");
-        assert_eq!(*call_count.lock().await, 1, "400 must not be retried");
+        assert_eq!(mock.bulk_requests().len(), 1, "400 must not be retried");
     }
 
     #[tokio::test]
     async fn request_too_large_reports_status_without_decoding_body() {
-        let url = mock_bulk_server_raw(413, "request entity too large").await;
+        // Proxies answer 413 with plain text; the status must be handled before any body decoding.
+        let (url, _mock) = mock_bulk_server(vec![BulkReply::Proxy(413, "request entity too large")]).await;
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
 
         let result = exporter
@@ -1002,7 +960,7 @@ mod tests {
     async fn split_send_preserves_successful_counts_after_later_fatal_error() {
         let _lock = ENV_LOCK.lock().await;
         let _env = BulkBytesEnvGuard::set("1");
-        let (url, call_count) = mock_bulk_server(vec![200, 413]).await;
+        let (url, mock) = mock_bulk_server(vec![BulkReply::Created, BulkReply::Status(413)]).await;
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
 
         let result = exporter
@@ -1019,7 +977,7 @@ mod tests {
         // HTTP request never completed: 599 sentinel, never 0 (ADR-0016)
         assert_eq!(result.status_code, BatchResponse::HTTP_REQUEST_NOT_COMPLETED);
         assert_eq!(
-            *call_count.lock().await,
+            mock.bulk_requests().len(),
             2,
             "remaining docs should not be sent after fatal error"
         );
@@ -1027,7 +985,7 @@ mod tests {
 
     #[tokio::test]
     async fn batch_tx_reports_failed_batch_response() {
-        let url = mock_bulk_server_raw(413, "request entity too large").await;
+        let (url, _mock) = mock_bulk_server(vec![BulkReply::Status(413)]).await;
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
 
         let rx = exporter
@@ -1045,57 +1003,67 @@ mod tests {
     async fn exporter_send_splits_bulk_requests_by_configured_size() {
         let _lock = ENV_LOCK.lock().await;
         let _env = BulkBytesEnvGuard::set("104857600");
-        let (url, call_count) = mock_bulk_server(vec![200, 200]).await;
+        let (url, mock) = mock_bulk_server(vec![]).await;
         let exporter =
             crate::exporter::Exporter::Elasticsearch(ElasticsearchExporter::try_new(url, Auth::None).unwrap());
         let docs = (0..=crate::env::ESDIAG_ES_BULK_SIZE)
             .map(|id| json!({ "x": id }))
             .collect::<Vec<_>>();
+        let total = docs.len();
 
-        let result = exporter.send("test-index".to_string(), docs).await;
+        let result = exporter.send("test-index".to_string(), docs).await.expect("split send");
 
-        assert!(result.is_ok(), "expected split send to succeed");
-        assert_eq!(result.unwrap().batch_count, 2);
-        assert_eq!(*call_count.lock().await, 2, "expected two bulk requests");
+        assert_eq!(result.batch_count, 2);
+        assert_eq!(result.docs as usize, total);
+        let requests = mock.bulk_requests();
+        assert_eq!(requests.len(), 2, "expected two bulk requests");
+        assert_eq!(requests[0].documents.len(), crate::env::ESDIAG_ES_BULK_SIZE);
+        assert_eq!(requests[1].documents.len(), 1);
     }
 
     #[tokio::test]
     async fn exporter_send_splits_bulk_requests_by_estimated_bytes() {
         let _lock = ENV_LOCK.lock().await;
         let _env = BulkBytesEnvGuard::set("1");
-        let (url, call_count) = mock_bulk_server(vec![200, 200, 200]).await;
+        let (url, mock) = mock_bulk_server(vec![]).await;
         let exporter =
             crate::exporter::Exporter::Elasticsearch(ElasticsearchExporter::try_new(url, Auth::None).unwrap());
         let docs = vec![json!({"x": "a"}), json!({"x": "b"}), json!({"x": "c"})];
 
-        let result = exporter.send("test-index".to_string(), docs).await;
+        let result = exporter
+            .send("test-index".to_string(), docs)
+            .await
+            .expect("byte split send");
 
-        assert!(result.is_ok(), "expected byte split send to succeed");
-        assert_eq!(result.unwrap().batch_count, 3);
-        assert_eq!(*call_count.lock().await, 3, "expected three bulk requests");
+        assert_eq!(result.batch_count, 3);
+        assert_eq!(result.docs, 3);
+        assert_eq!(mock.bulk_requests().len(), 3, "expected three bulk requests");
     }
 
     #[tokio::test]
     async fn exporter_send_allows_disabling_byte_splitting() {
         let _lock = ENV_LOCK.lock().await;
         let _env = BulkBytesEnvGuard::set("0");
-        let (url, call_count) = mock_bulk_server(vec![200]).await;
+        let (url, mock) = mock_bulk_server(vec![]).await;
         let exporter =
             crate::exporter::Exporter::Elasticsearch(ElasticsearchExporter::try_new(url, Auth::None).unwrap());
         let docs = vec![json!({"x": "a"}), json!({"x": "b"}), json!({"x": "c"})];
 
-        let result = exporter.send("test-index".to_string(), docs).await;
+        let result = exporter
+            .send("test-index".to_string(), docs)
+            .await
+            .expect("byte-disabled send");
 
-        assert!(result.is_ok(), "expected byte-disabled send to succeed");
-        assert_eq!(result.unwrap().batch_count, 1);
-        assert_eq!(*call_count.lock().await, 1, "expected one bulk request");
+        assert_eq!(result.batch_count, 1);
+        assert_eq!(result.docs, 3);
+        assert_eq!(mock.bulk_requests().len(), 1, "expected one bulk request");
     }
 
     #[tokio::test]
     async fn exporter_send_reports_single_batch_send_failure() {
         let _lock = ENV_LOCK.lock().await;
         let _env = BulkBytesEnvGuard::set("0");
-        let (url, call_count) = mock_bulk_server(vec![413]).await;
+        let (url, mock) = mock_bulk_server(vec![BulkReply::Status(413)]).await;
         let exporter =
             crate::exporter::Exporter::Elasticsearch(ElasticsearchExporter::try_new(url, Auth::None).unwrap());
         let docs = vec![json!({"x": "a"}), json!({"x": "b"})];
@@ -1109,6 +1077,6 @@ mod tests {
         assert_eq!(response.errors, 2);
         assert_eq!(response.batch_count, 1);
         assert_eq!(response.status_code, BatchResponse::HTTP_REQUEST_NOT_COMPLETED);
-        assert_eq!(*call_count.lock().await, 1, "expected one bulk request");
+        assert_eq!(mock.bulk_requests().len(), 1, "expected one bulk request");
     }
 }
