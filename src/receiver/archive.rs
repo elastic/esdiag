@@ -6,8 +6,8 @@ use crate::processor::{
     DataSource, SourceContext, StreamingDataSource,
     diagnostic::{DiagnosticManifest, Manifest},
 };
-use crate::receiver::{MissingSource, SourceInstance, is_source_instance_path};
-use eyre::{Result, WrapErr};
+use crate::receiver::{MissingSource, SourceInstance, is_source_instance_path, source_has_json};
+use eyre::{Result, WrapErr, eyre};
 use futures::stream::{self, BoxStream};
 use serde::de::DeserializeOwned;
 use std::{
@@ -22,14 +22,18 @@ use zip::ZipArchive;
 
 mod bytes;
 mod file;
+mod scrub;
 
 pub use bytes::*;
 pub use file::*;
+pub(crate) use scrub::with_normalized_json_reader;
+pub use scrub::{normalize_supported_content, supports_json_normalization};
 
 pub fn get_all_from_archive<R, T>(
     archive: &mut ZipArchive<R>,
     subdir: Option<&PathBuf>,
     ctx: &SourceContext,
+    scrubbed: bool,
 ) -> Result<Vec<SourceInstance<T>>>
 where
     R: Read + Seek,
@@ -63,13 +67,13 @@ where
     Ok(filenames
         .into_iter()
         .map(|(path, filename)| SourceInstance {
-            data: read_archive_source(archive, filename),
+            data: read_archive_source(archive, filename, scrubbed),
             path,
         })
         .collect())
 }
 
-fn read_archive_source<R, T>(archive: &mut ZipArchive<R>, filename: String) -> Result<T>
+fn read_archive_source<R, T>(archive: &mut ZipArchive<R>, filename: String, scrubbed: bool) -> Result<T>
 where
     R: Read + Seek,
     T: DataSource + DeserializeOwned,
@@ -77,14 +81,14 @@ where
     let file = archive
         .by_name(&filename)
         .wrap_err_with(|| format!("Failed to read {filename} from archive"))?;
-    let mut contents = String::new();
-    BufReader::new(file)
-        .read_to_string(&mut contents)
-        .wrap_err_with(|| format!("Failed to read {filename} for {}", T::name()))?;
-    if contents.trim().is_empty() {
+    let mut reader = BufReader::new(file);
+    if !source_has_json(&mut reader).wrap_err_with(|| format!("Failed to read {filename} for {}", T::name()))? {
         return Err(MissingSource::Empty { path: filename }.into());
     }
-    serde_json::from_str(&contents).wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()))
+    with_normalized_json_reader(&filename, reader, scrubbed, |reader| {
+        serde_json::from_reader(reader).map_err(Into::into)
+    })
+    .wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()))
 }
 
 fn strip_archive_root<'a>(filename: &'a str, root: &str) -> Option<&'a str> {
@@ -132,10 +136,65 @@ impl<R> DerefMut for IndexedArchive<R> {
     }
 }
 
+#[derive(Clone, Copy)]
+enum ArchiveOpeningError {
+    Zip,
+    MemoryContext,
+}
+
+fn get_from_archive<R, T>(
+    archive: &mut IndexedArchive<R>,
+    subdir: Option<&PathBuf>,
+    ctx: &SourceContext,
+    scrubbed: bool,
+    opening_error: ArchiveOpeningError,
+) -> Result<T>
+where
+    R: Read + Seek,
+    T: DeserializeOwned + DataSource,
+{
+    let source_paths = T::candidate_source_file_paths(ctx)?;
+    let mut last_resolve_error = None;
+
+    for source_path in source_paths {
+        let filename = match resolve_archive_path(subdir, archive, &source_path) {
+            Ok(filename) => filename,
+            Err(error) => {
+                last_resolve_error = Some(error);
+                continue;
+            }
+        };
+        if scrubbed {
+            tracing::debug!("Reading {} (scrubbed mode)", filename);
+        } else {
+            tracing::debug!("Reading {}", filename);
+        }
+        let file = archive.by_name(&filename).map_err(|error| match opening_error {
+            ArchiveOpeningError::Zip => eyre::Report::from(error),
+            ArchiveOpeningError::MemoryContext => eyre!("Failed to read file {filename} from archive"),
+        })?;
+        let mut reader = BufReader::new(file);
+        if !source_has_json(&mut reader)? {
+            last_resolve_error = Some(MissingSource::Empty { path: filename }.into());
+            continue;
+        }
+        return with_normalized_json_reader(&filename, reader, scrubbed, |reader| {
+            Ok(serde_json::from_reader(reader)?)
+        })
+        .wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()));
+    }
+
+    match last_resolve_error {
+        Some(error) => Err(error),
+        None => Err(MissingSource::NoCandidates { source: T::name() }.into()),
+    }
+}
+
 pub async fn get_stream_from_archive<R, T>(
     archive: Arc<RwLock<IndexedArchive<R>>>,
     subdir: Option<PathBuf>,
     ctx: SourceContext,
+    scrubbed: bool,
 ) -> Result<BoxStream<'static, Result<T::Item>>>
 where
     R: Read + Seek + Send + Sync + 'static,
@@ -164,11 +223,10 @@ where
 
         tracing::debug!("Streaming from archive: {}", filename);
         let stream_result = match archive_guard.by_name(&filename) {
-            Ok(file) => {
-                let reader = BufReader::new(file);
+            Ok(file) => with_normalized_json_reader(&filename, BufReader::new(file), scrubbed, |reader| {
                 let mut deserializer = serde_json::Deserializer::from_reader(reader);
                 T::deserialize_stream(&mut deserializer, tx.clone()).map_err(|e| eyre::eyre!(e.to_string()))
-            }
+            }),
             Err(e) => Err(eyre::eyre!(e)),
         };
 

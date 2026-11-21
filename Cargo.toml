@@ -80,6 +80,7 @@ zip = { version = "8.6.0", default-features = false, features = [
     "deflate-flate2",
 ] }
 yaml_serde = "0.10.7"
+tempfile = "3.27.0"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Threading"] }
@@ -96,11 +97,11 @@ tokio = { version = "1.53", features = [
     "rt-multi-thread",
     "macros",
     "time",
+    "test-util",
     "signal",
     "sync",
     "io-util",
 ] }
-tempfile = "3.27.0"
 
 [profile.dev]
 debug = "line-tables-only"
