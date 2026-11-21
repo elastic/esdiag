@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines how the ESDiag Cargo workspace is divided into crates: the crate layout and dependency direction, how the crates are published alongside `esdiag`, and the packaging, build-time, and compatibility guarantees maintainers and `cargo install` users rely on.
+Defines how the ESDiag Cargo workspace is divided into crates: the crate layout and dependency direction, how the crates are published alongside `esdiag`, and the packaging, rebuild-scope, and compatibility guarantees maintainers and `cargo install` users rely on.
 
 ## Requirements
 
@@ -89,32 +89,6 @@ An edit confined to `esdiag-gui` SHALL NOT cause Cargo to recompile `esdiag-core
 - **WHEN** a maintainer modifies a source file in `esdiag-gui` and runs a debug build
 - **THEN** Cargo recompiles `esdiag-gui` and the root package
 - **AND** Cargo does not recompile `esdiag-core`
-
-### Requirement: Build Timing Is Measured And Gated
-The repository SHALL provide a build-timing script that measures incremental debug builds for named edit scenarios on the current host and reports the median of at least three runs per scenario. The scenarios SHALL include an edit in the web server, an edit in core processing code, an edit in the CLI binary, and a test build after a web server edit. A baseline SHALL be recorded from the commit before the split on the same host, and the results before and after SHALL be recorded in the pull request. The change SHALL NOT merge unless, compared with the baseline on the same host:
-
-- the web server edit `cargo build` median is at least 30% faster;
-- the core processing edit and CLI edit `cargo build` medians are no more than 10% slower;
-- the test build after a web server edit is not slower;
-- a clean `cargo build` is no more than 10% slower.
-
-#### Scenario: Timing script reports medians
-- **GIVEN** a repository checkout with a completed debug build
-- **WHEN** a maintainer runs the build-timing script
-- **THEN** it prints one median duration per scenario
-- **AND** it names the file it touched for each scenario
-- **AND** it leaves file contents unchanged
-
-#### Scenario: Server edits meet the improvement gate
-- **GIVEN** a recorded baseline and the extracted `esdiag-gui` crate on the same host
-- **WHEN** a maintainer runs the build-timing script
-- **THEN** the web server edit `cargo build` median is at least 30% lower than the baseline
-
-#### Scenario: Other edits meet the regression gate
-- **GIVEN** a recorded baseline and the extracted crates on the same host
-- **WHEN** a maintainer runs the build-timing script and a clean build
-- **THEN** the core processing edit, CLI edit, and clean build medians are each no more than 10% above the baseline
-- **AND** the test build after a web server edit is no slower than the baseline
 
 ### Requirement: User-Visible Behavior Is Preserved
 Splitting the workspace SHALL NOT change any user-visible behavior of the CLI, Web UI, desktop app, setup assets, or processed diagnostic output for Elasticsearch, Kibana, Logstash, or ECK. The released binary name SHALL remain `esdiag`.

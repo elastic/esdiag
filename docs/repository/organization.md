@@ -65,8 +65,6 @@ graph TD
 
 `esdiag-core` and `esdiag-gui` are published to crates.io with every `esdiag` release at the same version, so `cargo install esdiag` works; they have no supported public API. The files they embed stay in their canonical locations (`assets/`, `.agents/skills/esdiag/`, `docs/`). Each crate's build script reads them there in a checkout, and from a gitignored `bundled/` copy, written by `bin/sync-crate-assets.sh`, when packaged.
 
-`bin/build-timings.sh` measures incremental debug builds for server, core, CLI, test, and clean scenarios on the current host.
-
 `esdiag-core` Layout
 --------------------
 
