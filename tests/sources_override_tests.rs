@@ -9,6 +9,9 @@ use tempfile::tempdir;
 /// appears on that failure, so its absence in the accept tests is meaningful.
 const SOURCES_VALIDATION_ERROR: &str = "valid logstash sources.yml";
 
+/// Override file name, passed relative to the child's working directory.
+const OVERRIDE_FILE: &str = "sources.yml";
+
 const MISMATCHED_OVERRIDE: &str = r#"version:
   versions:
     "> 5.0.0": "/"
@@ -109,8 +112,7 @@ fn run_collect_with_override(override_yaml: &str) -> Output {
     .expect("write hosts");
 
     let override_dir = tempdir().expect("override dir");
-    let override_path = override_dir.path().join("sources.yml");
-    fs::write(&override_path, override_yaml).expect("write override");
+    fs::write(override_dir.path().join(OVERRIDE_FILE), override_yaml).expect("write override");
 
     let output_dir = tempdir().expect("output dir");
     run_esdiag(
@@ -123,9 +125,10 @@ fn run_collect_with_override(override_yaml: &str) -> Output {
             "--type",
             "minimal",
             "--sources",
-            override_path.to_str().expect("override path"),
+            OVERRIDE_FILE,
         ],
         home.path(),
+        override_dir.path(),
         Some(&hosts_path),
     )
 }
@@ -143,8 +146,7 @@ fn run_process_with_override(override_yaml: &str) -> Output {
     .expect("write manifest");
 
     let override_dir = tempdir().expect("override dir");
-    let override_path = override_dir.path().join("sources.yml");
-    fs::write(&override_path, override_yaml).expect("write override");
+    fs::write(override_dir.path().join(OVERRIDE_FILE), override_yaml).expect("write override");
 
     // A directory output (not `-`) keeps stdout free for the structured outcome.
     let output_dir = tempdir().expect("output dir");
@@ -156,9 +158,10 @@ fn run_process_with_override(override_yaml: &str) -> Output {
             input_dir.path().to_str().expect("input path"),
             output_dir.path().to_str().expect("output path"),
             "--sources",
-            override_path.to_str().expect("override path"),
+            OVERRIDE_FILE,
         ],
         home.path(),
+        override_dir.path(),
         None,
     )
 }
@@ -186,10 +189,13 @@ fn parse_failure(output: &Output) -> serde_json::Value {
     failure
 }
 
-fn run_esdiag(args: &[&str], home: &Path, hosts_path: Option<&Path>) -> Output {
+/// Runs from `cwd` so a relative `--sources` path keeps temporary-directory names, which
+/// `classify_failure` would scan for category keywords, out of the error message.
+fn run_esdiag(args: &[&str], home: &Path, cwd: &Path, hosts_path: Option<&Path>) -> Output {
     let home_path = home.to_str().expect("home path");
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_esdiag"));
     cmd.args(args)
+        .current_dir(cwd)
         .env("HOME", home_path)
         .env("USERPROFILE", home_path)
         .env("LOG_LEVEL", "debug")
