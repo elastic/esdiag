@@ -34,7 +34,7 @@ Prerequisites, in stack order:
 ### Modified Capabilities
 
 - `claude-code-plugin`: The plugin packages register the ESDiag stdio MCP server.
-- `workspace-crate-architecture` (synced by #467): The preserved cargo feature list gains `mcp`. The delta is added when this change is rebased onto #467, because the spec does not exist on the current base.
+- `workspace-crate-architecture`: The preserved cargo feature list gains `mcp`, which `full` includes and which builds without `esdiag-gui`.
 
 ## Impact
 

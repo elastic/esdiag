@@ -24,7 +24,7 @@ Prerequisites, in stack order: `extract-gui-crate` ([#467](https://github.com/el
 ### Modified Capabilities
 
 - `web-feature-policy`: The web feature allowlist gains the `mcp` feature name.
-- `workspace-crate-architecture` (synced by #467): `mcp` with `server` compiles the HTTP transport only in `esdiag-gui`. The delta is added when this change is rebased onto #467.
+- `workspace-crate-architecture`: `mcp` with `server` compiles the HTTP transport only in `esdiag-gui`.
 
 ## Impact
 

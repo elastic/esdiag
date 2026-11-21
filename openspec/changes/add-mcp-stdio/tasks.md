@@ -1,7 +1,7 @@
 ## 1. Prerequisites
 
 - [ ] 1.1 Rebase onto merged #467 and `extract-command-operations`; verify each catalog command has an `esdiag-core::operations` function returning `Result<CommandOutcome>`, and that `ProcessInput::writes_stdout` and `saved_job_writes_stdout` exist
-- [ ] 1.2 Add a `workspace-crate-architecture` delta modifying `Cargo Features Are Preserved`: add `mcp` to the feature list and to the "Each feature builds alone" scenario, and add a scenario that `mcp` alone compiles neither `esdiag-gui` nor the rmcp HTTP transport; verify `openspec validate add-mcp-stdio --strict` passes
+- [x] 1.2 Add a `workspace-crate-architecture` delta modifying `Cargo Features Are Preserved`: add `mcp` to the feature list and to the "Each feature builds alone" scenario, and add a scenario that `mcp` alone compiles neither `esdiag-gui` nor the rmcp HTTP transport; verify `openspec validate add-mcp-stdio --strict` passes
 
 ## 2. Feature and dependencies
 

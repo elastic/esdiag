@@ -1,7 +1,7 @@
 ## 1. Prerequisites
 
 - [ ] 1.1 Rebase onto merged `add-mcp-stdio`; verify `esdiag-core::mcp::EsdiagMcp` and `McpPolicy::Local` exist and `cargo test --workspace` passes
-- [ ] 1.2 Add a `workspace-crate-architecture` delta stating that `mcp` without `server` compiles no `esdiag-gui`, and that `mcp` with `server` compiles the HTTP transport only in `esdiag-gui`; verify `openspec validate add-mcp-http --strict` passes
+- [x] 1.2 Add a `workspace-crate-architecture` delta stating that `mcp` without `server` compiles no `esdiag-gui`, and that `mcp` with `server` compiles the HTTP transport only in `esdiag-gui`; verify `openspec validate add-mcp-http --strict` passes
 
 ## 2. Feature and policy
 
