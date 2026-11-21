@@ -51,6 +51,7 @@ published release notes, maintenance branches, and tagged history.
 
 ### Fixed
 
+- Fixed the Elasticsearch exporter dropping documents that the output cluster throttled per item. When a bulk response is HTTP 200 with items rejected with status `429`, only those documents are sent again with the `ESDIAG_EXPORT_RETRY_*` backoff, and they count as errors only once the retries are exhausted (#463).
 - Fixed `esdiag setup` repeating provenance field warnings for every older data stream backing index on each run. It now warns per index only for indices that can still receive writes, summarizes older backing indices with unlinked provenance fields in one line per data stream, and only asks for a rollover after adding an alias to a writable index.
 - Fixed `.elasticrc.yml` errors exposing secrets. A malformed `$(...)` expression no longer echoes the field's value, and invalid service URL errors show the configured URL with its userinfo redacted instead of the resolved URL.
 - Preserved the legacy `settings.json` bundle filename while keeping `IndicesSettings` as the explicit code and dispatch name.

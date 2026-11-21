@@ -32,6 +32,20 @@ The Elasticsearch exporter SHALL retry a failed bulk batch when the output clust
 - **THEN** the exporter treats the response as a fatal error immediately
 - **AND** no retry is attempted
 
+#### Scenario: Items rejected with 429 are resent
+- **GIVEN** the exporter sends a bulk batch
+- **WHEN** the cluster responds with HTTP 200 and some items have status 429
+- **THEN** the exporter resends only the documents of those items, in their original order, after the same backoff
+- **AND** other item failures are counted as errors without a retry
+- **AND** documents still rejected with 429 when the attempts are exhausted are counted as errors
+- **AND** the batch counts once, with `BatchResponse.retries` reflecting the resends
+
+#### Scenario: A failed resend keeps created documents
+- **GIVEN** a bulk batch created some documents and the exporter is resending items rejected with 429
+- **WHEN** the resend fails with a fatal error or times out
+- **THEN** the documents already created still count as created
+- **AND** only the documents of the failed resend are counted as errors
+
 ### Requirement: Retry Configuration via Environment Variables
 The retry behaviour of the Elasticsearch exporter SHALL be configurable via environment variables at process startup. All variables MUST have sensible defaults so that no configuration is required for standard operation.
 
