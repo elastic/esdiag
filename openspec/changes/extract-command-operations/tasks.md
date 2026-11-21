@@ -22,14 +22,14 @@
 
 ## 4. Guards and cleanup
 
-- [ ] 4.1 Verify `rg -n "rpassword|stdin\(\)|is_terminal|enable_keystore_password_prompt|println!|print!\(" crates/esdiag-core/src/operations` returns nothing
-- [ ] 4.2 Verify `main.rs` contains no remaining command bodies for the moved commands (each `run` arm builds an input, optionally prompts, and calls one operation) and no unused helpers (`cargo build` shows no dead-code warnings)
-- [ ] 4.3 Verify each feature builds alone (`agent`, `server`, `setup`, `keystore`, `elasticrc`, and none) and that the `workspace.yml` layering checks pass locally with `cargo metadata`
+- [x] 4.1 Verify `rg -n "rpassword|stdin\(\)|is_terminal|enable_keystore_password_prompt|println!|print!\(" crates/esdiag-core/src/operations` returns nothing
+- [x] 4.2 Verify `main.rs` contains no remaining command bodies for the moved commands (each `run` arm builds an input, optionally prompts, and calls one operation) and no unused helpers (`cargo build` shows no dead-code warnings)
+- [x] 4.3 Verify each feature builds alone (`agent`, `server`, `setup`, `keystore`, `elasticrc`, and none) and that the `workspace.yml` layering checks pass locally with `cargo metadata`
 
 ## 5. Docs and changelog
 
-- [ ] 5.1 Add `crates/esdiag-core/src/operations/` to `docs/repository/organization.md` and run `okf validate docs/`
-- [ ] 5.2 Add a `CHANGELOG.md` line for the log target change following `.agents/skills/changelog/SKILL.md`
+- [x] 5.1 Add `crates/esdiag-core/src/operations/` to `docs/repository/organization.md` and run `okf validate docs/`
+- [x] 5.2 Add a `CHANGELOG.md` line for the log target change following `.agents/skills/changelog/SKILL.md`
 
 ## 6. Verification
 

@@ -75,6 +75,7 @@ crates/esdiag-core/src/
 ├── data/
 ├── exporter/
 ├── job/
+├── operations/
 ├── processor/
 ├── receiver/
 ├── setup/
@@ -94,6 +95,7 @@ crates/esdiag-core/src/
 - `data/`: Shared domain types, configuration models, known host handling, keystore support, settings, and workflow data structures.
 - `exporter/`: Output adapters that write processed data to Elasticsearch, files, directories, archives, or stdout.
 - `job/`: Saved job execution and management helpers.
+- `operations/`: Typed command operations for `collect`, `process`, `send`, `output`, `host`, `job`, `keystore`, `agent ask`, and `setup`. Each one takes an input struct with already-resolved values, returns a `CommandOutcome`, and never prompts or prints, so the CLI and other front ends share one implementation.
 - `processor/`: Diagnostic collection and transformation pipeline that turns raw inputs into normalized reports and exported documents.
 - `receiver/`: Input adapters that read diagnostics from local archives,
   directories, remote services, and Elastic Upload Service links.
