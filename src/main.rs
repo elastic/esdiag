@@ -1155,6 +1155,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandOutcome> {
                         target,
                         url_template,
                         update: args.into(),
+                        keystore_password: get_password_for_secret_commands,
                     })
                     .await
                 }
@@ -1162,6 +1163,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandOutcome> {
                     operations::host::host_update(operations::host::HostUpdateInput {
                         name,
                         update: args.into(),
+                        keystore_password: get_password_for_secret_commands,
                     })
                     .await
                 }

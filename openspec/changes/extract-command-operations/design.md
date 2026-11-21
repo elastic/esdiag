@@ -72,7 +72,7 @@ No interaction-mode parameter. Two existing mechanisms cover every path:
 |---|---|---|
 | Secret lookup during collect/process/setup/agent (`credential.rs` → `get_keystore_password`) | Prompts only if the binary called `enable_keystore_password_prompt()` | Unchanged. Operations never call the enabler; the binary still does. |
 | Keystore mutation (`keystore add/update/remove/unlock`) | `main.rs` calls `get_password_for_secret_commands` and `resolve_secret_input`, which may prompt | Binary resolves the keystore password and secret values, then passes them as `Secret<String>` fields, like `onboarding::save_output_deployment(input, keystore_password)` |
-| `host add/update --secret` | `resolve_add_host_secret_auth` reads the keystore through `get_keystore_password` | Moves into `operations::host`, unchanged |
+| `host add/update --secret` and the same-name secret default | `resolve_add_host_secret_auth` reads the keystore through `get_password_for_secret_commands`, which prompts on any terminal regardless of the opt-in | Moves into `operations::host`. The input carries a `KeystorePasswordSource` called only when a secret is read: the binary passes `get_password_for_secret_commands`, keeping today's prompt; MCP will pass `get_keystore_password`, which honors the opt-in and scoped passwords |
 | Raw `--apikey/--password` on `host add/update` | Parsed in `main.rs` into `KnownHostCliUpdate` | `HostInput` carries them as `Option<Secret<String>>`; MCP will leave them `None` |
 
 Operations call no `rpassword`, `stdin`, or `is_terminal`. A grep check in the task list enforces this for `operations/`.
