@@ -21,7 +21,7 @@ include = [
 
 [workspace]
 members = [".", "crates/elasticrc", "crates/esdiag-core", "crates/esdiag-gui", "crates/repo-tools"]
-default-members = [".", "crates/esdiag-core", "crates/esdiag-gui"]
+default-members = [".", "crates/esdiag-core"]
 resolver = "3"
 
 [workspace.package]

@@ -74,7 +74,7 @@ Alternative considered: move `tauri.conf.json` and `desktop/` into `esdiag-gui`.
 
 The root package also depends directly on `tauri-plugin-opener` under `desktop`: `tauri_build` reads plugin permissions only from the direct dependencies of the package whose build script runs it, and fails on `opener:default` in the capability file otherwise.
 
-The workspace sets `default-members` to the root, `esdiag-core`, and `esdiag-gui`, so a plain `cargo test` from the repository root still runs the unit tests that moved into the new crates.
+The workspace sets `default-members` to the root and `esdiag-core`, so a plain `cargo test` from the repository root still runs the core unit tests. `esdiag-gui` stays out of `default-members` because a root `cargo build --no-default-features` would otherwise compile it; its unit tests run with `cargo test --workspace` or `cargo test -p esdiag-gui`.
 
 `pub(crate)` items the server uses from the library (for example `get_active_unlock_keystore_password`, `list_secret_entries`, `ElasticContextTarget`, `write_hosts_yml_for_tests`) become `pub`; test-only ones move behind `esdiag-core/test-support`, which `esdiag-gui` enables only in `[dev-dependencies]`.
 

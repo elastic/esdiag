@@ -40,13 +40,16 @@ jobs:
           set -euo pipefail
           absent() {
             local crate="$1"; shift
-            if cargo tree --locked -e normal,build --prefix none "$@" | grep -q "^${crate} v"; then
+            local tree
+            tree="$(cargo tree --locked -e normal,build --prefix none "$@")"
+            if grep -q "^${crate} v" <<<"$tree"; then
               echo "${crate} must not be in: cargo tree $*" >&2
               exit 1
             fi
           }
           absent esdiag-gui -p repo-tools
           absent esdiag-gui -p esdiag --no-default-features
+          absent esdiag-gui --no-default-features
           absent tauri -p esdiag --no-default-features --features server
           absent tauri -p esdiag
 

@@ -32,7 +32,7 @@
 
 - [x] 6.1 Declare `esdiag-core` and `esdiag-gui` in `[workspace.dependencies]` with exact `=` version requirements; add implementation-crate descriptions and READMEs; add the root `package.include`; verify all three manifests share one version and license
 - [x] 6.2 Run `bin/sync-crate-assets.sh`, then, on a clean worktree, `cargo publish --workspace --exclude elasticrc --exclude repo-tools --allow-dirty --dry-run`; verify all three packages package and build from their tarballs and neither `elasticrc` nor `repo-tools` is included
-- [ ] 6.3 Add a CI job that checks the layering rules with `cargo metadata`, runs `bin/sync-crate-assets.sh --check` after a sync, and runs the publish dry run on stable; verify it passes on the PR
+- [x] 6.3 Add a CI job that checks the layering rules with `cargo metadata`, runs `bin/sync-crate-assets.sh --check` after a sync, and runs the publish dry run on stable; verify it passes on the PR
 
 ## 7. Verification
 
