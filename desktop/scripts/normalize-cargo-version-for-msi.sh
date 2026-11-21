@@ -64,11 +64,14 @@ awk -v normalized="${normalized_version}" -v pinned="\"=${package_version}\"" '
     updated = 1
     next
   }
-  index($0, pinned) {
-    gsub(pinned, "\"=" normalized "\"")
-  }
   {
-    print
+    line = $0
+    out = ""
+    while ((i = index(line, pinned)) > 0) {
+      out = out substr(line, 1, i - 1) "\"=" normalized "\""
+      line = substr(line, i + length(pinned))
+    }
+    print out line
   }
   END {
     if (!updated) {
