@@ -23,7 +23,8 @@ This project supports desktop packaging for:
 
 ## Configuration
 
-- Root `tauri.conf.json` is the Tauri CLI and `tauri-build` source of truth for repo-root desktop builds.
+- Root `tauri.conf.json` is the Tauri CLI and `tauri-build` source of truth for repo-root desktop builds. The root `esdiag` package generates the Tauri context, so bundles still build from the repository root; the desktop wrapper code lives in `crates/esdiag-gui/src/desktop.rs`.
+- `desktop/scripts/normalize-cargo-version-for-msi.sh` rewrites the `[workspace.package]` version and the matching exact `=` requirements on `esdiag-core` and `esdiag-gui` together.
 - `desktop/tauri.conf.json` remains as a desktop-scoped mirror with paths relative to `desktop/`.
 - `desktop/packaging/desktop-targets.json` is the source of truth for:
   - Windows minimum version (`10`)

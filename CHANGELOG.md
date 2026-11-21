@@ -38,6 +38,7 @@ published release notes, maintenance branches, and tagged history.
 - Setup failures without an HTTP response now report the `setup_failed` outcome category.
 - CLI commands that need a saved secret from a locked keystore, such as `esdiag collect`, now prompt for the keystore password on an interactive terminal and continue instead of failing. Non-interactive runs still fail.
 - Updated workspace dependency requirements and the lockfile for the 0.18 development cycle, and regenerated third-party notices.
+- Split the library into the `esdiag-core` and `esdiag-gui` crates, published to crates.io alongside `esdiag` at the same version. They have no supported public API; `cargo install esdiag` is unchanged. Log lines now name `esdiag_core` or `esdiag_gui` modules instead of `esdiag`.
 - Standardized raw-bundle transfer terminology on `send`, including `esdiag send` and `collect --send`; `upload` now refers only to the Elastic Upload Service.
 - Kept concurrent upload status streams independent so starting another upload does not stop updates for an earlier one.
 - Enabled raw-response reads for file archives, in-memory archives, and directories through the shared receiver API.

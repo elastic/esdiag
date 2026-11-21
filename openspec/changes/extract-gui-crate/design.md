@@ -53,7 +53,7 @@ Alternatives considered:
 
 ### Tauri wrapper in `esdiag-gui`, context generation in the binary
 
-`esdiag_gui::desktop::run(context: tauri::Context<tauri::Wry>) -> eyre::Result<()>` contains today's builder, plugin, server lifecycle, and window logic. The root `main.rs` calls `esdiag_gui::desktop::run(tauri::generate_context!())` in the no-subcommand branch under `all(feature = "server", feature = "desktop")`. `desktop_startup_tests` move to `esdiag-gui`.
+`esdiag_gui::desktop::run(context: tauri::Context<tauri::Wry>)` contains today's builder, plugin, server lifecycle, and window logic. The root `main.rs` calls `esdiag_gui::desktop::run(tauri::generate_context!())` in the no-subcommand branch under `all(feature = "server", feature = "desktop")`. `desktop_startup_tests` move to `esdiag-gui`.
 
 `tauri::generate_context!()` must expand in the crate whose build script ran `tauri_build`, and the Tauri CLI builds and bundles the binary of the package that owns `tauri.conf.json`. Keeping `tauri.conf.json`, `desktop/`, and `tauri-build` with the binary leaves `cargo tauri build --features desktop`, the desktop workflow, and the desktop scripts unchanged.
 
@@ -64,13 +64,17 @@ Alternative considered: move `tauri.conf.json` and `desktop/` into `esdiag-gui`.
 | Root feature | Enables |
 |---|---|
 | `server` | `dep:esdiag-gui`, `esdiag-core/server` |
-| `setup` | `esdiag-core/setup`, `esdiag-gui?/setup`, `dep:elasticrc`, `dep:dotenvy` |
+| `setup` | `esdiag-core/setup`, `esdiag-gui?/setup` |
 | `agent` | `esdiag-core/agent` |
 | `keystore` | `esdiag-core/keystore`, `esdiag-gui?/keystore` |
 | `elasticrc` | `esdiag-core/elasticrc`, `esdiag-gui?/elasticrc` |
-| `desktop` | `server`, `esdiag-gui/desktop`, `dep:tauri`, `dep:tauri-build` |
+| `desktop` | `server`, `esdiag-gui/desktop`, `dep:tauri`, `dep:tauri-plugin-opener`, `dep:tauri-build` |
 
-`esdiag-gui/desktop` enables `tauri` and `tauri-plugin-opener` and the 8 existing `desktop` sites in the server. `esdiag-gui` depends on `esdiag-core` with `features = ["server"]`.
+`esdiag-gui/desktop` enables `tauri` and `tauri-plugin-opener` and the 8 existing `desktop` sites in the server. `esdiag-gui` depends on `esdiag-core` with `features = ["server"]`. `elasticrc` and `dotenvy` move to `esdiag-core`, whose `setup` feature enables them; the root package no longer uses them directly.
+
+The root package also depends directly on `tauri-plugin-opener` under `desktop`: `tauri_build` reads plugin permissions only from the direct dependencies of the package whose build script runs it, and fails on `opener:default` in the capability file otherwise.
+
+The workspace sets `default-members` to the root, `esdiag-core`, and `esdiag-gui`, so a plain `cargo test` from the repository root still runs the unit tests that moved into the new crates.
 
 `pub(crate)` items the server uses from the library (for example `get_active_unlock_keystore_password`, `list_secret_entries`, `ElasticContextTarget`, `write_hosts_yml_for_tests`) become `pub`; test-only ones move behind `esdiag-core/test-support`, which `esdiag-gui` enables only in `[dev-dependencies]`.
 
@@ -82,7 +86,8 @@ The root `lib.rs` becomes `pub use esdiag_core::*;` plus `#[cfg(feature = "serve
 
 - `[workspace.package]` declares `version`, `edition`, `rust-version`, `license`, `repository`, and `homepage`; `esdiag`, `esdiag-core`, and `esdiag-gui` inherit them. `elasticrc` keeps its own version and Apache-2.0 license; `repo-tools` stays `publish = false`.
 - `[workspace.dependencies]` declares `esdiag-core` and `esdiag-gui` as `{ path = "...", version = "=<workspace version>" }`, plus third-party dependencies shared by two or more packages.
-- `cargo publish --workspace --exclude elasticrc` publishes `esdiag-core`, `esdiag-gui`, and `esdiag` in dependency order. Multi-package publishing needs Cargo 1.90 or newer; release and CI publish jobs use stable while the build MSRV stays 1.89.
+- `cargo publish --workspace --exclude elasticrc --exclude repo-tools` publishes `esdiag-core`, `esdiag-gui`, and `esdiag` in dependency order. Multi-package publishing needs Cargo 1.90 or newer; release and CI publish jobs use stable while the build MSRV stays 1.89.
+- `desktop/scripts/normalize-cargo-version-for-msi.sh` rewrites the `[workspace.package]` version and the matching exact `=` requirements together, since the root `[package]` now inherits its version.
 - The release skill gains the workspace version and exact `=` requirements as version surfaces, the asset sync step, the three-package dry run, and recovery from a partial publish (publish the remaining packages at the same version; never re-publish).
 
 Alternative considered: caret requirements between the three packages. Rejected: with no API stability promised, a newer patch of one crate could break an older `esdiag`.
@@ -93,10 +98,11 @@ A published package contains only files under its own directory.
 
 | Package | Canonical source | Bundled path |
 |---|---|---|
-| `esdiag-core` | `assets/` (including `<product>/sources.yml` and `kibana/`), `.agents/skills/esdiag/` (`SKILL.md`, `references/`, `agents/`) | `bundled/assets/`, `bundled/skill/` |
-| `esdiag-gui` | `docs/` | `bundled/docs/` |
+| `esdiag-core` | `assets/` (including `<product>/sources.yml` and `kibana/`), `.agents/skills/esdiag/` (`SKILL.md`, `references/`, `agents/`), `LICENSE.txt` | `bundled/assets/`, `bundled/skill/`, `bundled/license/` |
+| `esdiag-gui` | `docs/`, `LICENSE.txt` | `bundled/docs/`, `bundled/license/` |
 
 - `bin/sync-crate-assets.sh` copies these into each crate's gitignored `bundled/` directory and supports `--check`, following `bin/sync-plugin-skill.sh`. Each crate lists `bundled/**` in `package.include`.
+- Cargo counts included files that Git does not track as uncommitted changes, so packaging commands pass `--allow-dirty`, guarded by `test -z "$(git status --porcelain)"`, which ignores `bundled/` but catches every other uncommitted change.
 - Each crate's build script selects the asset root: the canonical repository path when it exists and the crate is not packaged, otherwise `bundled/`. Cargo writes `.cargo_vcs_info.json` only into packaged crates, which marks the packaged case. The root is exported with `cargo:rustc-env`, and code reads it through `include_str!(concat!(env!(...), ...))` and `rust-embed` folders using `interpolate-folder-path`. A packaged build with a missing `bundled/` fails with a message naming the sync script.
 - `templates/` moves to `crates/esdiag-gui/templates/`, because Askama resolves template directories relative to the manifest. `src/server/assets/` moves with the server code.
 - The Kibana assets zip build moves from the root `build.rs` to `esdiag-core`'s build script under its `setup` feature.
@@ -127,6 +133,7 @@ The baseline is measured on the commit before the split, on the same host as the
 - [Bundled assets drift from canonical ones] → Packaging runs the sync first, and CI runs `--check` in the publish dry-run job.
 - [`package.include` leaves out a needed file] → The multi-package publish dry run builds each package from its tarball.
 - [Timing is noisy across hosts and runs] → Same-host comparison, warm-up run, median of three, and thresholds well outside typical run-to-run noise (about 3% observed for the baseline).
+- [Log lines name their module path, which changes from `esdiag::…` to `esdiag_core::…` and `esdiag_gui::server::…`] → Filters are level-only (`LOG_LEVEL` and `--debug` set a level, not a target), so only the displayed target text changes; noted in the PR.
 - [Facade re-exports keep old paths alive] → The facade serves `main.rs`, `local.rs`, and `tests/`; new code imports `esdiag-core` or `esdiag-gui` directly.
 
 ## Migration Plan

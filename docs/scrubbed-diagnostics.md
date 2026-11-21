@@ -68,7 +68,7 @@ The typed/streamed adapter writes unchanged tokens incrementally to a buffered t
 
 **Never commit customer scrubbed API bundles to this repository.**
 
-Automated tests build synthetic malformed IPs at runtime from the esdiag golden archive (`tests/archives/elasticsearch-api-diagnostics-9.3.3.zip`). See `tests/integration/scrubbed_normalization_tests.rs` and the `synthetic_vectors` test module in `src/receiver/archive/scrub.rs` for canonical test constants.
+Automated tests build synthetic malformed IPs at runtime from the esdiag golden archive (`tests/archives/elasticsearch-api-diagnostics-9.3.3.zip`). See `tests/integration/scrubbed_normalization_tests.rs` and the `synthetic_vectors` test module in `crates/esdiag-core/src/receiver/archive/scrub.rs` for canonical test constants.
 
 ## Deterministic verification (CI)
 
