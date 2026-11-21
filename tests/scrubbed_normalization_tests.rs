@@ -16,6 +16,7 @@ use scrub_normalization_assertions::{
     ensure_two_nodes_in_nodes_json, ensure_two_nodes_in_nodes_stats_json, ensure_two_nodes_in_tasks_json,
     inject_malformed_ips_in_nodes_json, inject_malformed_ips_in_nodes_stats_json, inject_malformed_ips_in_tasks_json,
 };
+use serde_json::{Value, json};
 use std::{
     fs,
     io::{Read, Write},
@@ -37,6 +38,13 @@ fn golden_archive() -> PathBuf {
 }
 
 fn build_synthetic_scrubbed_archive(out_zip: &Path) -> ScrubFixtureExpectations {
+    build_synthetic_scrubbed_archive_with_address_variants(out_zip, false)
+}
+
+fn build_synthetic_scrubbed_archive_with_address_variants(
+    out_zip: &Path,
+    address_variants: bool,
+) -> ScrubFixtureExpectations {
     let golden = golden_archive();
     let entries = [
         "diagnostic_manifest.json",
@@ -69,21 +77,35 @@ fn build_synthetic_scrubbed_archive(out_zip: &Path) -> ScrubFixtureExpectations 
                 let content = ensure_two_nodes_in_nodes_json(&content);
                 let (updated, exp) = inject_malformed_ips_in_nodes_json(&content);
                 expectations = Some(exp);
-                updated
+                if address_variants {
+                    vary_node_addresses(entry, &updated)
+                } else {
+                    updated
+                }
             }
             "nodes_stats.json" => {
                 let content = ensure_two_nodes_in_nodes_stats_json(&content);
                 let exp = expectations
                     .as_ref()
                     .expect("nodes.json must be processed before nodes_stats.json");
-                inject_malformed_ips_in_nodes_stats_json(&content, exp)
+                let updated = inject_malformed_ips_in_nodes_stats_json(&content, exp);
+                if address_variants {
+                    vary_node_addresses(entry, &updated)
+                } else {
+                    updated
+                }
             }
             "tasks.json" => {
                 let content = ensure_two_nodes_in_tasks_json(&content);
                 let exp = expectations
                     .as_ref()
                     .expect("nodes.json must be processed before tasks.json");
-                inject_malformed_ips_in_tasks_json(&content, exp)
+                let updated = inject_malformed_ips_in_tasks_json(&content, exp);
+                if address_variants {
+                    vary_node_addresses(entry, &updated)
+                } else {
+                    updated
+                }
             }
             _ => content,
         };
@@ -94,6 +116,32 @@ fn build_synthetic_scrubbed_archive(out_zip: &Path) -> ScrubFixtureExpectations 
 
     dest_archive.finish().expect("finish synthetic scrubbed zip");
     expectations.expect("nodes.json expectations")
+}
+
+fn vary_node_addresses(entry: &str, content: &str) -> String {
+    const ADDRESSES: [&str; 2] = ["18446744073709551616.255.256.1", "192.0.2.50"];
+    let mut value: Value = serde_json::from_str(content).expect("parse synthetic nodes");
+    let nodes = value["nodes"].as_object_mut().expect("synthetic nodes object");
+    let mut ids: Vec<_> = nodes.keys().cloned().collect();
+    assert_eq!(
+        ids.len(),
+        ADDRESSES.len(),
+        "synthetic address variants require two nodes"
+    );
+    ids.sort();
+    for (index, id) in ids.iter().enumerate() {
+        let address = ADDRESSES[index];
+        let node = nodes.get_mut(id).expect("sorted node id");
+        node["ip"] = json!(format!("{address}:9300"));
+        node["host"] = json!(format!("{address}:9300"));
+        node["transport_address"] = json!(format!("{address}:9300"));
+        if entry == "nodes.json" {
+            node["name"] = json!(address);
+            node["settings"]["network"]["publish_host"] = json!(format!("{address}:9300"));
+            node["transport"]["publish_address"] = json!(format!("{address}:9300"));
+        }
+    }
+    serde_json::to_string(&value).expect("serialize varied nodes")
 }
 
 async fn process_input_to_directory(
@@ -196,6 +244,80 @@ async fn directory_with_scrub_disabled_preserves_malformed_ips() {
 
     let (_output, output_path) = process_input_to_directory(Uri::Directory(extract_dir), Some(false), None).await;
     assert_malformed_ips_preserved_in_node_metrics(&output_path, &malformed);
+}
+
+#[tokio::test]
+async fn archive_and_directory_exports_preserve_address_semantics_and_unrelated_names() {
+    const ORIGINAL: [&str; 2] = ["18446744073709551616.255.256.1", "192.0.2.50"];
+    const NORMALIZED: [&str; 2] = ["1.0.1.1", "192.0.2.50"];
+    let fixture = tempdir().expect("fixture tempdir");
+    let archive_path = fixture.path().join("synthetic-address-variants.zip");
+    let expectations = build_synthetic_scrubbed_archive_with_address_variants(&archive_path, true);
+    let mut ids: Vec<_> = expectations.normalized_by_node_id.keys().cloned().collect();
+    ids.sort();
+    assert_eq!(ids.len(), 2);
+
+    let extract_dir = fixture.path().join("extracted-address-variants");
+    let mut zip = ZipArchive::new(fs::File::open(&archive_path).expect("open variants archive")).expect("read zip");
+    zip.extract(&extract_dir).expect("extract variants");
+
+    for input in [Uri::File(archive_path), Uri::Directory(extract_dir)] {
+        for scrubbed in [true, false] {
+            let (_output, output_path) = process_input_to_directory(input.clone(), Some(scrubbed), None).await;
+            let documents =
+                fs::read_to_string(output_path.join("metrics-node-esdiag.ndjson")).expect("node metrics export");
+            let mut seen = std::collections::HashSet::new();
+            for line in documents.lines().filter(|line| !line.is_empty()) {
+                let doc: Value = serde_json::from_str(line).expect("node metrics document");
+                let node = &doc["node"];
+                let id = node["id"].as_str().expect("node id");
+                let index = ids
+                    .iter()
+                    .position(|expected| expected == id)
+                    .expect("synthetic node id");
+                seen.insert(id.to_owned());
+                let address = if scrubbed { NORMALIZED[index] } else { ORIGINAL[index] };
+                let pure = if scrubbed {
+                    address.to_string()
+                } else {
+                    format!("{address}:9300")
+                };
+                assert_eq!(node["ip"].as_str(), Some(pure.as_str()));
+                assert_eq!(node["host"].as_str(), Some(pure.as_str()));
+                assert_eq!(
+                    node["transport_address"].as_str(),
+                    Some(format!("{address}:9300").as_str())
+                );
+                assert_eq!(
+                    node["name"].as_str(),
+                    Some(ORIGINAL[index]),
+                    "non-address name is unchanged"
+                );
+            }
+            assert_eq!(seen.len(), ids.len(), "export all synthetic nodes");
+
+            let settings =
+                fs::read_to_string(output_path.join("settings-node-esdiag.ndjson")).expect("node settings export");
+            for line in settings.lines().filter(|line| !line.is_empty()) {
+                let doc: Value = serde_json::from_str(line).expect("node settings document");
+                let node = &doc["node"];
+                let id = node["id"].as_str().expect("settings node id");
+                let index = ids
+                    .iter()
+                    .position(|expected| expected == id)
+                    .expect("synthetic settings node");
+                let expected = if scrubbed {
+                    NORMALIZED[index].to_string()
+                } else {
+                    format!("{}:9300", ORIGINAL[index])
+                };
+                assert_eq!(
+                    node["settings"]["network"]["publish_host"].as_str(),
+                    Some(expected.as_str())
+                );
+            }
+        }
+    }
 }
 
 #[tokio::test]
