@@ -16,8 +16,6 @@ use esdiag::cli_output::{
     write_terminal_outcome,
 };
 use esdiag::operations;
-#[cfg(feature = "setup")]
-use esdiag::operations::setup_outcome;
 #[cfg(feature = "server")]
 use esdiag::server::{AuthProvider, RuntimeMode, Server, ServerStartOptions};
 #[cfg(feature = "setup")]
@@ -32,11 +30,10 @@ use esdiag::{
 use esdiag::{
     client::Client,
     data::{
-        Application, HostRole, KnownHost, KnownHostCliUpdate, OnboardingWorkflow, OutputDeployment, SecretAuth, Uri,
-        add_secret, clear_unlock_lease, create_keystore, default_unlock_ttl, get_keystore_path,
-        get_password_for_secret_commands, get_unlock_status, keystore_exists, list_secret_names, parse_unlock_ttl,
-        remove_secret, rotate_keystore_password, update_secret, validate_existing_keystore_password,
-        write_unlock_lease,
+        Application, HostRole, KnownHost, KnownHostCliUpdate, OnboardingWorkflow, SecretAuth, Uri, add_secret,
+        clear_unlock_lease, create_keystore, default_unlock_ttl, get_keystore_path, get_password_for_secret_commands,
+        get_unlock_status, keystore_exists, list_secret_names, parse_unlock_ttl, remove_secret,
+        rotate_keystore_password, update_secret, validate_existing_keystore_password, write_unlock_lease,
     },
     elastic_upload_service,
     env::LOG_LEVEL,
@@ -1856,7 +1853,7 @@ async fn run_init_wizard() -> Result<CommandOutcome> {
             output_name_for_defaults = Some(output_name.clone());
             output_url_for_defaults = Some(output_url.to_string());
             #[cfg(feature = "setup")]
-            let viewer_space = esdiag::env::kibana_space_setting(process_kibana_space().as_deref());
+            let viewer_space = esdiag::env::kibana_space_setting(operations::setup::process_kibana_space().as_deref());
             save_output_deployment(
                 OutputDeploymentInput {
                     output_name,
@@ -2794,58 +2791,16 @@ fn resolve_serve_exporter(output: Option<String>) -> Result<Exporter> {
 async fn run_setup(command: SetupCommands) -> Result<CommandOutcome> {
     match command {
         #[cfg(feature = "setup")]
-        SetupCommands::Elasticsearch { host } => {
-            let host = setup_service_host(host.as_deref(), Application::Elasticsearch)?;
-            let client = Client::try_from(Uri::try_from(host)?)?;
-            tracing::info!("Setting up assets in {client}");
-            let report = setup::assets_report(&client).await?;
-            Ok(CommandOutcome::Completed(setup_outcome(
-                vec![client.to_string()],
-                report,
-            )))
-        }
+        SetupCommands::Elasticsearch { host } => operations::setup::setup_elasticsearch(host).await,
         #[cfg(feature = "setup")]
-        SetupCommands::Kibana { host } => {
-            let host = setup_service_host(host.as_deref(), Application::Kibana)?;
-            let kibana = setup::pipeline::KibanaTarget::from_host(host, process_kibana_space().as_deref())?;
-            tracing::info!("Setting up Kibana assets in {}", kibana.client);
-            let report = setup::kibana_assets_report(&kibana.client, kibana.space).await?;
-            Ok(CommandOutcome::Completed(setup_outcome(
-                vec![kibana.client.to_string()],
-                report,
-            )))
-        }
+        SetupCommands::Kibana { host } => operations::setup::setup_kibana(host).await,
         #[cfg(feature = "setup")]
-        SetupCommands::Output { name, trial } => {
-            let activate_trial = trial.resolve(None)?;
-            let deployment = OutputDeployment::resolve_saved(name.as_deref(), true)?;
-            let output_name = name
-                .or_else(|| esdiag::data::ApplicationConfig::load().ok()?.output.default)
-                .unwrap_or_else(|| "output".to_string());
-            let kibana = deployment
-                .kibana
-                .map(|host| setup::pipeline::KibanaTarget::from_host(host, process_kibana_space().as_deref()))
-                .transpose()?;
-            let notice = kibana.is_none().then(|| {
-                format!("Kibana setup was skipped because output '{output_name}' has no linked Kibana viewer.")
-            });
-            let targets = setup::pipeline::StackTargets {
-                elasticsearch: Some(Client::try_from(Uri::try_from(deployment.elasticsearch)?)?),
-                kibana,
-            };
-            run_stack_setup(targets, notice.into_iter().collect(), activate_trial).await
-        }
+        SetupCommands::Output { name, trial } => operations::setup::setup_output(name, trial.activate_trial).await,
         #[cfg(feature = "setup")]
-        SetupCommands::Env { env_file, trial } => {
-            let declared = setup::env::EnvSetup::load(env_file.as_deref())?;
-            let activate_trial = trial.resolve(declared.activate_trial.as_deref())?;
-            run_stack_setup(declared.targets, declared.notices, activate_trial).await
-        }
+        SetupCommands::Env { env_file, trial } => operations::setup::setup_env(env_file, trial.activate_trial).await,
         #[cfg(feature = "setup")]
         SetupCommands::Context { name, config, trial } => {
-            let activate_trial = trial.resolve(None)?;
-            let declared = setup::context::ContextSetup::load(name.as_deref(), config.as_deref())?;
-            run_stack_setup(declared.targets, declared.notices, activate_trial).await
+            operations::setup::setup_context(name, config, trial.activate_trial).await
         }
         #[cfg(feature = "agent")]
         SetupCommands::Skills { agents, force } => run_agent_skills(agents, force),
@@ -2870,30 +2825,6 @@ async fn run_setup(command: SetupCommands) -> Result<CommandOutcome> {
     }
 }
 
-#[cfg(feature = "setup")]
-impl TrialArgs {
-    /// The flag wins; otherwise the process environment, then a value declared by the setup source.
-    fn resolve(&self, declared: Option<&str>) -> Result<bool> {
-        if self.activate_trial {
-            return Ok(true);
-        }
-        match std::env::var("ESDIAG_SETUP_ACTIVATE_TRIAL")
-            .ok()
-            .as_deref()
-            .or(declared)
-        {
-            None => Ok(false),
-            Some(value) => match value.trim().to_ascii_lowercase().as_str() {
-                "1" | "true" | "yes" | "y" | "on" => Ok(true),
-                "0" | "false" | "no" | "n" | "off" | "" => Ok(false),
-                _ => Err(eyre!(
-                    "ESDIAG_SETUP_ACTIVATE_TRIAL must be true or false, got {value:?}"
-                )),
-            },
-        }
-    }
-}
-
 /// The command that finishes an incomplete `esdiag init` asset setup, opting into the trial when the license blocked Kibana.
 #[cfg(feature = "setup")]
 fn output_setup_rerun_command(output_name: &str, report: &setup::SetupReport) -> String {
@@ -2903,54 +2834,6 @@ fn output_setup_rerun_command(output_name: &str, report: &setup::SetupReport) ->
         .any(|warning| warning == setup::pipeline::TRIAL_OPT_IN_WARNING);
     let flag = if needs_trial { " --activate-trial" } else { "" };
     format!("esdiag setup output {output_name}{flag}")
-}
-
-#[cfg(feature = "setup")]
-fn process_kibana_space() -> Option<String> {
-    std::env::var("ESDIAG_KIBANA_SPACE").ok()
-}
-
-/// A saved host for single-service setup, or the persisted output's matching service.
-#[cfg(feature = "setup")]
-fn setup_service_host(name: Option<&str>, app: Application) -> Result<KnownHost> {
-    let subcommand = app.to_string().to_ascii_lowercase();
-    let Some(name) = name else {
-        return match app {
-            Application::Kibana => OutputDeployment::persisted_viewer()?.ok_or_else(|| {
-                eyre!(
-                    "The persisted output has no linked Kibana viewer. Run `esdiag setup kibana <HOST>` with a saved Kibana host."
-                )
-            }),
-            _ => Ok(OutputDeployment::resolve_saved(None, false)?.elasticsearch),
-        };
-    };
-    let host = KnownHost::get_known(&name.to_string()).ok_or_else(|| {
-        eyre!("No saved host is named '{name}'. Add it with `esdiag host add`, then run `esdiag setup {subcommand} {name}`.")
-    })?;
-    match host.app() {
-        Some(found) if found == app => Ok(host),
-        Some(found @ (Application::Elasticsearch | Application::Kibana)) => Err(eyre!(
-            "Saved host '{name}' is a {found} host, not {app}. Run `esdiag setup {} {name}`.",
-            found.to_string().to_ascii_lowercase()
-        )),
-        Some(found) => Err(eyre!(
-            "Saved host '{name}' is a {found} host; `esdiag setup {subcommand}` needs a {app} host."
-        )),
-        None => Err(eyre!(
-            "Saved host '{name}' has no application; `esdiag setup {subcommand}` needs a {app} host."
-        )),
-    }
-}
-
-#[cfg(feature = "setup")]
-async fn run_stack_setup(
-    targets: setup::pipeline::StackTargets,
-    notices: Vec<String>,
-    activate_trial: bool,
-) -> Result<CommandOutcome> {
-    let mut setup = setup::pipeline::stack(&targets, activate_trial).await?;
-    setup.report.notices.extend(notices);
-    Ok(CommandOutcome::Completed(setup_outcome(setup.targets, setup.report)))
 }
 
 #[cfg(test)]
@@ -3038,7 +2921,7 @@ mod tests {
     use super::{resolve_serve_bind, resolve_serve_exporter, resolve_serve_runtime_mode};
     use clap::{FromArgMatches, Parser, error::ErrorKind};
     use esdiag::cli_output::OutputFormat;
-    use esdiag::data::{Application, HostRole, KnownHost};
+    use esdiag::data::HostRole;
     #[cfg(feature = "server")]
     use esdiag::server::RuntimeMode;
     #[cfg(feature = "agent")]
@@ -3053,7 +2936,6 @@ mod tests {
     use std::net::Ipv4Addr;
     use std::{ffi::OsString, sync::Mutex};
     use tempfile::TempDir;
-    use url::Url;
 
     /// Mirrors the library's `TestEnv` for this binary's test process, which
     /// links the library without its `cfg(test)` items and so cannot use that
@@ -3386,129 +3268,6 @@ mod tests {
                 "{single}"
             );
         }
-    }
-
-    #[cfg(feature = "setup")]
-    #[test]
-    fn trial_opt_in_prefers_the_flag_then_the_process_environment() {
-        let mut env = TestEnv::new();
-        env.remove("ESDIAG_SETUP_ACTIVATE_TRIAL");
-        let off = TrialArgs { activate_trial: false };
-        assert!(!off.resolve(None).unwrap());
-        assert!(off.resolve(Some("true")).unwrap());
-        assert!(TrialArgs { activate_trial: true }.resolve(Some("false")).unwrap());
-        env.set("ESDIAG_SETUP_ACTIVATE_TRIAL", "false");
-        assert!(!off.resolve(Some("true")).unwrap());
-        env.set("ESDIAG_SETUP_ACTIVATE_TRIAL", "sometimes");
-        assert!(off.resolve(None).is_err());
-    }
-
-    #[cfg(feature = "setup")]
-    #[test]
-    fn setup_service_host_checks_the_saved_application() {
-        let _env = TestEnv::new();
-        let kibana = esdiag::data::KnownHostBuilder::new(Url::parse("https://kb.example:5601").unwrap())
-            .application(Application::Kibana)
-            .roles(vec![esdiag::data::HostRole::View])
-            .build()
-            .unwrap();
-        KnownHost::write_hosts_yml(&std::collections::BTreeMap::from([(
-            "diagnostics-kb".to_string(),
-            kibana,
-        )]))
-        .unwrap();
-        let error = super::setup_service_host(Some("diagnostics-kb"), Application::Elasticsearch)
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("esdiag setup kibana diagnostics-kb"), "{error}");
-        assert!(super::setup_service_host(Some("diagnostics-kb"), Application::Kibana).is_ok());
-        assert!(super::setup_service_host(Some("missing"), Application::Kibana).is_err());
-    }
-
-    #[cfg(feature = "setup")]
-    #[test]
-    fn setup_kibana_fails_when_the_persisted_output_has_no_viewer() {
-        let _env = TestEnv::new();
-        let output = esdiag::data::KnownHostBuilder::new(Url::parse("https://es.example:9200").unwrap())
-            .application(Application::Elasticsearch)
-            .roles(vec![esdiag::data::HostRole::Send])
-            .build()
-            .unwrap();
-        KnownHost::write_hosts_yml(&std::collections::BTreeMap::from([("out".to_string(), output)])).unwrap();
-        let mut config = esdiag::data::ApplicationConfig::new();
-        config.output.default = Some("out".to_string());
-        config.save().unwrap();
-
-        let error = super::setup_service_host(None, Application::Kibana)
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("no linked Kibana viewer"), "{error}");
-        assert!(super::setup_service_host(None, Application::Elasticsearch).is_ok());
-    }
-
-    #[cfg(feature = "setup")]
-    #[test]
-    fn setup_elasticsearch_ignores_an_unavailable_viewer_credential() {
-        let _env = TestEnv::new();
-        let output = esdiag::data::KnownHostBuilder::new(Url::parse("https://es.example:9200").unwrap())
-            .application(Application::Elasticsearch)
-            .roles(vec![esdiag::data::HostRole::Send])
-            .viewer(Some("locked-kb".to_string()))
-            .build()
-            .unwrap();
-        let viewer = esdiag::data::KnownHostBuilder::new(Url::parse("https://kb.example:5601").unwrap())
-            .application(Application::Kibana)
-            .roles(vec![esdiag::data::HostRole::View])
-            .secret(Some("missing-secret".to_string()))
-            .build()
-            .unwrap();
-        KnownHost::write_hosts_yml(&std::collections::BTreeMap::from([
-            ("out".to_string(), output),
-            ("locked-kb".to_string(), viewer),
-        ]))
-        .unwrap();
-        let mut config = esdiag::data::ApplicationConfig::new();
-        config.output.default = Some("out".to_string());
-        config.save().unwrap();
-
-        assert!(super::setup_service_host(None, Application::Elasticsearch).is_ok());
-        let error = super::setup_service_host(None, Application::Kibana)
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("missing-secret"), "{error}");
-    }
-
-    #[cfg(feature = "setup")]
-    #[test]
-    fn setup_kibana_ignores_an_unavailable_output_credential() {
-        let _env = TestEnv::new();
-        let output = esdiag::data::KnownHostBuilder::new(Url::parse("https://es.example:9200").unwrap())
-            .application(Application::Elasticsearch)
-            .roles(vec![esdiag::data::HostRole::Send])
-            .secret(Some("missing-secret".to_string()))
-            .viewer(Some("kb".to_string()))
-            .build()
-            .unwrap();
-        let viewer = esdiag::data::KnownHostBuilder::new(Url::parse("https://kb.example:5601").unwrap())
-            .application(Application::Kibana)
-            .roles(vec![esdiag::data::HostRole::View])
-            .build()
-            .unwrap();
-        KnownHost::write_hosts_yml(&std::collections::BTreeMap::from([
-            ("out".to_string(), output),
-            ("kb".to_string(), viewer),
-        ]))
-        .unwrap();
-        let mut config = esdiag::data::ApplicationConfig::new();
-        config.output.default = Some("out".to_string());
-        config.save().unwrap();
-
-        let viewer = super::setup_service_host(None, Application::Kibana).expect("viewer without the output secret");
-        assert_eq!(viewer.app(), Some(Application::Kibana));
-        let error = super::setup_service_host(None, Application::Elasticsearch)
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("missing-secret"), "{error}");
     }
 
     #[cfg(feature = "setup")]
