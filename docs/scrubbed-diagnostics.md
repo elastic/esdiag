@@ -68,13 +68,13 @@ The typed/streamed adapter writes unchanged tokens incrementally to a buffered t
 
 **Never commit customer scrubbed API bundles to this repository.**
 
-Automated tests build synthetic malformed IPs at runtime from the esdiag golden archive (`tests/archives/elasticsearch-api-diagnostics-9.3.3.zip`). See `tests/scrubbed_normalization_tests.rs` and the `synthetic_vectors` test module in `src/receiver/archive/scrub.rs` for canonical test constants.
+Automated tests build synthetic malformed IPs at runtime from the esdiag golden archive (`tests/archives/elasticsearch-api-diagnostics-9.3.3.zip`). See `tests/integration/scrubbed_normalization_tests.rs` and the `synthetic_vectors` test module in `src/receiver/archive/scrub.rs` for canonical test constants.
 
 ## Deterministic verification (CI)
 
 ```bash
 cargo test --lib scrub
-cargo test --test scrubbed_normalization_tests
+cargo test --test integration scrubbed_normalization_tests::
 cargo test --lib server::file_upload::tests
 cargo test --lib processor::elasticsearch::nodes::lookup::tests
 cargo clippy --workspace --all-targets
@@ -146,7 +146,7 @@ Look for lines like `Unscrubbed N address fields in .../nodes.json`.
 | Gate | Scope | Command |
 |------|-------|---------|
 | Deterministic unit tests | Scrub helpers, receiver wiring, upload parsing, node rename | `cargo test --lib scrub` |
-| Deterministic integration | In-process `process` → directory export; per-node IP mapping across NDJSON streams; archive **and** directory paths; scrub disabled regression | `cargo test --test scrubbed_normalization_tests` |
+| Deterministic integration | In-process `process` → directory export; per-node IP mapping across NDJSON streams; archive **and** directory paths; scrub disabled regression | `cargo test --test integration scrubbed_normalization_tests::` |
 | Upload rejection and cleanup | Truncated bodies, malformed trailing parts, valid explicit override | `cargo test --lib server::file_upload::tests` |
 | Node lookup disambiguation | Duplicate names, unique fallback, exact-ID precedence | `cargo test --lib processor::elasticsearch::nodes::lookup::tests` |
 | Workspace lint | Changed Rust sources | `cargo clippy --workspace --all-targets` |

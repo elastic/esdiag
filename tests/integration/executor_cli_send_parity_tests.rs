@@ -5,8 +5,7 @@
 //! End-to-end parity coverage for the standalone `send` command and Elastic
 //! Upload Service adapter.
 
-mod common;
-
+use crate::common::elasticsearch::{DocReply, ElasticsearchMock};
 use axum::{
     Router,
     body::Bytes,
@@ -15,7 +14,6 @@ use axum::{
     response::IntoResponse,
     routing::{get, head, post},
 };
-use common::elasticsearch::{DocReply, ElasticsearchMock};
 use std::{
     fs,
     io::Write,

@@ -3,11 +3,26 @@
 This directory contains integration tests and opt-in test utilities for workflows
 that need local services or externally managed Elastic Stack instances.
 
+## Integration Test Binaries
+
+Most integration tests are modules of one test binary, `tests/integration/main.rs`,
+so Cargo links the library once for all of them. Add a new test file under
+`tests/integration/` and declare it in `main.rs`. Select one module by its path:
+
+```sh
+cargo test --test integration host_cli_tests::
+```
+
+Tests that set process-wide environment variables such as `HOME` or `ESDIAG_*`
+stay in their own binaries directly under `tests/`. Spawned `esdiag` commands
+inherit the parent environment, so these tests would leak their overrides into
+other tests sharing the process.
+
 ## Shared Elasticsearch Mock
 
 `tests/common/elasticsearch.rs` is the mock cluster for tests that write to
-Elasticsearch. Integration tests load it with `mod common;`; unit tests use the
-same file as `crate::es_mock`. It behaves like a real cluster where ESDiag
+Elasticsearch. Integration tests use it as `crate::common::elasticsearch`; unit
+tests use the same file as `crate::es_mock`. It behaves like a real cluster where ESDiag
 depends on it:
 
 - `POST /{index}/_bulk` parses the (gzip) NDJSON body, answers one item per
@@ -155,7 +170,7 @@ configuration.
 
 ## Mixed-version provenance writes
 
-`tests/provenance_writers_tests.rs` installs the checkout's Elasticsearch assets
+`tests/integration/provenance_writers_tests.rs` installs the checkout's Elasticsearch assets
 and tests legacy, current, and dual-name payloads against report, Elasticsearch
 node, and Logstash node streams. It checks direct and bulk writes, term queries,
 aggregations, and a subsequent rollover.
@@ -164,7 +179,7 @@ Run only against a disposable Elasticsearch cluster with security disabled.
 The test replaces ESDiag templates and rolls over its test streams.
 
 ```sh
-ESDIAG_TEST_ES_URL=http://localhost:19278 cargo test --test provenance_writers_tests -- --ignored --nocapture
+ESDIAG_TEST_ES_URL=http://localhost:19278 cargo test --test integration provenance_writers_tests:: -- --ignored --nocapture
 ```
 
 The test is ignored by default. Elasticsearch 9.4.2 on
@@ -172,7 +187,7 @@ Ironhide is the regression environment for mixed-version provenance writes.
 
 ## Settings indexing and failure-store access
 
-Run the live tests in `elasticsearch_feedback_tests.rs` only on a disposable
+Run the live tests in `tests/integration/elasticsearch_feedback_tests.rs` only on a disposable
 Elasticsearch 9.4+ cluster. They create temporary resources with unique names
 and delete them afterward.
 
@@ -181,8 +196,8 @@ are searchable and that rejected documents can be recovered:
 
 ```sh
 ESDIAG_TEST_ELASTICSEARCH_URL=http://localhost:19281 \
-  cargo test --test elasticsearch_feedback_tests \
-  settings_values_and_subsettings_index_and_failures_are_recoverable -- --ignored --exact
+  cargo test --test integration \
+  elasticsearch_feedback_tests::settings_values_and_subsettings_index_and_failures_are_recoverable -- --ignored --exact
 ```
 
 For the role test, use an authenticated cluster. Set
@@ -191,8 +206,8 @@ For the role test, use an authenticated cluster. Set
 to administrator credentials. Then run:
 
 ```sh
-cargo test --test elasticsearch_feedback_tests \
-  diagnostic_role_reads_failures_without_managing_them -- --ignored --exact
+cargo test --test integration \
+  elasticsearch_feedback_tests::diagnostic_role_reads_failures_without_managing_them -- --ignored --exact
 ```
 
 This test installs the bundled role under a temporary name and creates a user

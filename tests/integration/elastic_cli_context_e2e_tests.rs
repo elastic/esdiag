@@ -2,8 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-mod common;
-
+use crate::common::elasticsearch::ElasticsearchMock;
 use axum::{
     Json, Router,
     body::Body,
@@ -12,7 +11,6 @@ use axum::{
     response::IntoResponse,
     routing::any,
 };
-use common::elasticsearch::ElasticsearchMock;
 use std::{
     fs,
     path::Path,

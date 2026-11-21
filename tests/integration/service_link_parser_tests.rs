@@ -1,6 +1,6 @@
 use std::process::Command;
 
-const SERVICE_LINK_PARSER: &str = include_str!("../templates/components/service_link_parser.js");
+const SERVICE_LINK_PARSER: &str = include_str!("../../templates/components/service_link_parser.js");
 
 #[test]
 #[ignore = "requires node to execute the shared JavaScript parser"]
