@@ -10,13 +10,18 @@ use clap::{
     error::ErrorKind,
 };
 #[cfg(feature = "agent")]
-use esdiag::cli_output::{AgentRecovery, AgentSkillTargetResult, AgentSkillsFailureContext, AgentUsageResult};
+use esdiag::cli_output::{AgentSkillTargetResult, AgentSkillsFailureContext, AgentUsageResult};
 use esdiag::cli_output::{
-    AgentSkillsResult, BundleResult, CliFailure, CliFailureCategory, CliOutcome, CompletedStages, DiagnosticResult,
-    FileCounts, IncludedDiagnosticResult, JobInputResult, JobProcessResult, JobSaveResult, JobSendResult, JobStage,
-    KeystoreOperation, OutputFormat, ProcessResult, SavedJobResult, SendResult, write_terminal_outcome,
+    AgentSkillsResult, CliOutcome, CommandOutcome, KeystoreOperation, OutputFormat, command_failure,
+    write_terminal_outcome,
 };
-use esdiag::job::{FailedStage, JobExecutionFailure, JobOutcome, SavedJobNotFound};
+use esdiag::job::{FailedStage, JobExecutionFailure, JobOutcome};
+#[cfg(feature = "setup")]
+use esdiag::operations::setup_outcome;
+use esdiag::operations::{
+    self, collection_outcome, ensure_host_role, ensure_uri_role, execution_process_result, format_execution_failure,
+    job_outcome, safe_output_display, saved_job_result,
+};
 #[cfg(feature = "server")]
 use esdiag::server::{AuthProvider, RuntimeMode, Server, ServerStartOptions};
 #[cfg(feature = "setup")]
@@ -25,29 +30,29 @@ use esdiag::setup;
 use esdiag::{
     agent::builder::{AgentBuilderClient, AgentBuilderLocation, AgentFailure, AgentProgress, AgentRequest},
     client::KibanaClient,
-    setup::skills::{EmbeddedSkill, SkillEnvironment, SkillTarget, detected_targets, install},
+    operations::process::ProcessAskStdoutConflict,
+    setup::skills::{
+        EmbeddedSkill, SkillEnvironment, SkillInstallationFailure, SkillTarget, detected_targets, install,
+    },
 };
 use esdiag::{
     client::Client,
     data::{
-        Application, Auth, HostReference, HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate,
-        OnboardingWorkflow, OutputDeployment, SecretAuth, Settings, Uri, add_secret, clear_unlock_lease,
-        collect_application, create_keystore, default_unlock_ttl, get_keystore_path, get_password_for_secret_commands,
-        get_unlock_status, keystore_exists, list_secret_names, parse_unlock_ttl, remove_secret, resolve_secret_auth,
-        rotate_keystore_password, update_secret, validate_existing_keystore_password, write_unlock_lease,
+        Application, HostReference, HostRole, KnownHost, KnownHostCliUpdate, OnboardingWorkflow, OutputDeployment,
+        SecretAuth, Uri, add_secret, clear_unlock_lease, collect_application, create_keystore, default_unlock_ttl,
+        get_keystore_path, get_password_for_secret_commands, get_unlock_status, keystore_exists, list_secret_names,
+        parse_unlock_ttl, remove_secret, rotate_keystore_password, update_secret, validate_existing_keystore_password,
+        write_unlock_lease,
     },
     elastic_upload_service,
     env::LOG_LEVEL,
     exporter::Exporter,
     onboarding::{
-        CollectHostInput, OutputDeploymentInput, clear_collection_deferral, inspect as inspect_onboarding,
-        save_collect_host, save_default_job, save_default_processing_job, save_output_deployment, save_user,
-        save_workflow, saved_job_fits_workflow,
+        CollectHostInput, OutputDeploymentInput, inspect as inspect_onboarding, save_collect_host, save_default_job,
+        save_default_processing_job, save_output_deployment, save_user, save_workflow, saved_job_fits_workflow,
     },
-    processor::{CollectionResult, DiagnosticOutcome, Identifiers, default_collect_archive_name},
-    receiver::{
-        ElasticCloudAdminRequestError, ElasticsearchRequestError, KibanaRequestError, LogstashRequestError, Receiver,
-    },
+    processor::{Identifiers, default_collect_archive_name},
+    receiver::Receiver,
 };
 use eyre::{Result, eyre};
 use redact::Secret;
@@ -57,7 +62,6 @@ use std::{
     net::Ipv4Addr,
     path::PathBuf,
     process::{Command, ExitCode},
-    str::FromStr,
     time::Duration,
 };
 use tracing_subscriber::{EnvFilter, Layer, fmt, layer::SubscriberExt};
@@ -684,7 +688,7 @@ async fn async_main() -> Result<ExitCode> {
     let setup_command = matches!(cli.command, Some(Commands::Setup { .. }));
     match run(cli, format).await {
         Ok(result) => {
-            if let Some(outcome) = result.outcome {
+            if let CommandOutcome::Completed(outcome) = result {
                 write_terminal_outcome(format, &outcome)?;
             }
             Ok(ExitCode::SUCCESS)
@@ -897,38 +901,6 @@ fn init_tracing(terminal_filter: EnvFilter, file_filter: Option<EnvFilter>) {
     }
 }
 
-#[derive(Debug)]
-struct CommandResult {
-    outcome: Option<CliOutcome>,
-}
-
-#[cfg(feature = "agent")]
-#[derive(Debug)]
-struct ProcessAskStdoutConflict;
-
-#[cfg(feature = "agent")]
-impl std::fmt::Display for ProcessAskStdoutConflict {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            formatter,
-            "--ask cannot be used when process output is '-' because processed documents own stdout"
-        )
-    }
-}
-
-#[cfg(feature = "agent")]
-impl std::error::Error for ProcessAskStdoutConflict {}
-
-impl CommandResult {
-    fn outcome(outcome: CliOutcome) -> Self {
-        Self { outcome: Some(outcome) }
-    }
-
-    fn stream() -> Self {
-        Self { outcome: None }
-    }
-}
-
 fn is_agent_mode(cli: &Cli) -> bool {
     cli.agent || std::env::var_os("CLAUDECODE").is_some()
 }
@@ -1023,7 +995,7 @@ fn logs_to_terminal(cli: &Cli) -> bool {
     }
 }
 
-async fn run_local_lifecycle(args: Vec<OsString>) -> Result<CommandResult> {
+async fn run_local_lifecycle(args: Vec<OsString>) -> Result<CommandOutcome> {
     let raw_stdout = args
         .first()
         .and_then(|argument| argument.to_str())
@@ -1031,401 +1003,14 @@ async fn run_local_lifecycle(args: Vec<OsString>) -> Result<CommandResult> {
         .unwrap_or(true);
     let outcome = local::run(&args).await?;
     Ok(if raw_stdout {
-        CommandResult::stream()
+        CommandOutcome::Streamed
     } else {
-        CommandResult::outcome(outcome)
+        CommandOutcome::Completed(outcome)
     })
-}
-
-fn classify_failure(error: &eyre::Report) -> CliFailureCategory {
-    if error.downcast_ref::<esdiag::data::SecretAlreadyExists>().is_some() {
-        return CliFailureCategory::Conflict;
-    }
-    if let Some(response) = http_response_details(error) {
-        return match response.status {
-            401 | 403 => CliFailureCategory::AuthenticationFailed,
-            409 => CliFailureCategory::Conflict,
-            404 => CliFailureCategory::NotFound,
-            500..=599 => CliFailureCategory::Internal,
-            _ => CliFailureCategory::InvalidInput,
-        };
-    }
-    let message = error.to_string().to_ascii_lowercase();
-    if message.contains("not found") {
-        CliFailureCategory::NotFound
-    } else if message.contains("auth") || message.contains("credential") {
-        CliFailureCategory::AuthenticationFailed
-    } else if message.contains("collect") {
-        CliFailureCategory::CollectionFailed
-    } else if message.contains("process") {
-        CliFailureCategory::ProcessingFailed
-    } else if message.contains("Elastic Upload Service") || message.contains("send") {
-        CliFailureCategory::SendFailed
-    } else if message.contains("keystore") || message.contains("secret") {
-        CliFailureCategory::KeystoreFailed
-    } else {
-        CliFailureCategory::InvalidInput
-    }
-}
-
-fn safe_failure_message(error: &eyre::Report) -> String {
-    if let Some(response) = http_response_details(error) {
-        return match response.status {
-            401 => "The server rejected the request because authentication credentials are required.".to_string(),
-            403 => "The server rejected the request because the credentials are not authorized.".to_string(),
-            404 => "The requested server resource was not found.".to_string(),
-            500..=599 => format!(
-                "The server failed to complete the request with HTTP {}.",
-                response.status
-            ),
-            status => format!("The server rejected the request with HTTP {status}."),
-        };
-    }
-    match classify_failure(error) {
-        CliFailureCategory::Conflict => "requested resource already exists",
-        CliFailureCategory::NotFound => "requested resource was not found",
-        CliFailureCategory::AuthenticationFailed => "authentication failed",
-        CliFailureCategory::CollectionFailed => "diagnostic collection failed",
-        CliFailureCategory::ProcessingFailed => "diagnostic processing failed",
-        CliFailureCategory::SendFailed => "diagnostic send failed",
-        CliFailureCategory::KeystoreFailed => "keystore operation failed",
-        CliFailureCategory::SetupFailed => "setup failed",
-        CliFailureCategory::Internal | CliFailureCategory::InvalidInput => "command execution failed",
-    }
-    .to_string()
-}
-
-struct HttpResponseDetails {
-    status: u16,
-    error_type: Option<String>,
-    reason: Option<String>,
-}
-
-fn parse_http_response_details(status: u16, body: &str) -> HttpResponseDetails {
-    let response_error = serde_json::from_str::<serde_json::Value>(body)
-        .ok()
-        .map(|body| body.get("error").unwrap_or(&body).clone());
-    let error_type = response_error
-        .as_ref()
-        .and_then(|error| error.get("type"))
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string);
-    let reason = response_error
-        .as_ref()
-        .and_then(|error| error.get("reason"))
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string);
-
-    HttpResponseDetails {
-        status,
-        error_type,
-        reason,
-    }
-}
-
-fn http_response_details(error: &eyre::Report) -> Option<HttpResponseDetails> {
-    for cause in error.chain() {
-        if let Some(kibana_sync::Error::ApiResponse { status, body }) = cause.downcast_ref::<kibana_sync::Error>() {
-            return Some(parse_http_response_details(status.as_u16(), body));
-        }
-        if let Some(error) = cause.downcast_ref::<ElasticsearchRequestError>() {
-            return Some(parse_http_response_details(error.status.as_u16(), &error.body));
-        }
-        if let Some(error) = cause.downcast_ref::<KibanaRequestError>() {
-            return Some(parse_http_response_details(error.status.as_u16(), &error.body));
-        }
-        if let Some(error) = cause.downcast_ref::<LogstashRequestError>() {
-            return Some(parse_http_response_details(error.status.as_u16(), &error.body));
-        }
-        if let Some(error) = cause.downcast_ref::<ElasticCloudAdminRequestError>() {
-            return Some(parse_http_response_details(error.status.as_u16(), &error.body));
-        }
-    }
-    None
-}
-
-/// `esdiag setup` reports `setup_failed` unless an HTTP response or skill installation supplies the category.
-fn command_failure(error: &eyre::Report, setup_command: bool) -> CliFailure {
-    #[cfg(feature = "agent")]
-    let skill_failure = error.downcast_ref::<SkillInstallationFailure>().is_some();
-    #[cfg(not(feature = "agent"))]
-    let skill_failure = false;
-    if setup_command && !skill_failure && http_response_details(error).is_none() {
-        return CliFailure::new(CliFailureCategory::SetupFailed, "setup failed");
-    }
-    structured_failure(error)
-}
-
-fn structured_failure(error: &eyre::Report) -> CliFailure {
-    #[cfg(feature = "agent")]
-    if let Some(conflict) = error.downcast_ref::<ProcessAskStdoutConflict>() {
-        return CliFailure::new(CliFailureCategory::InvalidInput, conflict.to_string());
-    }
-    if let Some(missing_job) = error.downcast_ref::<SavedJobNotFound>() {
-        return CliFailure::new(CliFailureCategory::NotFound, "saved job was not found")
-            .resource(missing_job.name.clone());
-    }
-    #[cfg(feature = "agent")]
-    if let Some(agent_failure) = error.downcast_ref::<AgentFailure>() {
-        let category = match agent_failure {
-            AgentFailure::Http { status: 401 | 403 } => CliFailureCategory::AuthenticationFailed,
-            AgentFailure::Http { status: 409 } => CliFailureCategory::Conflict,
-            AgentFailure::Http { status: 404 } => CliFailureCategory::NotFound,
-            AgentFailure::Http { status: 500..=599 } | AgentFailure::Remote | AgentFailure::Protocol { .. } => {
-                CliFailureCategory::Internal
-            }
-            AgentFailure::Http { .. } | AgentFailure::Transport | AgentFailure::Interrupted { .. } => {
-                CliFailureCategory::InvalidInput
-            }
-        };
-        let mut failure = CliFailure::new(category, agent_failure.to_string());
-        if let AgentFailure::Http { status } = agent_failure {
-            failure = failure.http_status(*status);
-        }
-        if let AgentFailure::Interrupted {
-            conversation_id,
-            kibana_url,
-        } = agent_failure
-        {
-            failure = failure.recovery(AgentRecovery {
-                conversation_id: conversation_id.clone(),
-                kibana_url: kibana_url.clone(),
-                retry_safe: agent_failure.retry_safe(),
-            });
-        }
-        return failure;
-    }
-    #[cfg(feature = "agent")]
-    if let Some(skill_failure) = error.downcast_ref::<SkillInstallationFailure>() {
-        return CliFailure::new(CliFailureCategory::Internal, skill_failure.to_string())
-            .target_results(skill_failure.context.results.clone())
-            .agent_skills(skill_failure.context.clone());
-    }
-    let Some(job_failure) = error.downcast_ref::<JobExecutionFailure>() else {
-        let mut failure = CliFailure::new(classify_failure(error), safe_failure_message(error));
-        if let Some(response) = http_response_details(error) {
-            failure = failure.http_status(response.status);
-            if let Some(error_type) = response.error_type {
-                failure = failure.type_(error_type);
-            }
-            if let Some(reason) = response.reason {
-                failure = failure.reason(reason);
-            }
-        }
-        return failure;
-    };
-    let (category, failed_stage) = match job_failure.stage {
-        FailedStage::Collect => (CliFailureCategory::CollectionFailed, JobStage::Collect),
-        FailedStage::Process => (CliFailureCategory::ProcessingFailed, JobStage::Process),
-        FailedStage::Send => (CliFailureCategory::SendFailed, JobStage::Send),
-    };
-    let outcome = &job_failure.outcome;
-    let completed = CompletedStages {
-        save: outcome
-            .bundle_path
-            .as_ref()
-            .filter(|_| outcome.bundle_retained && outcome.bundle_created)
-            .map(|path| BundleResult {
-                path: path.display().to_string(),
-            }),
-        process: outcome.execution.as_ref().and_then(execution_process_result),
-        send: outcome.send_slug.as_ref().map(|slug| SendResult {
-            destination: format!("https://upload.elastic.co/g/{slug}"),
-        }),
-    };
-    let mut failure = CliFailure::new(category, safe_failure_message(error));
-    failure.failed_stage = Some(failed_stage);
-    failure.retry_safe = Some(false);
-    if completed.save.is_some() || completed.process.is_some() || completed.send.is_some() {
-        failure.completed = Some(completed);
-    }
-    failure
-}
-
-fn collection_outcome(result: CollectionResult, send_destination: Option<String>) -> CliOutcome {
-    CliOutcome::ArchiveCollected {
-        path: result.path,
-        files: FileCounts {
-            successful: result.success,
-            total: result.total,
-        },
-        duration_ms: Some(result.duration_ms),
-        send_destination,
-    }
-}
-
-fn format_execution_failure(outcome: &esdiag::job::outcome::ExecutionOutcome) -> String {
-    let mut failures = outcome
-        .stages
-        .iter()
-        .filter_map(|stage| match &stage.status {
-            esdiag::job::outcome::StageStatus::Failed(error) => Some(format!("{:?} failed: {error}", stage.stage)),
-            esdiag::job::outcome::StageStatus::Blocked(reason) => Some(format!("{:?} blocked: {reason}", stage.stage)),
-            esdiag::job::outcome::StageStatus::Succeeded | esdiag::job::outcome::StageStatus::Skipped(_) => None,
-        })
-        .collect::<Vec<_>>();
-    failures.extend(outcome.child_failures());
-    if failures.is_empty() {
-        "Job did not complete successfully".to_string()
-    } else {
-        failures.join("\n")
-    }
-}
-
-fn execution_process_result(outcome: &esdiag::job::outcome::ExecutionOutcome) -> Option<ProcessResult> {
-    let report = outcome.report.as_ref()?;
-    let included = outcome
-        .children
-        .iter()
-        .map(
-            |child| match (child.diagnostic_outcome, child.report(), child.failure()) {
-                (_, Some(_), Some(error)) => IncludedDiagnosticResult::Failed {
-                    source: child.path.clone(),
-                    error: error.to_string(),
-                },
-                (DiagnosticOutcome::Skipped(_), _, _) => IncludedDiagnosticResult::Skipped {
-                    source: child.path.clone(),
-                    product: Some(esdiag::processor::display_label(child.application(), child.platform())),
-                    reason: child
-                        .execution_error()
-                        .unwrap_or("diagnostic processing skipped")
-                        .to_string(),
-                },
-                (_, Some(report), None) => IncludedDiagnosticResult::Completed {
-                    source: child.path.clone(),
-                    diagnostic: DiagnosticResult {
-                        id: report.diagnostic.metadata.id.clone(),
-                        product: report.diagnostic.display_label(),
-                        documents: report.diagnostic.docs.created,
-                        documents_failed: report.diagnostic.docs.errors,
-                        outcome: report.outcome(),
-                        indexing_failures: report
-                            .rejected_indices()
-                            .into_iter()
-                            .map(|(index, documents_failed)| esdiag::cli_output::IndexingFailure {
-                                index,
-                                documents_failed,
-                                category: "document_rejected",
-                            })
-                            .collect(),
-                        duration_ms: child.runtime.unwrap_or_default(),
-                        source: child.path.clone(),
-                        output: String::new(),
-                        kibana_url: report.diagnostic.kibana_link.clone(),
-                    },
-                },
-                (_, None, _) => IncludedDiagnosticResult::Failed {
-                    source: child.path.clone(),
-                    error: child
-                        .execution_error()
-                        .unwrap_or("included diagnostic processing failed")
-                        .to_string(),
-                },
-            },
-        )
-        .collect();
-
-    Some(ProcessResult {
-        diagnostic: DiagnosticResult {
-            id: report.diagnostic.metadata.id.clone(),
-            product: report.diagnostic.display_label(),
-            documents: report.diagnostic.docs.created,
-            documents_failed: report.diagnostic.docs.errors,
-            outcome: report.outcome(),
-            indexing_failures: report
-                .rejected_indices()
-                .into_iter()
-                .map(|(index, documents_failed)| esdiag::cli_output::IndexingFailure {
-                    index,
-                    documents_failed,
-                    category: "document_rejected",
-                })
-                .collect(),
-            duration_ms: report.diagnostic.processing_duration,
-            source: "primary".to_string(),
-            output: String::new(),
-            kibana_url: report.diagnostic.kibana_link.clone(),
-        },
-        included,
-    })
-}
-
-fn job_outcome(name: String, outcome: JobOutcome) -> CliOutcome {
-    CliOutcome::JobCompleted {
-        job: name,
-        save: outcome
-            .bundle_path
-            .filter(|_| outcome.bundle_retained && outcome.bundle_created)
-            .map(|path| BundleResult {
-                path: path.display().to_string(),
-            }),
-        process: outcome.execution.as_ref().and_then(execution_process_result),
-        send: outcome.send_slug.map(|slug| SendResult {
-            destination: format!("https://upload.elastic.co/g/{slug}"),
-        }),
-    }
-}
-
-fn host_result(name: String, host: &KnownHost) -> esdiag::cli_output::HostResult {
-    esdiag::cli_output::HostResult {
-        name,
-        app: host.app().map(|app| app.key().to_string()),
-        roles: host.roles().iter().map(ToString::to_string).collect(),
-        target: host.transport_display(),
-        secret_reference: host.secret_reference().map(str::to_string),
-    }
-}
-
-fn saved_job_result(name: String, job: &esdiag::data::Job) -> SavedJobResult {
-    let input = match job.input() {
-        esdiag::job::model::Input::Collect {
-            host, diagnostic_type, ..
-        } => JobInputResult::Collect {
-            host: host.clone(),
-            diagnostic_type: diagnostic_type.clone(),
-        },
-        esdiag::job::model::Input::CollectBinding {
-            binding,
-            diagnostic_type,
-            ..
-        } => JobInputResult::Collect {
-            host: format!("binding:{}", binding.as_str()),
-            diagnostic_type: diagnostic_type.clone(),
-        },
-        esdiag::job::model::Input::Load { uri } => JobInputResult::Load {
-            source: uri.to_string(),
-        },
-        esdiag::job::model::Input::LoadBinding { binding } => JobInputResult::Load {
-            source: format!("binding:{}", binding.as_str()),
-        },
-    };
-    let save = job.save().map(|save| JobSaveResult {
-        directory: save.dir.as_ref().map(|path| path.display().to_string()),
-    });
-    let process = job.process().map(|process| JobProcessResult {
-        export: match &process.export {
-            esdiag::job::model::ExportTarget::KnownHost { name } => format!("host:{name}"),
-            esdiag::job::model::ExportTarget::Environment => "environment".to_string(),
-            esdiag::job::model::ExportTarget::File { path } => path.display().to_string(),
-            esdiag::job::model::ExportTarget::Directory { output_dir } => output_dir.display().to_string(),
-            esdiag::job::model::ExportTarget::Stdout => "-".to_string(),
-            esdiag::job::model::ExportTarget::Binding { binding } => format!("binding:{}", binding.as_str()),
-        },
-    });
-    let send = job.send().map(|send| JobSendResult {
-        upload_id: send.upload_id.clone(),
-    });
-    SavedJobResult {
-        name,
-        input,
-        save,
-        process,
-        send,
-    }
 }
 
 #[tracing::instrument(skip_all)]
-async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
+async fn run(cli: Cli, format: OutputFormat) -> Result<CommandOutcome> {
     // If there are CLI arguments but no subcommand, avoid starting the desktop/Tauri
     // entrypoint. The desktop UI should only start when launched absolutely without arguments.
     if should_error_for_missing_subcommand(std::env::args_os().len(), cli.command.is_none()) {
@@ -1522,7 +1107,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                 wait_for_shutdown_signal().await?;
 
                 server.shutdown().await;
-                Ok(CommandResult::stream())
+                Ok(CommandOutcome::Streamed)
             }
             Commands::Collect {
                 host,
@@ -1594,7 +1179,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                             .send
                             .as_ref()
                             .map(|send| format!("https://upload.elastic.co/g/{}", send.slug));
-                        Ok(CommandResult::outcome(collection_outcome(result, send_destination)))
+                        Ok(CommandOutcome::Completed(collection_outcome(result, send_destination)))
                     }
                     Uri::ElasticCloud(_) => Err(eyre!("Elastic Cloud API collection not yet implemented")),
                     _ => Err(eyre!("Collect requires a known host")),
@@ -1622,80 +1207,25 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     url_template,
                     args,
                 } => {
-                    tracing::info!("Adding host {name}");
-                    if KnownHost::get_known(&name).is_some() {
-                        return Err(eyre!("Host '{name}' already exists"));
-                    }
-                    let mut update = build_host_cli_update(args);
-                    let secret_auth = resolve_add_host_secret_auth(&name, &mut update)?;
-                    let host = if url_template {
-                        build_host_from_definition(app, &target, true, &update, secret_auth)?
-                    } else if let Some(host) = maybe_materialize_template_target(&target)? {
-                        host.merge_cli_update(&update, secret_auth)?
-                    } else {
-                        build_host_from_definition(app, &target, false, &update, secret_auth)?
-                    };
-                    save_host(&name, host.clone(), "added", !host.is_template()).await?;
-                    Ok(CommandResult::outcome(CliOutcome::HostAdded {
-                        host: host_result(name, &host),
-                    }))
+                    operations::host::host_add(operations::host::HostAddInput {
+                        name,
+                        app,
+                        target,
+                        url_template,
+                        update: args.into(),
+                    })
+                    .await
                 }
                 HostCommands::Update { name, args } => {
-                    tracing::info!("Updating host {name}");
-                    let update = build_host_cli_update(args);
-                    if update.is_empty() {
-                        return Err(eyre!(
-                            "No host update fields were provided. Use `esdiag host auth {name}` to test the saved host without modifying it."
-                        ));
-                    }
-                    let existing = KnownHost::get_known(&name).ok_or_else(|| eyre!("Host '{name}' not found"))?;
-                    let secret_auth = if update.secret.as_deref().is_some() {
-                        resolve_host_secret_auth(update.secret.as_deref())?
-                    } else {
-                        None
-                    };
-                    let host = existing.merge_cli_update(&update, secret_auth)?;
-                    save_host(&name, host.clone(), "updated", !host.is_template()).await?;
-                    Ok(CommandResult::outcome(CliOutcome::HostUpdated {
-                        host: host_result(name, &host),
-                    }))
+                    operations::host::host_update(operations::host::HostUpdateInput {
+                        name,
+                        update: args.into(),
+                    })
+                    .await
                 }
-                HostCommands::Remove { name } => {
-                    tracing::info!("Removing host {name}");
-                    let hostfile = delete_host_from_cli(&name)?;
-                    tracing::info!("Host {name} successfully deleted from {hostfile}");
-                    Ok(CommandResult::outcome(CliOutcome::HostRemoved { name, path: hostfile }))
-                }
-                HostCommands::List => {
-                    let hosts = KnownHost::parse_hosts_yml()?
-                        .into_iter()
-                        .map(|(name, host)| host_result(name, &host))
-                        .collect();
-                    Ok(CommandResult::outcome(CliOutcome::HostsListed { hosts }))
-                }
-                HostCommands::Auth { target } => {
-                    tracing::info!("Testing saved host {target}");
-                    if let Some(host) = KnownHost::resolve_template_reference(&target)? {
-                        validate_host_connection(&target, Uri::try_from(host)?).await?;
-                        return Ok(CommandResult::outcome(CliOutcome::HostAuthenticated {
-                            name: target,
-                            message: None,
-                        }));
-                    }
-                    let host = KnownHost::get_known(&target).ok_or_else(|| eyre!("Host '{target}' not found"))?;
-                    if host.is_template() {
-                        return Ok(CommandResult::outcome(CliOutcome::HostAuthenticated {
-                            name: target.clone(),
-                            message: Some(KnownHost::template_guidance(&target)),
-                        }));
-                    }
-                    let uri = Uri::try_from(host)?;
-                    validate_host_connection(&target, uri).await?;
-                    Ok(CommandResult::outcome(CliOutcome::HostAuthenticated {
-                        name: target,
-                        message: None,
-                    }))
-                }
+                HostCommands::Remove { name } => operations::host::host_remove(name),
+                HostCommands::List => operations::host::host_list(),
+                HostCommands::Auth { target } => operations::host::host_auth(target).await,
                 HostCommands::Legacy(args) => Err(legacy_host_command_error(&args)),
             },
             Commands::Keystore { command } => match command {
@@ -1715,7 +1245,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                         keystore_password.expose_secret(),
                     )?;
                     tracing::info!("Secret '{secret_id}' saved to {path}");
-                    Ok(CommandResult::outcome(CliOutcome::KeystoreChanged {
+                    Ok(CommandOutcome::Completed(CliOutcome::KeystoreChanged {
                         operation: KeystoreOperation::Added,
                         secret_id: Some(secret_id),
                         path: Some(path),
@@ -1737,7 +1267,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                         keystore_password.expose_secret(),
                     )?;
                     tracing::info!("Secret '{secret_id}' updated in {path}");
-                    Ok(CommandResult::outcome(CliOutcome::KeystoreChanged {
+                    Ok(CommandOutcome::Completed(CliOutcome::KeystoreChanged {
                         operation: KeystoreOperation::Updated,
                         secret_id: Some(secret_id),
                         path: Some(path),
@@ -1753,7 +1283,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     let expected = expected_secret_auth(username, password, apikey)?;
                     let path = remove_secret(&secret_id, expected, keystore_password.expose_secret())?;
                     tracing::info!("Secret '{secret_id}' deleted from {path}");
-                    Ok(CommandResult::outcome(CliOutcome::KeystoreChanged {
+                    Ok(CommandOutcome::Completed(CliOutcome::KeystoreChanged {
                         operation: KeystoreOperation::Removed,
                         secret_id: Some(secret_id),
                         path: Some(path),
@@ -1777,7 +1307,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     } else {
                         tracing::info!("Keystore unlocked via {}", unlock_path.display());
                     }
-                    Ok(CommandResult::outcome(CliOutcome::KeystoreStatus {
+                    Ok(CommandOutcome::Completed(CliOutcome::KeystoreStatus {
                         exists: status.keystore_exists,
                         unlock_active: status.unlock_active,
                         expires_at_epoch: status.expires_at_epoch,
@@ -1795,7 +1325,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     } else {
                         tracing::info!("Keystore unlock lease was already absent");
                     }
-                    Ok(CommandResult::outcome(CliOutcome::KeystoreStatus {
+                    Ok(CommandOutcome::Completed(CliOutcome::KeystoreStatus {
                         exists: status.keystore_exists,
                         unlock_active: false,
                         expires_at_epoch: None,
@@ -1809,7 +1339,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                         if status.keystore_exists { "present" } else { "absent" },
                         keystore_path.display()
                     );
-                    Ok(CommandResult::outcome(CliOutcome::KeystoreStatus {
+                    Ok(CommandOutcome::Completed(CliOutcome::KeystoreStatus {
                         exists: status.keystore_exists,
                         unlock_active: status.unlock_active,
                         expires_at_epoch: status.expires_at_epoch,
@@ -1825,7 +1355,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     let path =
                         rotate_keystore_password(current_password.expose_secret(), new_password.expose_secret())?;
                     tracing::info!("Keystore password updated for {path}");
-                    Ok(CommandResult::outcome(CliOutcome::KeystoreChanged {
+                    Ok(CommandOutcome::Completed(CliOutcome::KeystoreChanged {
                         operation: KeystoreOperation::PasswordChanged,
                         secret_id: None,
                         path: Some(path),
@@ -1838,7 +1368,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     tracing::info!(
                         "Keystore migration complete: migrated {migrated} host(s), unchanged {unchanged} host(s)."
                     );
-                    Ok(CommandResult::outcome(CliOutcome::KeystoreChanged {
+                    Ok(CommandOutcome::Completed(CliOutcome::KeystoreChanged {
                         operation: KeystoreOperation::Migrated,
                         secret_id: None,
                         path: Some(format!("migrated={migrated},unchanged={unchanged}")),
@@ -1983,7 +1513,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                     .into());
                 }
                 if stdout_owned {
-                    Ok(CommandResult::stream())
+                    Ok(CommandOutcome::Streamed)
                 } else {
                     let mut diagnostic = process
                         .map(|result| result.diagnostic)
@@ -1999,7 +1529,9 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                         )
                         .await;
                     }
-                    Ok(CommandResult::outcome(CliOutcome::DiagnosticProcessed { diagnostic }))
+                    Ok(CommandOutcome::Completed(CliOutcome::DiagnosticProcessed {
+                        diagnostic,
+                    }))
                 }
             }
             Commands::Send {
@@ -2007,54 +1539,22 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                 upload_id,
                 api_url,
             } => {
-                let file_path = elastic_upload_service::default_upload_path(&file_name);
-                tracing::info!(
-                    "Sending raw diagnostic archive {} to Elastic Upload Service target {}",
-                    file_path.display(),
-                    upload_id
-                );
-                let response = elastic_upload_service::BundleSender::new(api_url.clone())
-                    .send(&file_path, &upload_id)
-                    .await?;
-                tracing::info!("Elastic Upload Service send complete for slug {}", response.slug);
-                Ok(CommandResult::outcome(CliOutcome::DiagnosticSent {
-                    destination: format!("{}/g/{}", api_url.trim_end_matches('/'), response.slug),
-                }))
+                operations::send::send(operations::send::SendInput {
+                    file_name,
+                    upload_id,
+                    api_url,
+                })
+                .await
             }
             Commands::Setup { command } => run_setup(command).await,
-            Commands::Output { command } => {
-                let mut config = esdiag::data::ApplicationConfig::load()?;
-                match command {
-                    OutputCommands::Set { context } => {
-                        let reference = esdiag::data::ElasticOutputContext::new(context)?;
-                        OutputDeployment::from_elastic_context(&reference, false)?;
-                        config.output.elastic_context = Some(reference.clone());
-                        config.save()?;
-                        Ok(CommandResult::outcome(CliOutcome::OutputContext {
-                            operation: "set".to_string(),
-                            context: Some(reference.context),
-                        }))
-                    }
-                    OutputCommands::Show => {
-                        let reference = config.output.elastic_context;
-                        Ok(CommandResult::outcome(CliOutcome::OutputContext {
-                            operation: "show".to_string(),
-                            context: reference.map(|value| value.context),
-                        }))
-                    }
-                    OutputCommands::Clear => {
-                        config.output.elastic_context = None;
-                        config.save()?;
-                        Ok(CommandResult::outcome(CliOutcome::OutputContext {
-                            operation: "clear".to_string(),
-                            context: None,
-                        }))
-                    }
-                }
-            }
+            Commands::Output { command } => match command {
+                OutputCommands::Set { context } => operations::output::output_set(context),
+                OutputCommands::Show => operations::output::output_show(),
+                OutputCommands::Clear => operations::output::output_clear(),
+            },
             Commands::Version => {
                 println!("{}", env!("CARGO_PKG_VERSION"));
-                Ok(CommandResult::stream())
+                Ok(CommandOutcome::Streamed)
             }
             #[cfg(feature = "keystore")]
             Commands::Job { command } => match command {
@@ -2063,7 +1563,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                         .into_iter()
                         .map(|(name, job)| saved_job_result(name, &job))
                         .collect();
-                    Ok(CommandResult::outcome(CliOutcome::JobsListed { jobs }))
+                    Ok(CommandOutcome::Completed(CliOutcome::JobsListed { jobs }))
                 }
                 JobCommands::Run { name } => {
                     let stdout_owned = esdiag::data::load_saved_jobs()?
@@ -2072,14 +1572,14 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
                         .is_some_and(|process| matches!(process.export, esdiag::job::model::ExportTarget::Stdout));
                     let outcome = esdiag::job::handle_job_run(&name).await?;
                     if stdout_owned {
-                        Ok(CommandResult::stream())
+                        Ok(CommandOutcome::Streamed)
                     } else {
-                        Ok(CommandResult::outcome(job_outcome(name, outcome)))
+                        Ok(CommandOutcome::Completed(job_outcome(name, outcome)))
                     }
                 }
                 JobCommands::Delete { name } => {
                     esdiag::job::handle_job_delete(&name)?;
-                    Ok(CommandResult::outcome(CliOutcome::JobDeleted { name }))
+                    Ok(CommandOutcome::Completed(CliOutcome::JobDeleted { name }))
                 }
             },
         }
@@ -2087,7 +1587,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandResult> {
         #[cfg(all(feature = "server", feature = "desktop"))]
         {
             esdiag_gui::desktop::run(tauri::generate_context!());
-            Ok(CommandResult::stream())
+            Ok(CommandOutcome::Streamed)
         }
         #[cfg(not(all(feature = "server", feature = "desktop")))]
         {
@@ -2211,88 +1711,6 @@ fn expected_secret_auth(
     }
 }
 
-fn build_host_cli_update(args: HostMutationArgs) -> KnownHostCliUpdate {
-    args.into()
-}
-
-fn infer_product_from_url(url: &Url) -> Option<Application> {
-    match url.port_or_known_default() {
-        Some(9200) => Some(Application::Elasticsearch),
-        Some(5601) => Some(Application::Kibana),
-        Some(9600) => Some(Application::Logstash),
-        _ => {
-            let mut segments = url.path_segments()?.filter(|segment| !segment.is_empty());
-            if matches!(segments.next(), Some("api"))
-                && matches!(segments.next(), Some("v1"))
-                && matches!(segments.next(), Some("deployments"))
-            {
-                let _deployment_id = segments.next()?;
-                return Application::from_str(segments.next()?).ok();
-            }
-            None
-        }
-    }
-}
-
-fn build_host_from_definition(
-    app: Option<Application>,
-    target: &str,
-    use_url_template: bool,
-    update: &KnownHostCliUpdate,
-    secret_auth: Option<SecretAuth>,
-) -> Result<KnownHost> {
-    let mut builder = if use_url_template {
-        KnownHostBuilder::new_template(target.to_string())
-    } else {
-        let url = Url::parse(target).map_err(|err| eyre!("Invalid host target URL: {err}"))?;
-        let inferred_app = infer_product_from_url(&url);
-        let app = app
-            .or(inferred_app)
-            .ok_or_else(|| eyre!("Target '{target}' does not determine the app. Rerun with `--app <app>`."))?;
-        KnownHostBuilder::new(url).application(app)
-    }
-    .accept_invalid_certs(update.accept_invalid_certs.unwrap_or(false))
-    .auth(
-        Auth::from_parts(update.apikey.clone(), update.username.clone(), update.password.clone())
-            .map_err(|err| eyre!("Invalid KnownHost configuration: {err}"))?,
-    )
-    .secret(update.secret.clone());
-    if let Some(app) = app {
-        builder = builder.application(app);
-    }
-    if let Some(roles) = update.roles.clone() {
-        builder = builder.roles(roles);
-    }
-    match secret_auth {
-        Some(secret_auth) => builder.build_with_secret_auth(secret_auth),
-        None => builder.build(),
-    }
-}
-
-fn maybe_materialize_template_target(target: &str) -> Result<Option<KnownHost>> {
-    KnownHost::resolve_template_reference(target)
-}
-
-async fn save_host(name: &str, host: KnownHost, action: &str, validate_connection: bool) -> Result<String> {
-    let is_collect_host = host.has_role(HostRole::Collect);
-    if validate_connection {
-        let uri = Uri::try_from(host.clone())?;
-        let validation_summary = validate_host_connection(name, uri).await?;
-        let hostfile = host.save(name)?;
-        if is_collect_host {
-            clear_collection_deferral()?;
-        }
-        tracing::info!("Host {name} successfully saved to {hostfile}");
-        return Ok(format!("{validation_summary}\nHost '{name}' {action} in {hostfile}"));
-    }
-    let hostfile = host.save(name)?;
-    if is_collect_host {
-        clear_collection_deferral()?;
-    }
-    tracing::info!("Host {name} successfully saved to {hostfile}");
-    Ok(format!("Host '{name}' {action} in {hostfile}"))
-}
-
 fn legacy_host_command_error(args: &[String]) -> eyre::Report {
     let attempted = if args.is_empty() {
         "esdiag host".to_string()
@@ -2304,32 +1722,6 @@ fn legacy_host_command_error(args: &[String]) -> eyre::Report {
     )
 }
 
-fn cleanup_settings_after_host_delete(name: &str) -> Result<()> {
-    let mut settings = Settings::load()?;
-    if settings.active_target.as_deref() != Some(name) {
-        return Ok(());
-    }
-
-    let hosts = KnownHost::parse_hosts_yml()?;
-    settings.active_target = hosts.keys().next().cloned();
-    settings.save()
-}
-
-fn delete_host_from_cli(name: &str) -> Result<String> {
-    let name = name.to_string();
-    let is_collect_host = KnownHost::get_known(&name).is_some_and(|host| host.has_role(HostRole::Collect));
-    let path = KnownHost::remove_saved(&name)?;
-    if is_collect_host {
-        clear_collection_deferral()?;
-    }
-    if let Err(err) = cleanup_settings_after_host_delete(&name) {
-        eprintln!(
-            "Warning: host '{}' was removed, but failed to update settings: {err}",
-            name
-        );
-    }
-    Ok(path)
-}
 fn resolve_secret_input(
     username: Option<String>,
     password: Option<String>,
@@ -2508,7 +1900,7 @@ fn unlock_keystore(ttl: Duration) -> Result<std::path::PathBuf> {
     write_unlock_lease(keystore_password.expose_secret(), ttl)
 }
 
-async fn run_init_wizard() -> Result<CommandResult> {
+async fn run_init_wizard() -> Result<CommandOutcome> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         return Err(eyre!("`esdiag init` requires an interactive controlling terminal."));
     }
@@ -2516,7 +1908,7 @@ async fn run_init_wizard() -> Result<CommandResult> {
     let initial = inspect_onboarding()?;
     println!("ESDiag first-run initialization");
     if initial.is_complete() && !prompt_confirm("A complete configuration already exists. Replace values? [y/N]: ")? {
-        return Ok(CommandResult::outcome(initialization_outcome(
+        return Ok(CommandOutcome::Completed(initialization_outcome(
             initialization_skill_installation()?,
         )?));
     }
@@ -2890,7 +2282,7 @@ async fn run_init_wizard() -> Result<CommandResult> {
     if started_local_stack && prompt_confirm("Open the ESDiag web interface? [y/N]: ")? {
         run_local_lifecycle(vec![OsString::from("open")]).await?;
     }
-    Ok(CommandResult::outcome(outcome))
+    Ok(CommandOutcome::Completed(outcome))
 }
 
 fn should_start_local_core_stack(
@@ -2996,7 +2388,7 @@ fn confirm_output_replacement(
 }
 
 #[cfg(feature = "server")]
-async fn run_gui_onboarding() -> Result<CommandResult> {
+async fn run_gui_onboarding() -> Result<CommandOutcome> {
     let url = "http://127.0.0.1:2501/welcome";
     let address = "127.0.0.1:2501"
         .parse()
@@ -3005,7 +2397,7 @@ async fn run_gui_onboarding() -> Result<CommandResult> {
         open_gui_onboarding_browser(url);
         println!("Using the ESDiag user-mode server already running at {url}. Press Ctrl+C to leave this terminal.");
         wait_for_shutdown_signal().await?;
-        return Ok(CommandResult::stream());
+        return Ok(CommandOutcome::Streamed);
     }
 
     let executable =
@@ -3022,7 +2414,7 @@ async fn run_gui_onboarding() -> Result<CommandResult> {
     if !status.success() {
         return Err(eyre!("ESDiag web server exited with {status}"));
     }
-    Ok(CommandResult::stream())
+    Ok(CommandOutcome::Streamed)
 }
 
 #[cfg(feature = "server")]
@@ -3419,22 +2811,6 @@ fn read_api_key_file(path: &str) -> Result<String> {
 }
 
 #[cfg(feature = "agent")]
-#[derive(Debug)]
-struct SkillInstallationFailure {
-    context: AgentSkillsFailureContext,
-}
-
-#[cfg(feature = "agent")]
-impl std::fmt::Display for SkillInstallationFailure {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "one or more ESDiag skill targets could not be installed")
-    }
-}
-
-#[cfg(feature = "agent")]
-impl std::error::Error for SkillInstallationFailure {}
-
-#[cfg(feature = "agent")]
 struct SkillInstallationRun {
     detected: Vec<SkillTarget>,
     selected: Vec<SkillTarget>,
@@ -3445,7 +2821,7 @@ struct SkillInstallationRun {
 }
 
 #[cfg(feature = "agent")]
-async fn run_agent_ask(prompt: String, agent: String, conversation: Option<String>) -> Result<CommandResult> {
+async fn run_agent_ask(prompt: String, agent: String, conversation: Option<String>) -> Result<CommandOutcome> {
     run_agent_ask_for_output(prompt, agent, conversation, None).await
 }
 
@@ -3455,7 +2831,7 @@ async fn run_agent_ask_for_output(
     agent: String,
     conversation: Option<String>,
     output_target: Option<&str>,
-) -> Result<CommandResult> {
+) -> Result<CommandOutcome> {
     let deployment = OutputDeployment::resolve(output_target, true)?;
     run_agent_ask_with_deployment(prompt, agent, conversation, deployment).await
 }
@@ -3466,7 +2842,7 @@ async fn run_agent_ask_with_deployment(
     agent: String,
     conversation: Option<String>,
     deployment: OutputDeployment,
-) -> Result<CommandResult> {
+) -> Result<CommandOutcome> {
     let viewer = deployment
         .kibana
         .ok_or_else(|| eyre!("The configured output deployment has no Kibana viewer"))?;
@@ -3500,7 +2876,7 @@ async fn run_agent_ask_with_deployment(
         .await
         .map_err(agent_failure_report)?;
 
-    Ok(CommandResult::outcome(CliOutcome::AgentResponse {
+    Ok(CommandOutcome::Completed(CliOutcome::AgentResponse {
         conversation_id: completion.conversation_id,
         message: completion.message,
         kibana_url: completion.kibana_url,
@@ -3579,7 +2955,7 @@ fn agent_builder_space(viewer: &Url) -> Option<String> {
 }
 
 #[cfg(feature = "agent")]
-fn run_agent_skills(targets: Vec<AgentSkillTarget>, force: bool) -> Result<CommandResult> {
+fn run_agent_skills(targets: Vec<AgentSkillTarget>, force: bool) -> Result<CommandOutcome> {
     let environment = SkillEnvironment::current();
     let detected = detected_targets(&environment);
     let selected = if targets.is_empty() {
@@ -3604,7 +2980,7 @@ fn run_agent_skills(targets: Vec<AgentSkillTarget>, force: bool) -> Result<Comma
             },
         }));
     }
-    Ok(CommandResult::outcome(CliOutcome::AgentSkills {
+    Ok(CommandOutcome::Completed(CliOutcome::AgentSkills {
         detected_targets: installation
             .detected
             .into_iter()
@@ -3744,94 +3120,6 @@ fn format_remaining_duration_from(now_epoch: i64, expires_at_epoch: i64) -> Stri
     }
 }
 
-fn ensure_host_role(host: &KnownHost, role: HostRole, context: &str) -> Result<()> {
-    if host.has_role(role.clone()) {
-        Ok(())
-    } else {
-        Err(eyre!(
-            "Host role validation failed for {context}: required role '{}' not present",
-            role
-        ))
-    }
-}
-
-fn ensure_uri_role(uri: &Uri, role: HostRole, context: &str) -> Result<()> {
-    match uri {
-        Uri::KnownHost(host) | Uri::ElasticCloudAdmin(host) | Uri::ElasticGovCloudAdmin(host) => {
-            ensure_host_role(host, role, context)
-        }
-        _ => Ok(()),
-    }
-}
-
-fn resolve_host_secret_auth(secret_id: Option<&str>) -> Result<Option<SecretAuth>> {
-    let Some(secret_id) = secret_id else {
-        return Ok(None);
-    };
-
-    let keystore_password = get_password_for_secret_commands()?;
-    let secret_auth = resolve_secret_auth(secret_id, keystore_password.expose_secret())?
-        .ok_or_else(|| eyre!("Secret '{secret_id}' was not found in keystore"))?;
-    Ok(Some(secret_auth))
-}
-
-fn resolve_add_host_secret_auth(host_name: &str, update: &mut KnownHostCliUpdate) -> Result<Option<SecretAuth>> {
-    if update.secret.as_deref().is_some() {
-        return resolve_host_secret_auth(update.secret.as_deref());
-    }
-    if update.apikey.is_some() || update.username.is_some() || update.password.is_some() {
-        return Ok(None);
-    }
-    let secret_auth = resolve_same_name_host_secret_auth(host_name)?;
-    if secret_auth.is_some() {
-        tracing::debug!("Using host name {host_name} as secret_id");
-        update.secret = Some(host_name.to_string());
-    }
-    Ok(secret_auth)
-}
-
-fn resolve_same_name_host_secret_auth(host_name: &str) -> Result<Option<SecretAuth>> {
-    if !keystore_exists()? {
-        return Ok(None);
-    }
-    let Ok(keystore_password) = get_password_for_secret_commands() else {
-        return Ok(None);
-    };
-    resolve_secret_auth(host_name, keystore_password.expose_secret())
-}
-
-fn host_connection_uses_receiver(uri: &Uri) -> bool {
-    matches!(uri, Uri::ElasticCloudAdmin(_) | Uri::ElasticGovCloudAdmin(_))
-}
-
-async fn validate_host_connection(name: &str, uri: Uri) -> Result<String> {
-    if host_connection_uses_receiver(&uri) {
-        let receiver = Receiver::try_from(uri)?;
-        if receiver.is_connected().await {
-            let summary = format!("Host {name}: connected to Elastic Cloud Admin proxy");
-            tracing::info!("{summary}");
-            return Ok(summary);
-        }
-
-        tracing::error!("Host connection: FAILED ❌ Elastic Cloud Admin proxy connection failed");
-        tracing::warn!("Check your URL, certificates, and secret credentials!");
-        return Err(eyre!("Host connection failed"));
-    }
-
-    match Client::try_from(uri)?.test_connection().await {
-        Ok(message) => {
-            let summary = format!("Host {name}: {message}");
-            tracing::info!("{summary}");
-            Ok(summary)
-        }
-        Err(message) => {
-            tracing::error!("Host connection: FAILED ❌ {}", &message);
-            tracing::warn!("Check your URL and certificates!");
-            Err(eyre!("Host connection failed"))
-        }
-    }
-}
-
 fn should_error_for_missing_subcommand(arg_count: usize, has_no_command: bool) -> bool {
     arg_count > 1 && has_no_command
 }
@@ -3888,18 +3176,7 @@ fn resolve_serve_exporter(output: Option<String>) -> Result<Exporter> {
     Exporter::try_from(Uri::try_from(output)?)
 }
 
-#[cfg(feature = "setup")]
-fn setup_outcome(targets: Vec<String>, report: setup::SetupReport) -> CliOutcome {
-    let outcome = if report.is_complete() { "complete" } else { "partial" }.to_string();
-    CliOutcome::SetupCompleted {
-        targets,
-        outcome,
-        failed_indices: report.failed_indices,
-        warnings: report.warnings.into_iter().chain(report.notices).collect(),
-    }
-}
-
-async fn run_setup(command: SetupCommands) -> Result<CommandResult> {
+async fn run_setup(command: SetupCommands) -> Result<CommandOutcome> {
     match command {
         #[cfg(feature = "setup")]
         SetupCommands::Elasticsearch { host } => {
@@ -3907,7 +3184,10 @@ async fn run_setup(command: SetupCommands) -> Result<CommandResult> {
             let client = Client::try_from(Uri::try_from(host)?)?;
             tracing::info!("Setting up assets in {client}");
             let report = setup::assets_report(&client).await?;
-            Ok(CommandResult::outcome(setup_outcome(vec![client.to_string()], report)))
+            Ok(CommandOutcome::Completed(setup_outcome(
+                vec![client.to_string()],
+                report,
+            )))
         }
         #[cfg(feature = "setup")]
         SetupCommands::Kibana { host } => {
@@ -3915,7 +3195,7 @@ async fn run_setup(command: SetupCommands) -> Result<CommandResult> {
             let kibana = setup::pipeline::KibanaTarget::from_host(host, process_kibana_space().as_deref())?;
             tracing::info!("Setting up Kibana assets in {}", kibana.client);
             let report = setup::kibana_assets_report(&kibana.client, kibana.space).await?;
-            Ok(CommandResult::outcome(setup_outcome(
+            Ok(CommandOutcome::Completed(setup_outcome(
                 vec![kibana.client.to_string()],
                 report,
             )))
@@ -3962,11 +3242,11 @@ async fn run_setup(command: SetupCommands) -> Result<CommandResult> {
             if print {
                 let mut stdout = std::io::stdout().lock();
                 write_completion_script(shell, &mut cmd, &mut stdout)?;
-                return Ok(CommandResult::stream());
+                return Ok(CommandOutcome::Streamed);
             }
             let home = user_home()?;
             let (path, instruction) = install_completion(shell, &mut cmd, &home)?;
-            Ok(CommandResult::outcome(CliOutcome::CompletionInstalled {
+            Ok(CommandOutcome::Completed(CliOutcome::CompletionInstalled {
                 shell: shell.as_str().to_string(),
                 path: path.display().to_string(),
                 instruction,
@@ -4052,47 +3332,14 @@ async fn run_stack_setup(
     targets: setup::pipeline::StackTargets,
     notices: Vec<String>,
     activate_trial: bool,
-) -> Result<CommandResult> {
+) -> Result<CommandOutcome> {
     let mut setup = setup::pipeline::stack(&targets, activate_trial).await?;
     setup.report.notices.extend(notices);
-    Ok(CommandResult::outcome(setup_outcome(setup.targets, setup.report)))
-}
-
-fn safe_output_display(uri: &Uri) -> String {
-    match uri {
-        Uri::KnownHost(host)
-        | Uri::ElasticCloud(host)
-        | Uri::ElasticCloudAdmin(host)
-        | Uri::ElasticGovCloudAdmin(host) => host
-            .concrete_url()
-            .map(|url| safe_output_display(&Uri::Url(url.clone())))
-            .unwrap_or_else(|| host.transport_display()),
-        Uri::Url(url) | Uri::ServiceLink(url) | Uri::ServiceLinkNoAuth(url) => {
-            let mut url = url.clone();
-            let _ = url.set_username("");
-            let _ = url.set_password(None);
-            url.set_query(None);
-            url.set_fragment(None);
-            url.to_string()
-        }
-        _ => uri.to_string(),
-    }
+    Ok(CommandOutcome::Completed(setup_outcome(setup.targets, setup.report)))
 }
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn output_display_redacts_direct_and_resolved_url_credentials() {
-        let url = Url::parse("https://user:password@example.test:9200/path?token=secret#fragment").unwrap();
-        let direct = super::safe_output_display(&Uri::Url(url.clone()));
-        let host = super::KnownHostBuilder::new(url)
-            .application(Application::Elasticsearch)
-            .build()
-            .unwrap();
-        let resolved = super::safe_output_display(&Uri::KnownHost(host));
-        assert_eq!(direct, "https://example.test:9200/path");
-        assert_eq!(resolved, direct);
-    }
     #[test]
     fn new_password_prompt_retries_until_confirmed() {
         let mut answers = ["", "first", "typo", "second", "second"].into_iter();
@@ -4160,57 +3407,35 @@ mod tests {
     }
 
     #[cfg(feature = "setup")]
-    #[test]
-    fn setup_outcome_reports_partial_mapping_updates() {
-        let outcome = super::setup_outcome(
-            vec!["elasticsearch".into()],
-            esdiag::setup::SetupReport {
-                failed_indices: vec!["metrics-test-esdiag".into()],
-                warnings: vec!["Raise index.mapping.total_fields.limit".into()],
-                notices: Vec::new(),
-            },
-        );
-        let value = serde_json::to_value(outcome).unwrap();
-        assert_eq!(value["outcome"], "partial");
-        assert_eq!(value["failed_indices"][0], "metrics-test-esdiag");
-    }
-    #[cfg(feature = "setup")]
     use super::TrialArgs;
     #[cfg(feature = "agent")]
     use super::{
-        AgentCommands, AgentSkillTarget, SkillInstallationFailure, agent_builder_space, agent_failure_report,
-        install_skill_targets, process_ask_prompt, readable_agent_name,
+        AgentCommands, AgentSkillTarget, agent_builder_space, agent_failure_report, install_skill_targets,
+        process_ask_prompt, readable_agent_name,
     };
     use super::{
-        Cli, Commands, ConfiguredDefaultJob, HostCommands, KeystoreCommands, SetupCommands, classify_failure,
-        cli_command, command_owns_stdout, configured_default_job, default_diagnostic_user_from,
-        detected_esdiag_local_preset, elastic_cli_help_text, ensure_output_deployment_valid,
-        format_remaining_duration_from, host_connection_uses_receiver, is_agent_mode, keep_default_job,
-        local_core_stack_start_args, missing_extension_process_input, needs_processing_default_job,
-        resolve_add_host_secret_auth, resolve_host_secret_auth, resolve_log_file_filter,
-        resolve_secret_input_with_prompt, resolve_tracing_filter, saved_job_fits_workflow,
+        Cli, Commands, ConfiguredDefaultJob, HostCommands, KeystoreCommands, SetupCommands, cli_command,
+        command_owns_stdout, configured_default_job, default_diagnostic_user_from, detected_esdiag_local_preset,
+        elastic_cli_help_text, ensure_output_deployment_valid, format_remaining_duration_from, is_agent_mode,
+        keep_default_job, local_core_stack_start_args, missing_extension_process_input, needs_processing_default_job,
+        resolve_log_file_filter, resolve_secret_input_with_prompt, resolve_tracing_filter, saved_job_fits_workflow,
         should_error_for_missing_subcommand, should_run_output_setup, should_start_local_core_stack,
-        structured_failure, validate_extension_profile,
+        validate_extension_profile,
     };
     #[cfg(feature = "keystore")]
     use super::{derive_collect_job, derive_process_job};
     #[cfg(feature = "server")]
     use super::{resolve_serve_bind, resolve_serve_exporter, resolve_serve_runtime_mode};
     use clap::{FromArgMatches, Parser, error::ErrorKind};
-    use esdiag::data::{Application, HostRole, KnownHost, KnownHostCliUpdate, SecretAuth, Uri, upsert_secret_auth};
+    use esdiag::cli_output::OutputFormat;
+    use esdiag::data::{Application, HostRole, KnownHost};
     #[cfg(feature = "server")]
     use esdiag::server::RuntimeMode;
     #[cfg(feature = "agent")]
     use esdiag::{
         agent::builder::AgentFailure,
-        cli_output::{AgentSkillTargetResult, AgentSkillsFailureContext},
+        cli_output::{CliFailureCategory, structured_failure},
         setup::skills::{SkillEnvironment, SkillTarget},
-    };
-    use esdiag::{
-        cli_output::{CliFailureCategory, OutputFormat},
-        receiver::{
-            ElasticCloudAdminRequestError, ElasticsearchRequestError, KibanaRequestError, LogstashRequestError,
-        },
     };
     #[cfg(feature = "keystore")]
     use esdiag::{
@@ -4456,38 +3681,6 @@ mod tests {
         assert_eq!(
             agent_builder_space(&Url::parse("https://kb.example/app/s/support").expect("url")),
             None
-        );
-    }
-
-    #[test]
-    fn included_report_failure_is_not_rendered_as_completed() {
-        let child_execution = esdiag::job::outcome::ExecutionOutcome {
-            identity: esdiag::job::context::ExecutionIdentity::new(2, "test"),
-            stages: vec![esdiag::job::outcome::StageOutcome {
-                stage: esdiag::job::outcome::Stage::Process,
-                status: esdiag::job::outcome::StageStatus::Failed("report write rejected".to_string()),
-            }],
-            collection: None,
-            report: None,
-            children: Vec::new(),
-            retained_bundle: None,
-            send: None,
-        };
-        let child = esdiag::job::outcome::ChildExecutionOutcome {
-            path: "child-es".to_string(),
-            execution: Box::new(child_execution),
-            diagnostic_outcome: esdiag::processor::DiagnosticOutcome::Failed,
-            application: Some(Application::Elasticsearch),
-            platform: esdiag::data::Platform::ECK,
-            runtime: Some(1),
-        };
-        let mut outcome =
-            esdiag::job::outcome::ExecutionOutcome::new(esdiag::job::context::ExecutionIdentity::new(1, "test"));
-        outcome.children.push(child);
-        assert!(outcome.has_child_failures());
-        assert_eq!(
-            super::format_execution_failure(&outcome),
-            "Included diagnostic child-es failed: report write rejected"
         );
     }
 
@@ -4789,13 +3982,6 @@ mod tests {
         assert!(Cli::try_parse_from(["esdiag", "setup", "skills"]).is_err());
     }
 
-    #[test]
-    fn setup_errors_report_the_setup_failed_category() {
-        let error = eyre::eyre!("Context 'missing' was not found");
-        assert_eq!(super::command_failure(&error, true).category, "setup_failed");
-        assert_eq!(super::command_failure(&error, false).category, "not_found");
-    }
-
     #[cfg(feature = "agent")]
     #[test]
     fn embedded_skill_installs_into_an_explicit_target_without_agent_detection() {
@@ -4814,69 +4000,6 @@ mod tests {
         assert!(
             temporary.path().join(".agents/skills/esdiag/SKILL.md").is_file(),
             "explicit target must install even when it was not detected"
-        );
-    }
-
-    #[cfg(feature = "agent")]
-    #[test]
-    fn failed_agent_skill_installation_preserves_complete_structured_context() {
-        let error = eyre::Report::new(SkillInstallationFailure {
-            context: AgentSkillsFailureContext {
-                detected_targets: vec!["codex".to_string()],
-                selected_targets: vec!["claude".to_string(), "codex".to_string()],
-                version: "0.18.0-SNAPSHOT".to_string(),
-                digest: "a1b2".to_string(),
-                results: vec![
-                    AgentSkillTargetResult {
-                        target: "claude".to_string(),
-                        action: "installed".to_string(),
-                        destination: "/tmp/.claude/skills/esdiag".to_string(),
-                        error: None,
-                    },
-                    AgentSkillTargetResult {
-                        target: "codex".to_string(),
-                        action: "conflict".to_string(),
-                        destination: "/tmp/.agents/skills/esdiag".to_string(),
-                        error: Some("requires --force".to_string()),
-                    },
-                ],
-                reload_guidance: "Restart or reload running coding agents before using the installed skill."
-                    .to_string(),
-            },
-        });
-
-        let value = serde_json::to_value(structured_failure(&error)).expect("serialize failure");
-        let context = &value["agent_skills"];
-        assert_eq!(context["detected_targets"], serde_json::json!(["codex"]));
-        assert_eq!(context["selected_targets"], serde_json::json!(["claude", "codex"]));
-        assert_eq!(context["version"], "0.18.0-SNAPSHOT");
-        assert_eq!(context["digest"], "a1b2");
-        assert_eq!(context["results"][0]["action"], "installed");
-        assert_eq!(context["results"][1]["action"], "conflict");
-        assert_eq!(
-            context["reload_guidance"],
-            "Restart or reload running coding agents before using the installed skill."
-        );
-        assert_eq!(value["target_results"][0]["action"], "installed");
-        assert_eq!(value["target_results"][1]["action"], "conflict");
-    }
-
-    #[cfg(feature = "agent")]
-    #[test]
-    fn interrupted_agent_conversation_exposes_only_safe_recovery() {
-        let error = eyre::Report::new(AgentFailure::Interrupted {
-            conversation_id: Some("conv-123".to_string()),
-            kibana_url: Some("https://kb.example/app/agent_builder/conversations/conv-123".to_string()),
-        });
-
-        let failure = structured_failure(&error);
-        let value = serde_json::to_value(failure).expect("serialize failure");
-
-        assert_eq!(value["recovery"]["conversation_id"], "conv-123");
-        assert_eq!(value["recovery"]["retry_safe"], false);
-        assert_eq!(
-            value["recovery"]["kibana_url"],
-            "https://kb.example/app/agent_builder/conversations/conv-123"
         );
     }
 
@@ -5046,117 +4169,6 @@ mod tests {
         assert!(saved_job_fits_workflow("src-collect").expect("fits workflow"));
         assert!(!saved_job_fits_workflow("src-process-out").expect("fits workflow"));
         assert!(!saved_job_fits_workflow("missing").expect("fits workflow"));
-    }
-
-    #[test]
-    fn unauthorized_elasticsearch_responses_are_authentication_failures() {
-        let error = eyre::Report::new(ElasticsearchRequestError::new(
-            elasticsearch::http::StatusCode::UNAUTHORIZED,
-            "missing authentication credentials".to_string(),
-            5,
-            34,
-        ));
-
-        assert_eq!(classify_failure(&error), CliFailureCategory::AuthenticationFailed);
-    }
-
-    #[test]
-    fn conflict_responses_are_conflict_failures() {
-        let error = eyre::Report::new(KibanaRequestError::new(
-            reqwest::StatusCode::CONFLICT,
-            r#"{"statusCode":409,"error":"Conflict","message":"resource already exists"}"#.to_string(),
-            5,
-            80,
-        ));
-
-        assert_eq!(classify_failure(&error), CliFailureCategory::Conflict);
-    }
-
-    #[test]
-    fn kibana_sync_conflicts_are_conflict_failures() {
-        let error = eyre::Report::new(kibana_sync::Error::context(
-            "workflow sync failed",
-            kibana_sync::Error::api_response(
-                reqwest::StatusCode::CONFLICT,
-                r#"{"error":"Conflict","message":"workflow already exists","statusCode":409}"#,
-            ),
-        ));
-
-        let failure = structured_failure(&error);
-        let value = serde_json::to_value(failure).expect("serialize failure");
-
-        assert_eq!(value["category"], CliFailureCategory::Conflict.as_str());
-        assert_eq!(value["status"], 409);
-    }
-
-    #[test]
-    fn http_failures_include_status_type_and_reason() {
-        let error = eyre::Report::new(ElasticsearchRequestError::new(
-            elasticsearch::http::StatusCode::UNAUTHORIZED,
-            r#"{"error":{"type":"security_exception","reason":"missing authentication credentials for REST request [api_key=secret]"},"status":401}"#
-                .to_string(),
-            5,
-            133,
-        ));
-        let failure = structured_failure(&error);
-        let value = serde_json::to_value(failure).expect("serialize failure");
-
-        assert_eq!(value["category"], CliFailureCategory::AuthenticationFailed.as_str());
-        assert_eq!(value["status"], 401);
-        assert_eq!(value["type"], "security_exception");
-        assert_eq!(
-            value["reason"],
-            "missing authentication credentials for REST request [api_key=secret]"
-        );
-        assert_eq!(
-            value["message"],
-            "The server rejected the request because authentication credentials are required."
-        );
-    }
-
-    #[test]
-    fn non_elasticsearch_http_failures_use_the_shared_response_projection() {
-        let body = r#"{"error":{"type":"upstream_failure","reason":"remote dependency was unavailable"}}"#.to_string();
-        let failures = [
-            (
-                eyre::Report::new(KibanaRequestError::new(
-                    reqwest::StatusCode::TOO_MANY_REQUESTS,
-                    body.clone(),
-                    5,
-                    80,
-                )),
-                429,
-                CliFailureCategory::InvalidInput,
-            ),
-            (
-                eyre::Report::new(LogstashRequestError::new(
-                    reqwest::StatusCode::NOT_FOUND,
-                    body.clone(),
-                    5,
-                    80,
-                )),
-                404,
-                CliFailureCategory::NotFound,
-            ),
-            (
-                eyre::Report::new(ElasticCloudAdminRequestError::new(
-                    reqwest::StatusCode::BAD_GATEWAY,
-                    body,
-                    5,
-                    80,
-                )),
-                502,
-                CliFailureCategory::Internal,
-            ),
-        ];
-
-        for (error, status, category) in failures {
-            let value = serde_json::to_value(structured_failure(&error)).expect("serialize failure");
-            assert_eq!(value["category"], category.as_str());
-            assert_eq!(value["status"], status);
-            assert_eq!(value["type"], "upstream_failure");
-            assert_eq!(value["reason"], "remote dependency was unavailable");
-        }
     }
 
     #[test]
@@ -5533,21 +4545,6 @@ mod tests {
     }
 
     #[test]
-    fn structured_failure_never_serializes_secret_bearing_error_chains() {
-        let error = eyre::Report::new(std::io::Error::other("api_key=very-secret: nested cause"))
-            .wrap_err("authorization header ApiKey very-secret-too was rejected");
-
-        let failure = structured_failure(&error);
-        let json = serde_json::to_string(&failure).expect("serialize failure");
-        let yaml = yaml_serde::to_string(&failure).expect("serialize failure as YAML");
-
-        for rendered in [json, yaml] {
-            assert!(!rendered.contains("very-secret"), "secret leaked: {rendered}");
-            assert!(!rendered.contains("nested cause"), "error chain leaked: {rendered}");
-        }
-    }
-
-    #[test]
     fn collect_command_parses_send_id() {
         let cli = Cli::parse_from(["esdiag", "collect", "prod-es", "diag-dir", "--send", "abc123"]);
         match cli.command.expect("command") {
@@ -5784,100 +4781,6 @@ mod tests {
         };
 
         assert_eq!(resolve_tracing_filter(&cli).to_string(), "warn");
-    }
-
-    #[test]
-    fn elastic_cloud_admin_hosts_validate_via_receiver() {
-        let uri = Uri::ElasticCloudAdmin(KnownHost::new(
-            Application::Elasticsearch,
-            Url::parse("https://admin.found.no/api/v1/deployments/test/elasticsearch/main-elasticsearch/proxy/")
-                .expect("valid url"),
-            vec![HostRole::Collect],
-            None,
-            false,
-            esdiag::data::Credential::Keystore("ada-admin".to_string()),
-        ));
-
-        assert!(host_connection_uses_receiver(&uri));
-    }
-
-    #[test]
-    fn standard_known_hosts_validate_via_client() {
-        let uri = Uri::KnownHost(KnownHost::new_no_auth(
-            Application::Elasticsearch,
-            Url::parse("http://localhost:9200").expect("valid url"),
-            vec![HostRole::Collect],
-            None,
-            false,
-        ));
-
-        assert!(!host_connection_uses_receiver(&uri));
-    }
-
-    #[test]
-    fn host_secret_auth_resolution_detects_apikey() {
-        let _env = setup_env();
-        upsert_secret_auth("api-secret", SecretAuth::apikey("secret-key"), "pw").expect("save api secret");
-
-        let resolved = resolve_host_secret_auth(Some("api-secret")).expect("resolve auth");
-        assert!(matches!(resolved, Some(SecretAuth::ApiKey { .. })));
-    }
-
-    #[test]
-    fn host_secret_auth_resolution_detects_basic() {
-        let _env = setup_env();
-        upsert_secret_auth("basic-secret", SecretAuth::basic("elastic", "secret-password"), "pw")
-            .expect("save basic secret");
-
-        let resolved = resolve_host_secret_auth(Some("basic-secret")).expect("resolve auth");
-        assert!(matches!(resolved, Some(SecretAuth::Basic { .. })));
-    }
-
-    #[test]
-    fn host_secret_auth_resolution_reads_named_secret() {
-        let _env = setup_env();
-        upsert_secret_auth("host-fallback", SecretAuth::apikey("secret-key"), "pw").expect("save fallback secret");
-
-        let resolved = resolve_host_secret_auth(Some("host-fallback")).expect("resolve auth");
-        assert!(matches!(resolved, Some(SecretAuth::ApiKey { .. })));
-    }
-
-    #[test]
-    fn add_host_uses_same_name_secret_without_secret_flag() {
-        let _tmp = setup_env();
-        upsert_secret_auth("prod-es", SecretAuth::apikey("secret-key"), "pw").expect("save secret");
-
-        let mut update = KnownHostCliUpdate::default();
-        let resolved = resolve_add_host_secret_auth("prod-es", &mut update).expect("resolve auth");
-
-        assert!(matches!(resolved, Some(SecretAuth::ApiKey { .. })));
-        assert_eq!(update.secret.as_deref(), Some("prod-es"));
-    }
-
-    #[test]
-    fn add_host_skips_same_name_secret_with_explicit_credentials() {
-        let _tmp = setup_env();
-        upsert_secret_auth("prod-es", SecretAuth::apikey("secret-key"), "pw").expect("save secret");
-
-        let mut update = KnownHostCliUpdate {
-            apikey: Some(Secret::new("inline-key".to_string())),
-            ..Default::default()
-        };
-        let resolved = resolve_add_host_secret_auth("prod-es", &mut update).expect("resolve auth");
-
-        assert!(resolved.is_none());
-        assert!(update.secret.as_deref().is_none());
-    }
-
-    #[test]
-    fn add_host_without_keystore_has_no_secret() {
-        let _tmp = setup_env();
-
-        let mut update = KnownHostCliUpdate::default();
-        let resolved = resolve_add_host_secret_auth("prod-es", &mut update).expect("resolve auth");
-
-        assert!(resolved.is_none());
-        assert!(update.secret.as_deref().is_none());
     }
 
     #[cfg(feature = "server")]

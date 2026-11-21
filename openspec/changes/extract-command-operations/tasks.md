@@ -1,18 +1,18 @@
 ## 1. Baseline
 
-- [ ] 1.1 Rebase onto merged #467; re-check the `main.rs` line references in design.md and verify `crates/esdiag-core/src/onboarding.rs` and `TestEnv` behind `test-support` exist
-- [ ] 1.2 Build the pre-refactor binary and record its help output for every command, the structured outcomes and failures listed in design.md (Verification, items 2 and 3), `esdiag process` documents for every archive under `tests/archives/`, and the clippy warning count; verify the recorded files exist outside the repository
+- [x] 1.1 Rebase onto merged #467; re-check the `main.rs` line references in design.md and verify `crates/esdiag-core/src/onboarding.rs` and `TestEnv` behind `test-support` exist
+- [x] 1.2 Build the pre-refactor binary and record its help output for every command, the structured outcomes and failures listed in design.md (Verification, items 2 and 3), `esdiag process` documents for every archive under `tests/archives/`, and the clippy warning count; verify the recorded files exist outside the repository
 
 ## 2. Shared types
 
-- [ ] 2.1 Add `CommandOutcome` to `cli_output`, replace `CommandResult` in `main.rs` with it, and verify `cargo build` and `cargo test` pass with no behavior change
-- [ ] 2.2 Move failure classification (`classify_failure`, `safe_failure_message`, HTTP response details, `command_failure`, `structured_failure`) and the error marker types it downcasts into `esdiag-core`; move their unit tests and verify `cargo test -p esdiag-core` runs them
-- [ ] 2.3 Create `operations/mod.rs` with shared helpers (role checks, safe output display) and the outcome builders; verify the moved builder tests pass in `esdiag-core`
+- [x] 2.1 Add `CommandOutcome` to `cli_output`, replace `CommandResult` in `main.rs` with it, and verify `cargo build` and `cargo test` pass with no behavior change
+- [x] 2.2 Move failure classification (`classify_failure`, `safe_failure_message`, HTTP response details, `command_failure`, `structured_failure`) and the error marker types it downcasts into `esdiag-core`; move their unit tests and verify `cargo test -p esdiag-core` runs them
+- [x] 2.3 Create `operations/mod.rs` with shared helpers (role checks, safe output display) and the outcome builders; verify the moved builder tests pass in `esdiag-core`
 
 ## 3. Operations
 
-- [ ] 3.1 Move `send` and `output_set/show/clear`; reduce their `run` arms to input construction and one call; verify `cargo test --workspace`
-- [ ] 3.2 Move `host_add/update/remove/list/auth`, including host building, secret-reference resolution, connection validation, and settings cleanup after delete; move their tests; verify `cargo test --workspace`
+- [x] 3.1 Move `send` and `output_set/show/clear`; reduce their `run` arms to input construction and one call; verify `cargo test --workspace`
+- [x] 3.2 Move `host_add/update/remove/list/auth`, including host building, secret-reference resolution, connection validation, and settings cleanup after delete; move their tests; verify `cargo test --workspace`
 - [ ] 3.3 Move `job_list/run/delete/save` and `derive_collect_job`/`derive_process_job`, add `saved_job_writes_stdout`, and delete `job::handle_job_list`; verify `cargo test --workspace` and `cargo build --no-default-features`
 - [ ] 3.4 Move `collect` and `process` (including `ask` and `ProcessInput::writes_stdout`); verify `cargo test --workspace` and that the archive processing comparison from 1.2 matches
 - [ ] 3.5 Move `setup_elasticsearch/kibana/output/env/context` and `run_stack_setup`; move setup tests; verify `cargo build --no-default-features --features setup` and `cargo test --workspace`

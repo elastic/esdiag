@@ -46,6 +46,14 @@ pub fn write_terminal_outcome<T: Serialize>(format: OutputFormat, value: &T) -> 
     write_outcome(&mut stdout, format, value)
 }
 
+/// The result of a finite command: a typed outcome, or output already written
+/// to stdout (processed documents or raw text) that leaves no outcome to render.
+#[derive(Debug)]
+pub enum CommandOutcome {
+    Completed(CliOutcome),
+    Streamed,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "result", rename_all = "snake_case")]
 pub enum CliOutcome {
@@ -472,6 +480,221 @@ pub struct CompletedStages {
     pub send: Option<SendResult>,
 }
 
+pub fn classify_failure(error: &eyre::Report) -> CliFailureCategory {
+    if error.downcast_ref::<crate::data::SecretAlreadyExists>().is_some() {
+        return CliFailureCategory::Conflict;
+    }
+    if let Some(response) = http_response_details(error) {
+        return match response.status {
+            401 | 403 => CliFailureCategory::AuthenticationFailed,
+            409 => CliFailureCategory::Conflict,
+            404 => CliFailureCategory::NotFound,
+            500..=599 => CliFailureCategory::Internal,
+            _ => CliFailureCategory::InvalidInput,
+        };
+    }
+    let message = error.to_string().to_ascii_lowercase();
+    if message.contains("not found") {
+        CliFailureCategory::NotFound
+    } else if message.contains("auth") || message.contains("credential") {
+        CliFailureCategory::AuthenticationFailed
+    } else if message.contains("collect") {
+        CliFailureCategory::CollectionFailed
+    } else if message.contains("process") {
+        CliFailureCategory::ProcessingFailed
+    } else if message.contains("Elastic Upload Service") || message.contains("send") {
+        CliFailureCategory::SendFailed
+    } else if message.contains("keystore") || message.contains("secret") {
+        CliFailureCategory::KeystoreFailed
+    } else {
+        CliFailureCategory::InvalidInput
+    }
+}
+
+pub fn safe_failure_message(error: &eyre::Report) -> String {
+    if let Some(response) = http_response_details(error) {
+        return match response.status {
+            401 => "The server rejected the request because authentication credentials are required.".to_string(),
+            403 => "The server rejected the request because the credentials are not authorized.".to_string(),
+            404 => "The requested server resource was not found.".to_string(),
+            500..=599 => format!(
+                "The server failed to complete the request with HTTP {}.",
+                response.status
+            ),
+            status => format!("The server rejected the request with HTTP {status}."),
+        };
+    }
+    match classify_failure(error) {
+        CliFailureCategory::Conflict => "requested resource already exists",
+        CliFailureCategory::NotFound => "requested resource was not found",
+        CliFailureCategory::AuthenticationFailed => "authentication failed",
+        CliFailureCategory::CollectionFailed => "diagnostic collection failed",
+        CliFailureCategory::ProcessingFailed => "diagnostic processing failed",
+        CliFailureCategory::SendFailed => "diagnostic send failed",
+        CliFailureCategory::KeystoreFailed => "keystore operation failed",
+        CliFailureCategory::SetupFailed => "setup failed",
+        CliFailureCategory::Internal | CliFailureCategory::InvalidInput => "command execution failed",
+    }
+    .to_string()
+}
+
+pub struct HttpResponseDetails {
+    pub status: u16,
+    pub error_type: Option<String>,
+    pub reason: Option<String>,
+}
+
+pub fn parse_http_response_details(status: u16, body: &str) -> HttpResponseDetails {
+    let response_error = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .map(|body| body.get("error").unwrap_or(&body).clone());
+    let error_type = response_error
+        .as_ref()
+        .and_then(|error| error.get("type"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let reason = response_error
+        .as_ref()
+        .and_then(|error| error.get("reason"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+
+    HttpResponseDetails {
+        status,
+        error_type,
+        reason,
+    }
+}
+
+pub fn http_response_details(error: &eyre::Report) -> Option<HttpResponseDetails> {
+    use crate::receiver::{
+        ElasticCloudAdminRequestError, ElasticsearchRequestError, KibanaRequestError, LogstashRequestError,
+    };
+    for cause in error.chain() {
+        if let Some(kibana_sync::Error::ApiResponse { status, body }) = cause.downcast_ref::<kibana_sync::Error>() {
+            return Some(parse_http_response_details(status.as_u16(), body));
+        }
+        if let Some(error) = cause.downcast_ref::<ElasticsearchRequestError>() {
+            return Some(parse_http_response_details(error.status.as_u16(), &error.body));
+        }
+        if let Some(error) = cause.downcast_ref::<KibanaRequestError>() {
+            return Some(parse_http_response_details(error.status.as_u16(), &error.body));
+        }
+        if let Some(error) = cause.downcast_ref::<LogstashRequestError>() {
+            return Some(parse_http_response_details(error.status.as_u16(), &error.body));
+        }
+        if let Some(error) = cause.downcast_ref::<ElasticCloudAdminRequestError>() {
+            return Some(parse_http_response_details(error.status.as_u16(), &error.body));
+        }
+    }
+    None
+}
+
+/// `esdiag setup` reports `setup_failed` unless an HTTP response or skill installation supplies the category.
+pub fn command_failure(error: &eyre::Report, setup_command: bool) -> CliFailure {
+    #[cfg(feature = "agent")]
+    let skill_failure = error
+        .downcast_ref::<crate::setup::skills::SkillInstallationFailure>()
+        .is_some();
+    #[cfg(not(feature = "agent"))]
+    let skill_failure = false;
+    if setup_command && !skill_failure && http_response_details(error).is_none() {
+        return CliFailure::new(CliFailureCategory::SetupFailed, "setup failed");
+    }
+    structured_failure(error)
+}
+
+pub fn structured_failure(error: &eyre::Report) -> CliFailure {
+    use crate::job::{FailedStage, JobExecutionFailure, SavedJobNotFound};
+    #[cfg(feature = "agent")]
+    if let Some(conflict) = error.downcast_ref::<crate::operations::process::ProcessAskStdoutConflict>() {
+        return CliFailure::new(CliFailureCategory::InvalidInput, conflict.to_string());
+    }
+    if let Some(missing_job) = error.downcast_ref::<SavedJobNotFound>() {
+        return CliFailure::new(CliFailureCategory::NotFound, "saved job was not found")
+            .resource(missing_job.name.clone());
+    }
+    #[cfg(feature = "agent")]
+    if let Some(agent_failure) = error.downcast_ref::<crate::agent::builder::AgentFailure>() {
+        use crate::agent::builder::AgentFailure;
+        let category = match agent_failure {
+            AgentFailure::Http { status: 401 | 403 } => CliFailureCategory::AuthenticationFailed,
+            AgentFailure::Http { status: 409 } => CliFailureCategory::Conflict,
+            AgentFailure::Http { status: 404 } => CliFailureCategory::NotFound,
+            AgentFailure::Http { status: 500..=599 } | AgentFailure::Remote | AgentFailure::Protocol { .. } => {
+                CliFailureCategory::Internal
+            }
+            AgentFailure::Http { .. } | AgentFailure::Transport | AgentFailure::Interrupted { .. } => {
+                CliFailureCategory::InvalidInput
+            }
+        };
+        let mut failure = CliFailure::new(category, agent_failure.to_string());
+        if let AgentFailure::Http { status } = agent_failure {
+            failure = failure.http_status(*status);
+        }
+        if let AgentFailure::Interrupted {
+            conversation_id,
+            kibana_url,
+        } = agent_failure
+        {
+            failure = failure.recovery(AgentRecovery {
+                conversation_id: conversation_id.clone(),
+                kibana_url: kibana_url.clone(),
+                retry_safe: agent_failure.retry_safe(),
+            });
+        }
+        return failure;
+    }
+    #[cfg(feature = "agent")]
+    if let Some(skill_failure) = error.downcast_ref::<crate::setup::skills::SkillInstallationFailure>() {
+        return CliFailure::new(CliFailureCategory::Internal, skill_failure.to_string())
+            .target_results(skill_failure.context.results.clone())
+            .agent_skills(skill_failure.context.clone());
+    }
+    let Some(job_failure) = error.downcast_ref::<JobExecutionFailure>() else {
+        let mut failure = CliFailure::new(classify_failure(error), safe_failure_message(error));
+        if let Some(response) = http_response_details(error) {
+            failure = failure.http_status(response.status);
+            if let Some(error_type) = response.error_type {
+                failure = failure.type_(error_type);
+            }
+            if let Some(reason) = response.reason {
+                failure = failure.reason(reason);
+            }
+        }
+        return failure;
+    };
+    let (category, failed_stage) = match job_failure.stage {
+        FailedStage::Collect => (CliFailureCategory::CollectionFailed, JobStage::Collect),
+        FailedStage::Process => (CliFailureCategory::ProcessingFailed, JobStage::Process),
+        FailedStage::Send => (CliFailureCategory::SendFailed, JobStage::Send),
+    };
+    let outcome = &job_failure.outcome;
+    let completed = CompletedStages {
+        save: outcome
+            .bundle_path
+            .as_ref()
+            .filter(|_| outcome.bundle_retained && outcome.bundle_created)
+            .map(|path| BundleResult {
+                path: path.display().to_string(),
+            }),
+        process: outcome
+            .execution
+            .as_ref()
+            .and_then(crate::operations::execution_process_result),
+        send: outcome.send_slug.as_ref().map(|slug| SendResult {
+            destination: format!("https://upload.elastic.co/g/{slug}"),
+        }),
+    };
+    let mut failure = CliFailure::new(category, safe_failure_message(error));
+    failure.failed_stage = Some(failed_stage);
+    failure.retry_safe = Some(false);
+    if completed.save.is_some() || completed.process.is_some() || completed.send.is_some() {
+        failure.completed = Some(completed);
+    }
+    failure
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -650,5 +873,203 @@ mod tests {
         assert_eq!(value["failed_stage"], "send");
         assert_eq!(value["completed"]["save"]["path"], "/tmp/retained.zip");
         assert!(value.get("diagnostic").is_none());
+    }
+
+    #[test]
+    fn setup_errors_report_the_setup_failed_category() {
+        let error = eyre::eyre!("Context 'missing' was not found");
+        assert_eq!(command_failure(&error, true).category, "setup_failed");
+        assert_eq!(command_failure(&error, false).category, "not_found");
+    }
+
+    #[cfg(feature = "agent")]
+    #[test]
+    fn failed_agent_skill_installation_preserves_complete_structured_context() {
+        let error = eyre::Report::new(crate::setup::skills::SkillInstallationFailure {
+            context: AgentSkillsFailureContext {
+                detected_targets: vec!["codex".to_string()],
+                selected_targets: vec!["claude".to_string(), "codex".to_string()],
+                version: "0.18.0-SNAPSHOT".to_string(),
+                digest: "a1b2".to_string(),
+                results: vec![
+                    AgentSkillTargetResult {
+                        target: "claude".to_string(),
+                        action: "installed".to_string(),
+                        destination: "/tmp/.claude/skills/esdiag".to_string(),
+                        error: None,
+                    },
+                    AgentSkillTargetResult {
+                        target: "codex".to_string(),
+                        action: "conflict".to_string(),
+                        destination: "/tmp/.agents/skills/esdiag".to_string(),
+                        error: Some("requires --force".to_string()),
+                    },
+                ],
+                reload_guidance: "Restart or reload running coding agents before using the installed skill."
+                    .to_string(),
+            },
+        });
+
+        let value = serde_json::to_value(structured_failure(&error)).expect("serialize failure");
+        let context = &value["agent_skills"];
+        assert_eq!(context["detected_targets"], serde_json::json!(["codex"]));
+        assert_eq!(context["selected_targets"], serde_json::json!(["claude", "codex"]));
+        assert_eq!(context["version"], "0.18.0-SNAPSHOT");
+        assert_eq!(context["digest"], "a1b2");
+        assert_eq!(context["results"][0]["action"], "installed");
+        assert_eq!(context["results"][1]["action"], "conflict");
+        assert_eq!(
+            context["reload_guidance"],
+            "Restart or reload running coding agents before using the installed skill."
+        );
+        assert_eq!(value["target_results"][0]["action"], "installed");
+        assert_eq!(value["target_results"][1]["action"], "conflict");
+    }
+
+    #[cfg(feature = "agent")]
+    #[test]
+    fn interrupted_agent_conversation_exposes_only_safe_recovery() {
+        let error = eyre::Report::new(crate::agent::builder::AgentFailure::Interrupted {
+            conversation_id: Some("conv-123".to_string()),
+            kibana_url: Some("https://kb.example/app/agent_builder/conversations/conv-123".to_string()),
+        });
+
+        let failure = structured_failure(&error);
+        let value = serde_json::to_value(failure).expect("serialize failure");
+
+        assert_eq!(value["recovery"]["conversation_id"], "conv-123");
+        assert_eq!(value["recovery"]["retry_safe"], false);
+        assert_eq!(
+            value["recovery"]["kibana_url"],
+            "https://kb.example/app/agent_builder/conversations/conv-123"
+        );
+    }
+
+    #[test]
+    fn unauthorized_elasticsearch_responses_are_authentication_failures() {
+        let error = eyre::Report::new(crate::receiver::ElasticsearchRequestError::new(
+            elasticsearch::http::StatusCode::UNAUTHORIZED,
+            "missing authentication credentials".to_string(),
+            5,
+            34,
+        ));
+
+        assert_eq!(classify_failure(&error), CliFailureCategory::AuthenticationFailed);
+    }
+
+    #[test]
+    fn conflict_responses_are_conflict_failures() {
+        let error = eyre::Report::new(crate::receiver::KibanaRequestError::new(
+            reqwest::StatusCode::CONFLICT,
+            r#"{"statusCode":409,"error":"Conflict","message":"resource already exists"}"#.to_string(),
+            5,
+            80,
+        ));
+
+        assert_eq!(classify_failure(&error), CliFailureCategory::Conflict);
+    }
+
+    #[test]
+    fn kibana_sync_conflicts_are_conflict_failures() {
+        let error = eyre::Report::new(kibana_sync::Error::context(
+            "workflow sync failed",
+            kibana_sync::Error::api_response(
+                reqwest::StatusCode::CONFLICT,
+                r#"{"error":"Conflict","message":"workflow already exists","statusCode":409}"#,
+            ),
+        ));
+
+        let failure = structured_failure(&error);
+        let value = serde_json::to_value(failure).expect("serialize failure");
+
+        assert_eq!(value["category"], CliFailureCategory::Conflict.as_str());
+        assert_eq!(value["status"], 409);
+    }
+
+    #[test]
+    fn http_failures_include_status_type_and_reason() {
+        let error = eyre::Report::new(crate::receiver::ElasticsearchRequestError::new(
+            elasticsearch::http::StatusCode::UNAUTHORIZED,
+            r#"{"error":{"type":"security_exception","reason":"missing authentication credentials for REST request [api_key=secret]"},"status":401}"#
+                .to_string(),
+            5,
+            133,
+        ));
+        let failure = structured_failure(&error);
+        let value = serde_json::to_value(failure).expect("serialize failure");
+
+        assert_eq!(value["category"], CliFailureCategory::AuthenticationFailed.as_str());
+        assert_eq!(value["status"], 401);
+        assert_eq!(value["type"], "security_exception");
+        assert_eq!(
+            value["reason"],
+            "missing authentication credentials for REST request [api_key=secret]"
+        );
+        assert_eq!(
+            value["message"],
+            "The server rejected the request because authentication credentials are required."
+        );
+    }
+
+    #[test]
+    fn non_elasticsearch_http_failures_use_the_shared_response_projection() {
+        use crate::receiver::{ElasticCloudAdminRequestError, KibanaRequestError, LogstashRequestError};
+
+        let body = r#"{"error":{"type":"upstream_failure","reason":"remote dependency was unavailable"}}"#.to_string();
+        let failures = [
+            (
+                eyre::Report::new(KibanaRequestError::new(
+                    reqwest::StatusCode::TOO_MANY_REQUESTS,
+                    body.clone(),
+                    5,
+                    80,
+                )),
+                429,
+                CliFailureCategory::InvalidInput,
+            ),
+            (
+                eyre::Report::new(LogstashRequestError::new(
+                    reqwest::StatusCode::NOT_FOUND,
+                    body.clone(),
+                    5,
+                    80,
+                )),
+                404,
+                CliFailureCategory::NotFound,
+            ),
+            (
+                eyre::Report::new(ElasticCloudAdminRequestError::new(
+                    reqwest::StatusCode::BAD_GATEWAY,
+                    body,
+                    5,
+                    80,
+                )),
+                502,
+                CliFailureCategory::Internal,
+            ),
+        ];
+
+        for (error, status, category) in failures {
+            let value = serde_json::to_value(structured_failure(&error)).expect("serialize failure");
+            assert_eq!(value["category"], category.as_str());
+            assert_eq!(value["status"], status);
+            assert_eq!(value["type"], "upstream_failure");
+            assert_eq!(value["reason"], "remote dependency was unavailable");
+        }
+    }
+
+    #[test]
+    fn structured_failure_never_serializes_secret_bearing_error_chains() {
+        let error = eyre::Report::new(std::io::Error::other("api_key=very-secret: nested cause"))
+            .wrap_err("authorization header ApiKey very-secret-too was rejected");
+
+        let failure = structured_failure(&error);
+        let json = serde_json::to_string(&failure).expect("serialize failure");
+        let yaml = yaml_serde::to_string(&failure).expect("serialize failure as YAML");
+
+        for rendered in [json, yaml] {
+            assert!(!rendered.contains("very-secret"), "secret leaked: {rendered}");
+            assert!(!rendered.contains("nested cause"), "error chain leaked: {rendered}");
+        }
     }
 }

@@ -19,6 +19,20 @@ use uuid::Uuid;
 const INSTALLER_MARKER: &str = ".esdiag-installer.json";
 const INSTALLER_ID: &str = "esdiag";
 
+/// One or more selected skill targets failed; carries the per-target results.
+#[derive(Debug)]
+pub struct SkillInstallationFailure {
+    pub context: crate::cli_output::AgentSkillsFailureContext,
+}
+
+impl std::fmt::Display for SkillInstallationFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "one or more ESDiag skill targets could not be installed")
+    }
+}
+
+impl std::error::Error for SkillInstallationFailure {}
+
 /// Coding agents that have a documented user-scoped skill directory.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
