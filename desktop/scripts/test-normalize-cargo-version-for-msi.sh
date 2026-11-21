@@ -29,22 +29,44 @@ assert_not_contains() {
 cat > "${TMP_DIR}/snapshot.Cargo.toml" <<'EOF'
 [package]
 name = "esdiag"
+version.workspace = true
+
+[workspace.package]
 version = "0.15.0-SNAPSHOT"
 edition = "2024"
 
-[dependencies]
+[workspace.dependencies]
+esdiag-core = { path = "crates/esdiag-core", version = "=0.15.0-SNAPSHOT" }
 serde = { version = "1.0.228", features = ["derive"] }
 EOF
 
 bash "${SCRIPT}" "${TMP_DIR}/snapshot.Cargo.toml" > "${TMP_DIR}/snapshot.log"
 assert_contains "${TMP_DIR}/snapshot.Cargo.toml" 'version = "0.15.0-0"'
-assert_not_contains "${TMP_DIR}/snapshot.Cargo.toml" 'version = "0.15.0-SNAPSHOT"'
+assert_contains "${TMP_DIR}/snapshot.Cargo.toml" 'esdiag-core = { path = "crates/esdiag-core", version = "=0.15.0-0" }'
+assert_not_contains "${TMP_DIR}/snapshot.Cargo.toml" '0.15.0-SNAPSHOT'
 assert_contains "${TMP_DIR}/snapshot.Cargo.toml" 'serde = { version = "1.0.228", features = ["derive"] }'
 assert_contains "${TMP_DIR}/snapshot.log" 'Normalized Cargo version from 0.15.0-SNAPSHOT to 0.15.0-0'
+
+cat > "${TMP_DIR}/build-metadata.Cargo.toml" <<'EOF'
+[workspace.package]
+version = "0.18.0-alpha.1+build.123"
+
+[workspace.dependencies]
+esdiag-core = { path = "crates/esdiag-core", version = "=0.18.0-alpha.1+build.123" }
+esdiag-gui = { path = "crates/esdiag-gui", version = "=0.18.0-alpha.1+build.123" }
+EOF
+
+bash "${SCRIPT}" "${TMP_DIR}/build-metadata.Cargo.toml" > "${TMP_DIR}/build-metadata.log"
+assert_contains "${TMP_DIR}/build-metadata.Cargo.toml" 'esdiag-core = { path = "crates/esdiag-core", version = "=0.18.0-0" }'
+assert_contains "${TMP_DIR}/build-metadata.Cargo.toml" 'esdiag-gui = { path = "crates/esdiag-gui", version = "=0.18.0-0" }'
+assert_not_contains "${TMP_DIR}/build-metadata.Cargo.toml" 'alpha.1+build.123'
 
 cat > "${TMP_DIR}/stable.Cargo.toml" <<'EOF'
 [package]
 name = "esdiag"
+version.workspace = true
+
+[workspace.package]
 version = "0.15.0"
 edition = "2024"
 
@@ -59,6 +81,7 @@ assert_contains "${TMP_DIR}/stable.log" 'Cargo version 0.15.0 is already MSI-saf
 cat > "${TMP_DIR}/missing-version.Cargo.toml" <<'EOF'
 [package]
 name = "esdiag"
+version = "0.15.0-SNAPSHOT"
 edition = "2024"
 EOF
 
@@ -66,6 +89,6 @@ if bash "${SCRIPT}" "${TMP_DIR}/missing-version.Cargo.toml" > "${TMP_DIR}/missin
   echo "Expected missing version test to fail" >&2
   exit 1
 fi
-assert_contains "${TMP_DIR}/missing.log" 'Could not find package version'
+assert_contains "${TMP_DIR}/missing.log" 'Could not find workspace package version'
 
 echo "normalize-cargo-version-for-msi tests passed"

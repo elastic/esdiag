@@ -23,7 +23,9 @@ If the series branch already exists, inspect it instead of resetting it.
 ## Development PR
 
 1. Create a topic branch from the recorded cut for upstream/main.
-2. Set the application version to NEXT_VERSION in Cargo.toml, Cargo.lock,
+2. Set the application version to NEXT_VERSION in Cargo.toml (the
+   `[workspace.package]` version and the exact `=` requirements on
+   `esdiag-core` and `esdiag-gui` in `[workspace.dependencies]`), Cargo.lock,
    bin/esdiag-local, and current version-sensitive examples and tests. Preserve
    historical fixtures, archived specs, and independently versioned packages.
 3. Run cargo upgrade with recursive lockfile updates across workspace manifests.
@@ -50,8 +52,11 @@ If the series branch already exists, inspect it instead of resetting it.
    and resolved Cargo metadata for Git dependencies and private registries.
    Local workspace packages are valid; production path dependencies need
    published version requirements and a successful registry package build.
-4. Resolve registry compatibility, regenerate notices, and verify the actual
-   package with cargo publish --dry-run --locked --package esdiag.
+4. Resolve registry compatibility, regenerate notices, run
+   `bin/sync-crate-assets.sh`, and on a clean worktree verify the actual
+   packages with
+   `cargo publish --dry-run --locked --allow-dirty --workspace --exclude elasticrc --exclude repo-tools`
+   (see the crates.io reference for why `--allow-dirty` is needed).
 5. Run formatting, workspace compilation and tests, feature-combination checks,
    and relevant launcher tests. Report any omitted platform or live tests.
 6. Commit, push, and open a PR targeting upstream/SERIES. Do not directly push

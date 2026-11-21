@@ -40,9 +40,11 @@ Run the checks that cover your change from the repository root:
 
 ```sh
 cargo fmt
-cargo clippy
-cargo test
+cargo clippy --workspace --all-targets
+cargo test --workspace
 ```
+
+Plain `cargo test` skips the `esdiag-gui` crate's unit tests.
 
 Also:
 

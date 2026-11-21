@@ -20,9 +20,9 @@ other tests sharing the process.
 
 ## Shared Elasticsearch Mock
 
-`tests/common/elasticsearch.rs` is the mock cluster for tests that write to
-Elasticsearch. Integration tests use it as `crate::common::elasticsearch`; unit
-tests use the same file as `crate::es_mock`. It behaves like a real cluster where ESDiag
+`crates/esdiag-core/src/es_mock.rs` is the mock cluster for tests that write to
+Elasticsearch. Unit tests in `esdiag-core` use it as `crate::es_mock`;
+integration tests include the same file by path as `crate::common::elasticsearch`. It behaves like a real cluster where ESDiag
 depends on it:
 
 - `POST /{index}/_bulk` parses the (gzip) NDJSON body, answers one item per

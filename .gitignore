@@ -5,6 +5,8 @@
 /desktop/gen
 /desktop/target
 /desktop/tauri-dist
+# Packaging copies of embedded files; see bin/sync-crate-assets.sh
+/crates/*/bundled/
 
 # Agent skills and commands
 /*/skills/

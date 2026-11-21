@@ -24,13 +24,15 @@ HOMEBREW_REPO=$HOME/Development/elastic/homebrew-tools
 ```
 
 ESDiag uses numeric tags without a leading `v`. Keep `VERSION`, the Cargo
-package version, `bin/esdiag-local`, the full image tag, and `TAG` aligned for
-an ESDiag application release. `elasticrc` has an independent version when it
-is released as a standalone crate.
+workspace version and the exact `=VERSION` requirements on `esdiag-core` and
+`esdiag-gui`, `bin/esdiag-local`, the full image tag, and `TAG` aligned for an
+ESDiag application release. `elasticrc` has an independent version when it is
+released as a standalone crate.
 
-Set `CRATE` to the selected Cargo package before following the crates.io
-target. Publishing `elasticrc` does not publish `esdiag` or require changing
-the ESDiag application version.
+Set `CRATE` to the selected release before following the crates.io target:
+`esdiag` publishes `esdiag-core`, `esdiag-gui`, and `esdiag` together.
+Publishing `elasticrc` does not publish `esdiag` or require changing the ESDiag
+application version.
 
 ## Target References
 
@@ -42,8 +44,8 @@ Read only the target references required by the release:
   draft workflow, publication gate, and GitHub recovery.
 - [Containers](references/containers.md): multi-architecture image build,
   registry aliases, manifest inspection, and runtime verification.
-- [crates.io](references/crates-io.md): independent package selection,
-  validation, dry-run, approved publication, and immutable-version recovery.
+- [crates.io](references/crates-io.md): package selection, asset sync,
+  three-package dry run, approved publication, and partial-publish recovery.
 - [Homebrew](references/homebrew.md): native assets, checksum contract,
   draft-release upload, Formula update, and tap PR.
 - [Windows](references/windows.md): native MSVC archive, static C runtime,

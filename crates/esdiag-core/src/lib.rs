@@ -1,0 +1,158 @@
+// Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+// or more contributor license agreements. Licensed under the Elastic License 2.0;
+// you may not use this file except in compliance with the Elastic License 2.0.
+
+//! Core library of [`esdiag`](https://crates.io/crates/esdiag): collection,
+//! processing, export, setup, and configuration. This is an implementation
+//! crate published in lockstep with `esdiag`; it has no supported public API.
+
+/// Native Agent Builder and coding-agent integrations.
+#[cfg(feature = "agent")]
+pub mod agent;
+/// Stable, structured finite-command output projections.
+pub mod cli_output;
+/// Shared client libraries for remote connections
+pub mod client;
+/// Data structures and types for serializing and deserializing
+pub mod data;
+/// Send raw diagnostic archives to Elastic Upload Service
+pub mod elastic_upload_service;
+/// Embedded assets
+pub mod embeds;
+/// Environment variables
+pub mod env;
+/// Exports data to various destinations
+pub mod exporter;
+/// Shared job runner for saved diagnostic jobs
+pub mod job;
+/// Flow-neutral first-run onboarding operations
+pub mod onboarding;
+/// Data transformation and processing logic
+pub mod processor;
+/// Receive data from various sources
+pub mod receiver;
+/// Send pre-built assets (index templates, etc) to Elasticsearch
+pub mod setup;
+/// Host desktop browser and clipboard integration, including WSL.
+pub mod system_integration;
+
+/// Elasticsearch mock shared with the integration tests.
+#[cfg(test)]
+pub(crate) mod es_mock;
+
+/// Private to `TestEnv`, which is the only supported way to take it. Callers
+/// that locked it directly used `.expect()`, so a panicking test poisoned the
+/// mutex and every later environment test failed with `PoisonError` instead of
+/// its own result.
+#[cfg(any(test, feature = "test-support"))]
+fn test_env_lock() -> &'static std::sync::Mutex<()> {
+    use std::sync::{Mutex, OnceLock};
+
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// Isolates ESDiag's configuration environment for one test, restoring it on drop.
+#[cfg(any(test, feature = "test-support"))]
+pub struct TestEnv {
+    _guard: std::sync::MutexGuard<'static, ()>,
+    previous: Vec<(&'static str, Option<std::ffi::OsString>)>,
+    previous_cwd: Option<std::path::PathBuf>,
+    pub tmp: tempfile::TempDir,
+    pub hosts_path: std::path::PathBuf,
+    pub keystore_path: std::path::PathBuf,
+    pub settings_path: std::path::PathBuf,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl Default for TestEnv {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl TestEnv {
+    pub fn new() -> Self {
+        let guard = test_env_lock().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let config_dir = tmp.path().join(".esdiag");
+        std::fs::create_dir_all(&config_dir).expect("create config dir");
+        let hosts_path = config_dir.join("hosts.yml");
+        let keystore_path = config_dir.join("secrets.yml");
+        let settings_path = config_dir.join("settings.yml");
+
+        let mut env = Self {
+            _guard: guard,
+            previous: Vec::new(),
+            previous_cwd: None,
+            tmp,
+            hosts_path,
+            keystore_path,
+            settings_path,
+        };
+        env.set_path("HOME", env.tmp.path().to_path_buf());
+        env.set_path("USERPROFILE", env.tmp.path().to_path_buf());
+        env.set_path("ESDIAG_HOSTS", env.hosts_path.clone());
+        env.set_path("ESDIAG_KEYSTORE", env.keystore_path.clone());
+        env.set_path("ESDIAG_SETTINGS", env.settings_path.clone());
+        env.remove("ESDIAG_KEYSTORE_PASSWORD");
+        env
+    }
+
+    pub fn set_path(&mut self, key: &'static str, value: std::path::PathBuf) {
+        self.capture(key);
+        unsafe {
+            std::env::set_var(key, value);
+        }
+    }
+
+    pub fn set(&mut self, key: &'static str, value: &str) {
+        self.capture(key);
+        unsafe {
+            std::env::set_var(key, value);
+        }
+    }
+
+    pub fn remove(&mut self, key: &'static str) {
+        self.capture(key);
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
+
+    /// Changes the process working directory, restoring the original on drop.
+    /// The directory is process-global like the variables above, and it must
+    /// be restored before `tmp` is removed or later tests inherit a cwd that
+    /// no longer exists.
+    pub fn set_current_dir(&mut self, path: impl AsRef<std::path::Path>) {
+        if self.previous_cwd.is_none() {
+            self.previous_cwd = std::env::current_dir().ok();
+        }
+        std::env::set_current_dir(path).expect("set current dir");
+    }
+
+    fn capture(&mut self, key: &'static str) {
+        if self.previous.iter().any(|(existing, _)| *existing == key) {
+            return;
+        }
+        self.previous.push((key, std::env::var_os(key)));
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl Drop for TestEnv {
+    fn drop(&mut self) {
+        if let Some(cwd) = self.previous_cwd.take() {
+            let _ = std::env::set_current_dir(cwd);
+        }
+        for (key, value) in self.previous.drain(..).rev() {
+            unsafe {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+}

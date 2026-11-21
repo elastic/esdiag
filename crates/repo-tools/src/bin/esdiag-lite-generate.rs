@@ -4,7 +4,7 @@
 
 //! Maintainer utility for generated regions in the ESDiag Lite scripts.
 
-use esdiag::processor::diagnostic::data_source::{VersionSource, get_product_sources};
+use esdiag_core::processor::diagnostic::data_source::{VersionSource, get_product_sources};
 use eyre::{Result, bail, eyre};
 use repo_tools::repo_root;
 use semver::VersionReq;
@@ -398,7 +398,7 @@ fn render_powershell_source(name: &str, output_path: &str, rules: &[Rule]) -> Re
 }
 
 fn lite_source_names(
-    sources: &std::collections::HashMap<String, esdiag::processor::diagnostic::data_source::Source>,
+    sources: &std::collections::HashMap<String, esdiag_core::processor::diagnostic::data_source::Source>,
 ) -> Result<Vec<&String>> {
     let mut names: Vec<&String> = sources
         .iter()
@@ -412,7 +412,7 @@ fn lite_source_names(
     Ok(names)
 }
 
-fn source_rules(name: &str, source: &esdiag::processor::diagnostic::data_source::Source) -> Result<Vec<Rule>> {
+fn source_rules(name: &str, source: &esdiag_core::processor::diagnostic::data_source::Source) -> Result<Vec<Rule>> {
     source
         .versions
         .iter()
@@ -580,7 +580,7 @@ mod tests {
         ScriptLanguage, VersionParts, parse_rule, render_bash, render_powershell, replace_generated_region,
         rules_overlap, script_path,
     };
-    use esdiag::processor::diagnostic::data_source::{VersionSource, get_product_sources};
+    use esdiag_core::processor::diagnostic::data_source::{VersionSource, get_product_sources};
     use semver::Version;
 
     #[test]

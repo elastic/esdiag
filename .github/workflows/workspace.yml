@@ -1,0 +1,66 @@
+name: workspace
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  layering:
+    name: Layering
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check package dependencies and versions
+        run: |
+          cargo metadata --locked --format-version 1 --no-deps | jq -e '
+            .packages as $all
+            | ($all | map({key: .name, value: .}) | from_entries) as $p
+            | def deps($name): $p[$name].dependencies | map(select(.kind == null or .kind == "build"));
+              def fail($msg): error($msg);
+            (if [deps("esdiag-core")[].name] | any(. == "esdiag-gui" or . == "esdiag")
+              then fail("esdiag-core must not depend on esdiag-gui or esdiag") else . end)
+            | (if [$all[] | select(.name != "esdiag") | select([.dependencies[] | select(.kind == null or .kind == "build") | .name] | index("esdiag-gui")) | .name] | length > 0
+              then fail("only esdiag may depend on esdiag-gui") else . end)
+            | ($p["esdiag"].version) as $v
+            | (if [$p["esdiag-core"].version, $p["esdiag-gui"].version] | all(. == $v) | not
+              then fail("esdiag, esdiag-core, and esdiag-gui versions differ") else . end)
+            | (if [$all[] | select(.name == "esdiag" or .name == "esdiag-gui") | .dependencies[] | select(.name == "esdiag-core" or .name == "esdiag-gui") | .req] | all(. == "=" + $v) | not
+              then fail("requirements on esdiag-core and esdiag-gui must be exactly =" + $v) else . end)
+            | (if [$p["esdiag-core"].license, $p["esdiag-gui"].license] | all(. == $p["esdiag"].license) | not
+              then fail("esdiag-core and esdiag-gui must use the esdiag license") else . end)
+            | true
+          '
+      - name: Check feature-gated dependencies
+        run: |
+          set -euo pipefail
+          absent() {
+            local crate="$1"; shift
+            local tree
+            tree="$(cargo tree --locked -e normal,build --prefix none "$@")"
+            if grep -q "^${crate} v" <<<"$tree"; then
+              echo "${crate} must not be in: cargo tree $*" >&2
+              exit 1
+            fi
+          }
+          absent esdiag-gui -p repo-tools
+          absent esdiag-gui -p esdiag --no-default-features
+          absent esdiag-gui --no-default-features
+          absent tauri -p esdiag --no-default-features --features server
+          absent tauri -p esdiag
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: bin/sync-crate-assets.sh
+      - run: bin/sync-crate-assets.sh --check
+      # Cargo counts the gitignored bundled/ copies as uncommitted.
+      - run: test -z "$(git status --porcelain)"
+      - run: cargo publish --dry-run --locked --allow-dirty --workspace --exclude elasticrc --exclude repo-tools

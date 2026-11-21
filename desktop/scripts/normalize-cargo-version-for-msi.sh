@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Rewrites the workspace version to an MSI-safe pre-release (0.18.0-SNAPSHOT ->
+# 0.18.0-0), together with the exact `=` requirements between workspace crates
+# that pin the same version.
+
 CARGO_TOML="${1:-Cargo.toml}"
 
 if [[ ! -f "${CARGO_TOML}" ]]; then
@@ -11,7 +15,7 @@ fi
 extract_package_version() {
   local cargo_toml="$1"
   awk '
-    $0 == "[package]" { in_package = 1; next }
+    $0 == "[workspace.package]" { in_package = 1; next }
     /^\[/ {
       if (in_package) {
         exit
@@ -29,7 +33,7 @@ extract_package_version() {
 
 package_version="$(extract_package_version "${CARGO_TOML}")"
 if [[ -z "${package_version}" ]]; then
-  echo "Could not find package version in ${CARGO_TOML}" >&2
+  echo "Could not find workspace package version in ${CARGO_TOML}" >&2
   exit 1
 fi
 
@@ -42,12 +46,12 @@ normalized_version="${package_version%%-*}-0"
 tmp_file="$(mktemp "${TMPDIR:-/tmp}/cargo-msi-version.XXXXXX")"
 trap 'rm -f "${tmp_file}"' EXIT
 
-awk -v normalized="${normalized_version}" '
+awk -v normalized="${normalized_version}" -v pinned="\"=${package_version}\"" '
   BEGIN {
     in_package = 0
     updated = 0
   }
-  $0 == "[package]" {
+  $0 == "[workspace.package]" {
     in_package = 1
     print
     next
@@ -61,7 +65,13 @@ awk -v normalized="${normalized_version}" '
     next
   }
   {
-    print
+    line = $0
+    out = ""
+    while ((i = index(line, pinned)) > 0) {
+      out = out substr(line, 1, i - 1) "\"=" normalized "\""
+      line = substr(line, i + length(pinned))
+    }
+    print out line
   }
   END {
     if (!updated) {
