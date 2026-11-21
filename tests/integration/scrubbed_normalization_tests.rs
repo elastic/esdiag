@@ -1,5 +1,8 @@
-mod scrub_normalization_assertions;
-
+use crate::scrub_normalization_assertions::{
+    ScrubFixtureExpectations, assert_malformed_ips_preserved_in_node_metrics, assert_scrubbed_export,
+    ensure_two_nodes_in_nodes_json, ensure_two_nodes_in_nodes_stats_json, ensure_two_nodes_in_tasks_json,
+    inject_malformed_ips_in_nodes_json, inject_malformed_ips_in_nodes_stats_json, inject_malformed_ips_in_tasks_json,
+};
 use esdiag::{
     data::Uri,
     exporter::DocumentExporter,
@@ -10,11 +13,6 @@ use esdiag::{
     },
     processor::Identifiers,
     receiver::Receiver,
-};
-use scrub_normalization_assertions::{
-    ScrubFixtureExpectations, assert_malformed_ips_preserved_in_node_metrics, assert_scrubbed_export,
-    ensure_two_nodes_in_nodes_json, ensure_two_nodes_in_nodes_stats_json, ensure_two_nodes_in_tasks_json,
-    inject_malformed_ips_in_nodes_json, inject_malformed_ips_in_nodes_stats_json, inject_malformed_ips_in_tasks_json,
 };
 use serde_json::{Value, json};
 use std::{
