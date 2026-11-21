@@ -60,7 +60,7 @@ use std::{
     convert::Infallible,
     fmt,
     net::SocketAddr,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc, watch};
@@ -1548,6 +1548,27 @@ pub struct ArchiveSignals {
 
 pub use crate::data::{CollectMode, CollectSource, JobSignals, ProcessMode, SendMode};
 
+enum CleanupMode {
+    FileOnly,
+    FileOrDirectory,
+}
+
+async fn cleanup_input_path(path: &Path, mode: CleanupMode, description: &str) {
+    let result = match mode {
+        CleanupMode::FileOnly => tokio::fs::remove_file(path).await,
+        CleanupMode::FileOrDirectory => match tokio::fs::metadata(path).await {
+            Ok(metadata) if metadata.is_dir() => tokio::fs::remove_dir_all(path).await,
+            Ok(_) => tokio::fs::remove_file(path).await,
+            Err(err) => Err(err),
+        },
+    };
+    if let Err(err) = result
+        && err.kind() != std::io::ErrorKind::NotFound
+    {
+        tracing::debug!("Failed to clean {} {}: {}", description, path.display(), err);
+    }
+}
+
 #[derive(Clone)]
 pub struct JobRequest {
     pub owner: Owner,
@@ -1600,16 +1621,7 @@ impl JobInput {
             ..
         } = self
         {
-            let metadata = tokio::fs::metadata(path).await;
-            let result = match metadata {
-                Ok(metadata) if metadata.is_dir() => tokio::fs::remove_dir_all(path).await,
-                Ok(_) => tokio::fs::remove_file(path).await,
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                Err(err) => Err(err),
-            };
-            if let Err(err) = result {
-                tracing::debug!("Failed to clean job input {}: {}", path.display(), err);
-            }
+            cleanup_input_path(path, CleanupMode::FileOrDirectory, "job input").await;
         }
     }
 }
@@ -2056,6 +2068,83 @@ mod tests {
         assert!(
             state.pop_job_request(42).await.is_none(),
             "ad-hoc input key must not survive the execution handoff"
+        );
+    }
+
+    #[tokio::test]
+    async fn discarding_queued_upload_removes_files_and_directories_but_tolerates_missing_or_invalid_paths() {
+        let state = test_server_state();
+        let temp = tempfile::tempdir().expect("temporary upload inputs");
+        let file = temp.path().join("file.zip");
+        tokio::fs::write(&file, b"uploaded bytes").await.expect("stage file");
+        state
+            .push_upload(
+                41,
+                "alice@example.com".into(),
+                None,
+                "file.zip".into(),
+                file.clone(),
+                None,
+            )
+            .await;
+        state.discard_job_request(41).await;
+        assert!(!file.exists(), "discard removes queued file");
+        assert!(state.pop_job_request(41).await.is_none());
+
+        let directory = temp.path().join("expanded");
+        tokio::fs::create_dir(&directory).await.expect("staged input directory");
+        tokio::fs::write(directory.join("inside"), b"nested bytes")
+            .await
+            .expect("nested staged data");
+        state
+            .push_upload(
+                42,
+                "alice@example.com".into(),
+                None,
+                "expanded.zip".into(),
+                directory.clone(),
+                None,
+            )
+            .await;
+        state.discard_job_request(42).await;
+        assert!(!directory.exists(), "queued directory cleanup removes nested contents");
+        assert!(state.pop_job_request(42).await.is_none());
+
+        let absent = temp.path().join("already-removed.zip");
+        tokio::fs::write(&absent, b"temporary bytes").await.expect("stage file");
+        state
+            .push_upload(
+                43,
+                "alice@example.com".into(),
+                None,
+                "absent.zip".into(),
+                absent.clone(),
+                None,
+            )
+            .await;
+        tokio::fs::remove_file(&absent).await.expect("input already removed");
+        state.discard_job_request(43).await;
+        assert!(state.pop_job_request(43).await.is_none());
+
+        let blocker = temp.path().join("blocker");
+        tokio::fs::write(&blocker, b"unchanged")
+            .await
+            .expect("file blocking cleanup traversal");
+        state
+            .push_upload(
+                44,
+                "alice@example.com".into(),
+                None,
+                "invalid.zip".into(),
+                blocker.join("child.zip"),
+                None,
+            )
+            .await;
+        state.discard_job_request(44).await;
+        assert!(state.pop_job_request(44).await.is_none());
+        assert_eq!(
+            tokio::fs::read(&blocker).await.expect("original file intact"),
+            b"unchanged"
         );
     }
 
