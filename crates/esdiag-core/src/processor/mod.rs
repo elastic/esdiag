@@ -611,7 +611,7 @@ mod tests {
     use zip::ZipArchive;
 
     fn archive_path(name: &str) -> String {
-        format!("{}/tests/archives/{name}", env!("CARGO_MANIFEST_DIR"))
+        format!("{}/../../tests/archives/{name}", env!("CARGO_MANIFEST_DIR"))
     }
 
     fn extract_archive(name: &str, destination: &Path) {

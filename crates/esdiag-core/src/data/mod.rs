@@ -37,9 +37,9 @@ pub(crate) use elastic_context::ElasticContextTarget;
 pub use elastic_context::ElasticOutputContext;
 pub use host_reference::HostReference;
 #[cfg(all(feature = "server", feature = "keystore"))]
-pub(crate) use keystore::get_active_unlock_keystore_password;
+pub use keystore::get_active_unlock_keystore_password;
 #[cfg(all(feature = "server", feature = "keystore"))]
-pub(crate) use keystore::list_secret_entries;
+pub use keystore::list_secret_entries;
 pub use keystore::{
     BasicSecret, SecretAlreadyExists, SecretAuth, SecretEntry, UnlockLease, UnlockStatus, add_secret, authenticate,
     clear_unlock_lease, create_keystore, default_unlock_ttl, enable_keystore_password_prompt, get_keystore_password,
@@ -48,8 +48,8 @@ pub use keystore::{
     rotate_keystore_password, update_secret, upsert_secret_auth, validate_existing_keystore_password,
     with_scoped_keystore_password, write_unlock_lease,
 };
-#[cfg(all(test, feature = "server"))]
-pub(crate) use known_host::write_hosts_yml_for_tests;
+#[cfg(feature = "test-support")]
+pub use known_host::write_hosts_yml_for_tests;
 pub use known_host::{
     CredentialDirection, ElasticCloud, HostRole, HostRoute, KnownHost, KnownHostBuilder, KnownHostCliUpdate,
     ResolvedKnownHost,

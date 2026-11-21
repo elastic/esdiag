@@ -8,9 +8,9 @@ use super::keystore::upsert_secret_auth_batch;
 use crate::data::{Application, Auth, Credential, Platform, SecretAuth};
 use eyre::{Result, eyre};
 use redact::Secret;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use redact::serde::expose_secret;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 #[cfg(unix)]
@@ -487,7 +487,7 @@ struct FlatKnownHostRef<'a> {
 
 /// `expose_secret` covers `Option<Secret<T>>` but not a reference to one, which
 /// is the shape a borrowed serialization ref holds.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn expose_borrowed_secret<S>(secret: &&Option<Secret<String>>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -495,7 +495,7 @@ where
     expose_secret(*secret, serializer)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Serialize)]
 #[serde(tag = "auth")]
 enum LegacyKnownHostRef<'a> {
@@ -1376,10 +1376,10 @@ impl Display for KnownHost {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 struct TestKnownHostRef<'a>(&'a KnownHost);
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Serialize for TestKnownHostRef<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -1428,10 +1428,10 @@ impl Serialize for TestKnownHostRef<'_> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 struct TestKnownHostsRef<'a>(&'a BTreeMap<String, KnownHost>);
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Serialize for TestKnownHostsRef<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -1445,8 +1445,8 @@ impl Serialize for TestKnownHostsRef<'_> {
     }
 }
 
-#[cfg(test)]
-pub(crate) fn write_hosts_yml_for_tests(hosts: &BTreeMap<String, KnownHost>) -> Result<String> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn write_hosts_yml_for_tests(hosts: &BTreeMap<String, KnownHost>) -> Result<String> {
     let path = KnownHost::get_hosts_path();
     let file = File::create(&path)?;
     let writer = BufWriter::new(file);

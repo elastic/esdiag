@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 clap.workspace = true
-esdiag = { path = "../..", default-features = false }
+esdiag-core.workspace = true
 eyre.workspace = true
 semver.workspace = true
 yaml_serde.workspace = true

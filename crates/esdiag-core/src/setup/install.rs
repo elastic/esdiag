@@ -347,8 +347,9 @@ mod tests {
     /// The `diagnostic` properties an index created from the current templates
     /// carries, read from the template itself so the test moves with it.
     fn template_diagnostic_properties() -> Value {
-        let path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/elasticsearch/component_templates/esdiag@metadata.json");
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(env!("ESDIAG_ASSETS_DIR"))
+            .join("elasticsearch/component_templates/esdiag@metadata.json");
         let template: Value =
             serde_json::from_str(&std::fs::read_to_string(&path).expect("read metadata template")).expect("parse");
         template["template"]["mappings"]["properties"]["diagnostic"]["properties"].clone()

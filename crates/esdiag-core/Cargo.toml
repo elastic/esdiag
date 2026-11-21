@@ -1,0 +1,68 @@
+[package]
+name = "esdiag-core"
+version.workspace = true
+description = "Core library of esdiag; an implementation crate without a supported public API"
+repository.workspace = true
+homepage.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+readme = "README.md"
+include = ["src/**", "build.rs", "README.md", "bundled/**"]
+
+[features]
+agent = []
+setup = ["dep:elasticrc", "dep:dotenvy"]
+server = []
+keystore = []
+elasticrc = ["dep:elasticrc"]
+test-support = []
+
+[dependencies]
+aes-gcm-siv = "0.11.1"
+base64 = "0.22.1"
+bytes.workspace = true
+chrono.workspace = true
+clap.workspace = true
+clap_complete = "4.6"
+dotenvy = { version = "0.15.7", optional = true }
+elasticrc = { path = "../elasticrc", version = "0.1.0", optional = true }
+elasticsearch.workspace = true
+eyre.workspace = true
+futures.workspace = true
+indexmap = { version = "2.14.2", features = ["serde"] }
+json-patch = "4.2"
+kibana-sync.workspace = true
+pbkdf2 = "0.12.2"
+rand = "0.10.3"
+rayon = "1.12"
+redact.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+rpassword.workspace = true
+rust-embed.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_with = { version = "3.24.0", default-features = false, features = ["macros"] }
+sha2 = "0.10.9"
+tempfile.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url.workspace = true
+urlencoding.workspace = true
+uuid.workspace = true
+yaml_serde.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+axum.workspace = true
+flate2.workspace = true
+kibana-sync = { workspace = true, features = ["test-support"] }
+tokio = { workspace = true, features = ["fs", "test-util"] }
+tokio-test = "0.4.6"
+
+[build-dependencies]
+# Selects the compression backend for zip's deflate-flate2 feature.
+flate2.workspace = true
+zip.workspace = true

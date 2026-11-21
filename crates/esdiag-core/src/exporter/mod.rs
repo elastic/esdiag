@@ -679,7 +679,9 @@ mod tests {
 
     #[test]
     fn link_targets_name_shipped_saved_objects() {
-        let objects = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/kibana/esdiag/objects");
+        let objects = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(env!("ESDIAG_ASSETS_DIR"))
+            .join("kibana/esdiag/objects");
         for target in [KibanaLinkTarget::ClusterReport, KibanaLinkTarget::EckPlatform] {
             for (dir, id) in [
                 ("dashboard", target.dashboard_id()),

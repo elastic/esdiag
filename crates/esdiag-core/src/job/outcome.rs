@@ -164,7 +164,7 @@ impl ExecutionOutcome {
         !self.succeeded() || self.diagnostic_outcome() == Some(DiagnosticOutcome::Failed) || self.has_child_failures()
     }
 
-    pub(crate) fn record(&mut self, stage: Stage, status: StageStatus) {
+    pub fn record(&mut self, stage: Stage, status: StageStatus) {
         self.stages.push(StageOutcome { stage, status });
     }
 }

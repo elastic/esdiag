@@ -233,9 +233,24 @@ static SOURCES: OnceLock<HashMap<&'static str, HashMap<String, Source>>> = OnceL
 
 fn embedded_sources_str(product: &str) -> Result<&'static str> {
     match product {
-        "elasticsearch" => Ok(include_str!("../../../assets/elasticsearch/sources.yml")),
-        "kibana" => Ok(include_str!("../../../assets/kibana/sources.yml")),
-        "logstash" => Ok(include_str!("../../../assets/logstash/sources.yml")),
+        "elasticsearch" => Ok(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/",
+            env!("ESDIAG_ASSETS_DIR"),
+            "/elasticsearch/sources.yml"
+        ))),
+        "kibana" => Ok(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/",
+            env!("ESDIAG_ASSETS_DIR"),
+            "/kibana/sources.yml"
+        ))),
+        "logstash" => Ok(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/",
+            env!("ESDIAG_ASSETS_DIR"),
+            "/logstash/sources.yml"
+        ))),
         other => Err(eyre!("Unsupported sources product: {}", other)),
     }
 }

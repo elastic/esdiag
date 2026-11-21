@@ -818,7 +818,7 @@ mod tests {
     }
 
     fn fixture_archive(name: &str) -> PathBuf {
-        PathBuf::from(format!("{}/tests/archives/{name}", env!("CARGO_MANIFEST_DIR")))
+        PathBuf::from(format!("{}/../../tests/archives/{name}", env!("CARGO_MANIFEST_DIR")))
     }
 
     fn extract_fixture(name: &str, destination: &std::path::Path) {

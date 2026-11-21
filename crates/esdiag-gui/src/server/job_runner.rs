@@ -1088,7 +1088,7 @@ mod tests {
         let output = tempfile::tempdir().expect("processed output");
         let archive = std::path::PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/tests/archives/elasticsearch-api-diagnostics-9.3.3.zip"
+            "/../../tests/archives/elasticsearch-api-diagnostics-9.3.3.zip"
         ));
         let token = "loaded-bundle-token";
         let owner = "owner@example.com";

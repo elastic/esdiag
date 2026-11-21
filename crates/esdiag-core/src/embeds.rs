@@ -6,7 +6,7 @@ use rust_embed::RustEmbed;
 
 /// Assets in the `assets/` directory (e.g. setup assets, `marked.js`)
 #[derive(RustEmbed)]
-#[folder = "assets/"]
+#[folder = "$ESDIAG_ASSETS_DIR/"]
 #[exclude = "kibana/**"]
 pub struct Assets;
 
@@ -16,7 +16,7 @@ pub struct Assets;
 /// commands, so every binary carries one script-free, version-matched asset set.
 #[cfg(feature = "agent")]
 #[derive(RustEmbed)]
-#[folder = ".agents/skills/esdiag/"]
+#[folder = "$ESDIAG_SKILL_DIR/"]
 #[include = "SKILL.md"]
 #[include = "references/**"]
 #[include = "agents/**"]
@@ -26,15 +26,3 @@ pub struct EsdiagSkillAssets;
 /// Generated Kibana asset bundle built from `assets/kibana`.
 #[cfg(feature = "setup")]
 pub static KIBANA_ASSETS_BUNDLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/kibana-assets.zip"));
-
-/// Documentation assets in the `docs/` directory
-#[cfg(feature = "server")]
-#[derive(RustEmbed)]
-#[folder = "docs/"]
-pub struct DocsAssets;
-
-/// Server frontend assets in the `src/server/assets/` directory
-#[cfg(feature = "server")]
-#[derive(RustEmbed)]
-#[folder = "src/server/assets/"]
-pub struct ServerAssets;

@@ -1550,17 +1550,54 @@ dependencies = [
 name = "esdiag"
 version = "0.18.0-SNAPSHOT"
 dependencies = [
- "aes-gcm-siv",
- "askama",
- "async-stream",
  "axum",
- "axum-server",
+ "bytes",
+ "chrono",
+ "clap",
+ "clap_complete",
+ "elasticsearch",
+ "esdiag-core",
+ "esdiag-gui",
+ "eyre",
+ "flate2",
+ "futures",
+ "kibana-sync",
+ "mimalloc",
+ "parking_lot",
+ "portpicker",
+ "redact",
+ "regex",
+ "reqwest 0.12.28",
+ "rpassword",
+ "semver",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-log",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+ "windows-sys 0.61.2",
+ "yaml_serde",
+ "zip",
+]
+
+[[package]]
+name = "esdiag-core"
+version = "0.18.0-SNAPSHOT"
+dependencies = [
+ "aes-gcm-siv",
+ "axum",
  "base64 0.22.1",
  "bytes",
  "chrono",
  "clap",
  "clap_complete",
- "datastar",
  "dotenvy",
  "elasticrc",
  "elasticsearch",
@@ -1570,11 +1607,7 @@ dependencies = [
  "indexmap 2.14.2",
  "json-patch 4.2.0",
  "kibana-sync",
- "mimalloc",
- "parking_lot",
  "pbkdf2",
- "portpicker",
- "pulldown-cmark",
  "rand 0.10.3",
  "rayon",
  "redact",
@@ -1587,22 +1620,49 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sha2 0.10.9",
- "tar",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
  "tempfile",
  "tokio",
  "tokio-test",
  "tracing",
- "tracing-log",
- "tracing-subscriber",
  "url",
  "urlencoding",
  "uuid",
- "windows-sys 0.61.2",
  "yaml_serde",
  "zip",
+]
+
+[[package]]
+name = "esdiag-gui"
+version = "0.18.0-SNAPSHOT"
+dependencies = [
+ "askama",
+ "async-stream",
+ "axum",
+ "axum-server",
+ "bytes",
+ "chrono",
+ "clap",
+ "datastar",
+ "esdiag-core",
+ "eyre",
+ "futures",
+ "parking_lot",
+ "pulldown-cmark",
+ "redact",
+ "regex",
+ "reqwest 0.12.28",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin-opener",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "url",
+ "urlencoding",
+ "uuid",
+ "yaml_serde",
 ]
 
 [[package]]
@@ -1659,16 +1719,6 @@ checksum = "38e2275cc4e4fc009b0669731a1e5ab7ebf11f469eaede2bab9309a5b4d6057f"
 dependencies = [
  "memoffset",
  "rustc_version",
-]
-
-[[package]]
-name = "filetime"
-version = "0.2.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
-dependencies = [
- "cfg-if",
- "libc",
 ]
 
 [[package]]
@@ -4184,7 +4234,7 @@ name = "repo-tools"
 version = "0.0.0"
 dependencies = [
  "clap",
- "esdiag",
+ "esdiag-core",
  "eyre",
  "semver",
  "yaml_serde",
@@ -4332,6 +4382,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rust-embed-utils",
+ "shellexpand",
  "syn 2.0.119",
  "walkdir",
 ]
@@ -4781,6 +4832,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "shellexpand"
+version = "3.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32824fab5e16e6c4d86dc1ba84489390419a39f97699852b66480bb87d297ed8"
+dependencies = [
+ "dirs",
+]
+
+[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5072,16 +5132,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "tar"
-version = "0.4.46"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
-dependencies = [
- "filetime",
- "libc",
 ]
 
 [[package]]

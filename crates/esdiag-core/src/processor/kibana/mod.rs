@@ -1065,7 +1065,8 @@ mod tests {
 
     #[tokio::test]
     async fn archive_fixture_processes_space_scoped_sources() {
-        let archive = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/archives/kibana-api-diagnostics-8.19.3.zip");
+        let archive =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/archives/kibana-api-diagnostics-8.19.3.zip");
         let receiver = Arc::new(Receiver::try_from(Uri::File(archive)).expect("archive receiver"));
         receiver.try_get_manifest().await.expect("archive manifest");
         let alerts = receiver.get_all::<Alerts>().await.expect("scoped alerts");

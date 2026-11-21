@@ -62,7 +62,7 @@ fn collect_rs_files(root: &Path, files: &mut Vec<std::path::PathBuf>) {
 
 fn emitted_output_streams() -> BTreeSet<String> {
     let mut files = Vec::new();
-    for root in ["src/processor", "src/exporter"] {
+    for root in ["crates/esdiag-core/src/processor", "crates/esdiag-core/src/exporter"] {
         collect_rs_files(&Path::new(env!("CARGO_MANIFEST_DIR")).join(root), &mut files);
     }
 

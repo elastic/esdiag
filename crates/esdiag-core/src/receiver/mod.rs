@@ -847,7 +847,7 @@ mod tests {
     }
 
     fn eck_fixture_dir() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/archives/eck-diagnostics-synthetic")
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/archives/eck-diagnostics-synthetic")
     }
 
     /// Zip the ECK fixture beneath a single root folder, the layout a

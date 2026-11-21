@@ -346,8 +346,8 @@ mod tests {
 
     #[tokio::test]
     async fn non_scrubbed_archive_passes_nodes_json_unchanged() {
-        let archive_path =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/archives/elasticsearch-api-diagnostics-9.3.3.zip");
+        let archive_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/archives/elasticsearch-api-diagnostics-9.3.3.zip");
         assert!(
             archive_path.exists(),
             "missing test fixture: {}",
