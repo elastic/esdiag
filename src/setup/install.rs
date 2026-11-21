@@ -663,12 +663,40 @@ mod tests {
         assert_eq!(bundle.spaces[0]["id"], "esdiag");
 
         let esdiag = bundle.by_space.get("esdiag").unwrap();
-        assert_eq!(esdiag.saved_objects.len(), 105);
-        assert_eq!(esdiag.workflows.len(), 1);
-        assert!(esdiag.agents.is_empty());
-        assert_eq!(esdiag.tools.len(), 1);
-        assert_eq!(esdiag.skills.len(), 1);
-        assert!(esdiag.skills[0]["referenced_content"].as_array().unwrap().len() > 1);
+        // Every resource file in the asset tree ships exactly once; a file left out
+        // of the space manifests would otherwise silently never sync.
+        assert!(!esdiag.saved_objects.is_empty());
+        assert_eq!(
+            esdiag.saved_objects.len(),
+            embedded_space_files(&embedded_assets, "objects", ".json")
+        );
+        assert_unique_ids("saved object", esdiag.saved_objects.iter().map(saved_object_label));
+        assert!(!esdiag.workflows.is_empty());
+        assert_eq!(
+            esdiag.workflows.len(),
+            embedded_space_files(&embedded_assets, "workflows", ".json")
+        );
+        assert_unique_ids("workflow", esdiag.workflows.iter().map(resource_id));
+        assert_eq!(
+            esdiag.agents.len(),
+            embedded_space_files(&embedded_assets, "agents", ".json")
+        );
+        assert!(!esdiag.tools.is_empty());
+        assert_eq!(
+            esdiag.tools.len(),
+            embedded_space_files(&embedded_assets, "tools", ".json")
+        );
+        assert_unique_ids("tool", esdiag.tools.iter().map(resource_id));
+        assert!(!esdiag.skills.is_empty());
+        assert_eq!(
+            esdiag.skills.len(),
+            embedded_space_files(&embedded_assets, "skills", "/SKILL.md")
+        );
+        assert!(esdiag.skills.iter().all(|skill| {
+            skill["referenced_content"]
+                .as_array()
+                .is_some_and(|content| !content.is_empty())
+        }));
     }
 
     #[test]
@@ -904,9 +932,41 @@ mod tests {
         let bundle = kibana_bundle(&embedded_assets).unwrap().read_all().unwrap();
         let saved_objects = &bundle.by_space["esdiag"].saved_objects;
 
-        assert_eq!(saved_objects.len(), 105);
-        assert_eq!(saved_objects[0]["type"], "dashboard");
-        assert_eq!(saved_objects[0]["id"], "alias-detail");
+        let manifest = embedded_assets
+            .get_file(Path::new("kibana/esdiag/manifest/saved_objects.json"))
+            .expect("saved objects manifest should be embedded");
+        let manifest: Value = serde_json::from_slice(&manifest).unwrap();
+        let expected: HashSet<String> = manifest["objects"]
+            .as_array()
+            .expect("manifest should list objects")
+            .iter()
+            .map(saved_object_label)
+            .collect();
+        let resolved = assert_unique_ids("saved object", saved_objects.iter().map(saved_object_label));
+
+        assert!(!expected.is_empty());
+        assert_eq!(resolved, expected);
+    }
+
+    /// Number of embedded files under `kibana/esdiag/<dir>/` whose path ends with `suffix`.
+    fn embedded_space_files(assets: &EmbeddedAssets, dir: &str, suffix: &str) -> usize {
+        assets
+            .get_dir_files(Path::new(&format!("{KIBANA_ASSETS_DIR}/esdiag/{dir}/")))
+            .iter()
+            .filter(|(path, _)| path.to_string_lossy().ends_with(suffix))
+            .count()
+    }
+
+    fn resource_id(resource: &Value) -> String {
+        resource["id"].as_str().expect("resource should have an id").to_string()
+    }
+
+    fn assert_unique_ids(kind: &str, ids: impl Iterator<Item = String>) -> HashSet<String> {
+        let mut seen = HashSet::new();
+        for id in ids {
+            assert!(seen.insert(id.clone()), "duplicate {kind} {id}");
+        }
+        seen
     }
 
     #[test]

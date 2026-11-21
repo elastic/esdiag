@@ -1,0 +1,211 @@
+{
+  "_meta": {
+    "description": "ESDiag Kibana Task Manager health and task type metrics"
+  },
+  "index_patterns": ["metrics-kibana.task_manager*-esdiag*"],
+  "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 310,
+  "template": {
+    "mappings": {
+      "dynamic": true,
+      "properties": {
+        "@timestamp": {
+          "type": "date",
+          "format": "strict_date_optional_time||epoch_millis"
+        },
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": { "type": "constant_keyword" },
+            "type": { "type": "constant_keyword", "value": "metrics" }
+          }
+        },
+        "node": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "keyword" },
+            "name": { "type": "keyword" },
+            "version": {
+              "type": "object",
+              "properties": {
+                "number": { "type": "version" }
+              }
+            }
+          }
+        },
+        "status": { "type": "keyword" },
+        "stats": {
+          "properties": {
+            "configuration": {
+              "properties": {
+                "status": { "type": "keyword" },
+                "value": {
+                  "properties": {
+                    "poll_interval": { "type": "long" },
+                    "claim_strategy": { "type": "keyword" },
+                    "max_workers": { "type": "long" },
+                    "request_capacity": { "type": "long" },
+                    "capacity": {
+                      "properties": {
+                        "config": { "type": "long" },
+                        "as_workers": { "type": "long" },
+                        "as_cost": { "type": "long" }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "runtime": {
+              "properties": {
+                "status": { "type": "keyword" },
+                "value": {
+                  "properties": {
+                    "drift": {
+                      "properties": {
+                        "p50": { "type": "double" },
+                        "p90": { "type": "double" },
+                        "p95": { "type": "double" },
+                        "p99": { "type": "double" }
+                      }
+                    },
+                    "load": {
+                      "properties": {
+                        "p50": { "type": "double" },
+                        "p90": { "type": "double" },
+                        "p95": { "type": "double" },
+                        "p99": { "type": "double" }
+                      }
+                    },
+                    "polling": {
+                      "properties": {
+                        "last_successful_poll": { "type": "date" },
+                        "claim_duration": {
+                          "properties": {
+                            "p50": { "type": "double" },
+                            "p90": { "type": "double" },
+                            "p95": { "type": "double" },
+                            "p99": { "type": "double" }
+                          }
+                        },
+                        "duration": {
+                          "properties": {
+                            "p50": { "type": "double" },
+                            "p90": { "type": "double" },
+                            "p95": { "type": "double" },
+                            "p99": { "type": "double" }
+                          }
+                        },
+                        "claim_conflicts": {
+                          "properties": {
+                            "p50": { "type": "double" },
+                            "p90": { "type": "double" },
+                            "p95": { "type": "double" },
+                            "p99": { "type": "double" }
+                          }
+                        },
+                        "claim_mismatches": {
+                          "properties": {
+                            "p50": { "type": "double" },
+                            "p90": { "type": "double" },
+                            "p95": { "type": "double" },
+                            "p99": { "type": "double" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "workload": {
+              "properties": {
+                "status": { "type": "keyword" },
+                "value": {
+                  "properties": {
+                    "count": { "type": "long" },
+                    "overdue": { "type": "long" },
+                    "non_recurring": { "type": "long" },
+                    "overdue_non_recurring": { "type": "long" }
+                  }
+                }
+              }
+            },
+            "capacity_estimation": {
+              "properties": {
+                "status": { "type": "keyword" },
+                "value": {
+                  "properties": {
+                    "observed": {
+                      "properties": {
+                        "observed_kibana_instances": { "type": "long" },
+                        "max_throughput_per_minute_per_kibana": { "type": "double" },
+                        "avg_required_throughput_per_minute_per_kibana": { "type": "double" },
+                        "avg_recurring_required_throughput_per_minute_per_kibana": { "type": "double" }
+                      }
+                    },
+                    "proposed": {
+                      "properties": {
+                        "provisioned_kibana": { "type": "long" },
+                        "min_required_kibana": { "type": "long" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "task_type": {
+          "properties": {
+            "name": { "type": "keyword" },
+            "workload": {
+              "properties": {
+                "count": { "type": "long" },
+                "cost": { "type": "long" },
+                "status": {
+                  "properties": {
+                    "idle": { "type": "long" },
+                    "claiming": { "type": "long" },
+                    "running": { "type": "long" },
+                    "failed": { "type": "long" }
+                  }
+                }
+              }
+            },
+            "drift": {
+              "properties": {
+                "p50": { "type": "double" },
+                "p90": { "type": "double" },
+                "p95": { "type": "double" },
+                "p99": { "type": "double" }
+              }
+            },
+            "duration": {
+              "properties": {
+                "p50": { "type": "double" },
+                "p90": { "type": "double" },
+                "p95": { "type": "double" },
+                "p99": { "type": "double" }
+              }
+            },
+            "result_frequency": {
+              "properties": {
+                "status": { "type": "keyword" },
+                "Success": { "type": "double" },
+                "RetryScheduled": { "type": "double" },
+                "Failed": { "type": "double" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 1
+}

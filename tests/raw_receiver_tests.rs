@@ -4,6 +4,7 @@
 
 use bytes::Bytes;
 use esdiag::{data::Uri, processor::DataSource, receiver::Receiver};
+use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -30,6 +31,27 @@ struct NodesSource;
 impl DataSource for NodesSource {
     fn name() -> String {
         "nodes".to_string()
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(transparent)]
+struct NodesDocument(Value);
+
+impl DataSource for NodesDocument {
+    fn name() -> String {
+        "nodes".to_string()
+    }
+}
+
+async fn assert_decoded_reads(receiver: &Receiver, expected: &Value) {
+    let bundle: Value = receiver.read_bundle_json("nodes.json").await.expect("bundle JSON");
+    assert_eq!(&bundle, expected);
+
+    let instances = receiver.get_all::<NodesDocument>().await.expect("source instances");
+    assert_eq!(instances.len(), 1);
+    for instance in instances {
+        assert_eq!(&instance.data.expect("source instance").0, expected);
     }
 }
 
@@ -70,7 +92,7 @@ async fn local_raw_receivers(scrubbed: bool) -> (TempDir, [Receiver; 3]) {
 }
 
 #[tokio::test]
-async fn local_raw_apis_normalize_only_allowlisted_addresses_when_scrubbed() {
+async fn local_read_apis_normalize_only_allowlisted_addresses_when_scrubbed() {
     let (_fixture, receivers) = local_raw_receivers(true).await;
     let expected = json!({
         "nodes": {
@@ -90,16 +112,21 @@ async fn local_raw_apis_normalize_only_allowlisted_addresses_when_scrubbed() {
 
         let raw = receiver.get_raw::<NodesSource>().await.expect("raw body");
         assert_eq!(serde_json::from_str::<Value>(&raw).expect("JSON"), expected);
+
+        assert_decoded_reads(&receiver, &expected).await;
     }
 }
 
 #[tokio::test]
-async fn local_raw_apis_preserve_exact_content_when_scrub_disabled() {
+async fn local_read_apis_preserve_exact_content_when_scrub_disabled() {
     let (_fixture, receivers) = local_raw_receivers(false).await;
+    let expected: Value = serde_json::from_str(NODES_JSON).expect("JSON");
     for receiver in receivers {
         let response = receiver.get_raw_response::<NodesSource>().await.expect("raw response");
         assert_eq!(response.body, NODES_JSON);
         assert_eq!(response.response_size_bytes, NODES_JSON.len() as u64);
         assert_eq!(receiver.get_raw::<NodesSource>().await.expect("raw body"), NODES_JSON);
+
+        assert_decoded_reads(&receiver, &expected).await;
     }
 }

@@ -174,6 +174,10 @@ impl KibanaCollector {
                     }
                     retried_response_time_ms += completed_response_time_ms + response_time_ms;
                     retried_response_size_bytes += completed_response_size_bytes + response_size_bytes;
+                    if is_absent_exception_list(&e) && retried_saved == 0 {
+                        tracing::info!("Skipping {}: exception list does not exist", api);
+                        return ApiCollectOutcome::skipped();
+                    }
                     if !should_retry_kibana_error(&e) {
                         tracing::warn!("Skipping non-retriable failure for {}: {}", api, e);
                         return ApiCollectOutcome::failed_with_saved(
@@ -514,6 +518,18 @@ fn sanitize_segment(segment: &str) -> String {
     segment.replace(['/', '\\', ':'], "_")
 }
 
+/// Exception list item endpoints return 404 when the list was never created,
+/// which means the list has no items rather than that collection failed.
+fn is_absent_exception_list(error: &eyre::Report) -> bool {
+    find_error_source::<KibanaRequestError>(error).is_some_and(|request_error| {
+        request_error.status == reqwest::StatusCode::NOT_FOUND
+            && serde_json::from_str::<Value>(&request_error.body)
+                .ok()
+                .and_then(|body| body.get("message")?.as_str().map(str::to_string))
+                .is_some_and(|message| message.starts_with("exception list id:") && message.ends_with("does not exist"))
+    })
+}
+
 fn should_retry_kibana_error(error: &eyre::Report) -> bool {
     if let Some(request_error) = find_error_source::<KibanaRequestError>(error) {
         return request_error.status.as_u16() == 408
@@ -586,6 +602,57 @@ mod tests {
     fn pagination_query_supports_page_size_style() {
         let path = with_pagination_query("/api/endpoint/metadata", "pageSize", 2, 50);
         assert_eq!(path, "/api/endpoint/metadata?page=2&pageSize=50");
+    }
+
+    #[test]
+    fn missing_exception_lists_are_absent_not_failed() {
+        let error = |status, body: &str| eyre::Report::new(KibanaRequestError::new(status, body.to_string(), 1, 1));
+        assert!(is_absent_exception_list(&error(
+            StatusCode::NOT_FOUND,
+            r#"{"message":"exception list id: \"endpoint_event_filters\" does not exist","status_code":404}"#,
+        )));
+        assert!(!is_absent_exception_list(&error(
+            StatusCode::NOT_FOUND,
+            r#"{"statusCode":404,"error":"Not Found","message":"Not Found"}"#,
+        )));
+        assert!(!is_absent_exception_list(&error(
+            StatusCode::BAD_REQUEST,
+            r#"{"message":"exception list id: \"endpoint_event_filters\" does not exist"}"#,
+        )));
+    }
+
+    #[test]
+    fn kibana_9_sources_use_current_api_routes() {
+        let version = semver::Version::new(9, 5, 5);
+        for (api, url) in [
+            ("kibana_actions", "/api/actions/connectors"),
+            ("kibana_alerts", "/api/alerting/rules/_find"),
+            (
+                "kibana_fleet_packages",
+                "/api/fleet/epm/packages?withPackagePoliciesCount=true",
+            ),
+            (
+                "kibana_security_packages",
+                "/api/fleet/epm/packages?withPackagePoliciesCount=true&category=security",
+            ),
+            (
+                "kibana_fleet_agents_current_upgrades",
+                "/api/fleet/agents/action_status",
+            ),
+        ] {
+            let (_, source) = crate::processor::diagnostic::data_source::get_source("kibana", api, &[]).expect(api);
+            assert_eq!(source.get_url(&version).expect(api), url, "{api}");
+        }
+        let (_, upgrades) = crate::processor::diagnostic::data_source::get_source(
+            "kibana",
+            "kibana_fleet_agents_current_upgrades",
+            &[],
+        )
+        .expect("current upgrades");
+        assert_eq!(
+            upgrades.get_url(&semver::Version::new(8, 4, 0)).expect("8.4"),
+            "/api/fleet/agents/current_upgrades"
+        );
     }
 
     #[test]

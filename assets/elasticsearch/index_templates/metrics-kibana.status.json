@@ -1,0 +1,72 @@
+{
+  "_meta": {
+    "description": "ESDiag Kibana status"
+  },
+  "index_patterns": ["metrics-kibana.status-esdiag*"],
+  "composed_of": ["esdiag@mappings", "esdiag@metadata", "esdiag@settings"],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 310,
+  "template": {
+    "mappings": {
+      "dynamic": true,
+      "properties": {
+        "@timestamp": {
+          "type": "date",
+          "format": "strict_date_optional_time||epoch_millis"
+        },
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": { "type": "constant_keyword" },
+            "type": { "type": "constant_keyword", "value": "metrics" }
+          }
+        },
+        "node": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "keyword" },
+            "name": { "type": "keyword" },
+            "version": {
+              "type": "object",
+              "properties": {
+                "number": { "type": "version" }
+              }
+            }
+          }
+        },
+        "name": { "type": "keyword" },
+        "uuid": { "type": "keyword" },
+        "status": {
+          "properties": {
+            "overall": {
+              "properties": {
+                "level": { "type": "keyword" },
+                "state": { "type": "keyword" },
+                "summary": { "type": "keyword" }
+              }
+            },
+            "core": {
+              "properties": {
+                "elasticsearch": {
+                  "properties": {
+                    "level": { "type": "keyword" }
+                  }
+                },
+                "savedObjects": {
+                  "properties": {
+                    "level": { "type": "keyword" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 1
+}

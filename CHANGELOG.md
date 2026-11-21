@@ -21,6 +21,9 @@ published release notes, maintenance branches, and tagged history.
 - Added processing for ECK diagnostic bundles, indexing operator settings and logs, ECK resources and nodeSets, and Kubernetes node, pod, container, volume, and event state alongside the included Elasticsearch diagnostics (#73).
 - Added the ECK Platform Overview dashboard, linked from processed ECK bundles in place of the Cluster Report (#73).
 - Added receiver-stage normalization for malformed IPv4 values in scrubbed diagnostics, with `--scrubbed` CLI flag and upload checkboxes on the main, Advanced, and Job Builder pages.
+- Added processing for Kibana diagnostic bundles, including status, settings, security, Fleet, alerting, spaces, monitoring, synthetics, and detection-engine data.
+- Added Kibana Host Health and Kibana Task Manager dashboards for processed Kibana diagnostics.
+- Added one document per Kibana Task Manager task type in `metrics-kibana.task_manager.task_type-esdiag`.
 
 ### Changed
 
@@ -52,6 +55,7 @@ published release notes, maintenance branches, and tagged history.
 - Preserved the legacy `settings.json` bundle filename while keeping `IndicesSettings` as the explicit code and dispatch name.
 - Fixed ECK (`eck-diagnostics`) and Kubernetes Platform bundles failing with "Failed to parse version.json" because they were processed as Elasticsearch diagnostics. They are processed as platform bundles again, and their included Elasticsearch diagnostics are processed as children.
 - Fixed `esdiag setup` failing on Elasticsearch Serverless Kibana projects with "Failed to search Kibana space 'default' for ESDiag assets (400 Bad Request)". The check that keeps ESDiag assets in one Kibana space now works on Serverless.
+- Fixed Kibana 9 collection failing for internal APIs, connectors, alerting rules, Fleet and security packages, and agent upgrade status, and stopped reporting missing endpoint exception lists as collection failures.
 
 ### Security
 

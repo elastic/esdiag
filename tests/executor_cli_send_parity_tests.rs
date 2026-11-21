@@ -5,6 +5,8 @@
 //! End-to-end parity coverage for the standalone `send` command and Elastic
 //! Upload Service adapter.
 
+mod common;
+
 use axum::{
     Router,
     body::Bytes,
@@ -13,6 +15,7 @@ use axum::{
     response::IntoResponse,
     routing::{get, head, post},
 };
+use common::elasticsearch::{DocReply, ElasticsearchMock};
 use std::{
     fs,
     io::Write,
@@ -193,38 +196,13 @@ fn process_directory_uses_executor_and_writes_selected_local_output() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn process_uses_environment_output_when_output_is_omitted() {
-    async fn info() -> impl IntoResponse {
-        axum::Json(serde_json::json!({
-            "name": "mock-output",
-            "version": { "number": "9.4.2" }
-        }))
-    }
-
-    async fn bulk(body: Bytes) -> impl IntoResponse {
-        let documents = body.iter().filter(|byte| **byte == b'\n').count() / 2;
-        let items: Vec<_> = (0..documents)
-            .map(|_| serde_json::json!({ "create": { "status": 201 } }))
-            .collect();
-        axum::Json(serde_json::json!({ "errors": false, "items": items }))
-    }
-
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind output Elasticsearch");
-    let address = listener.local_addr().expect("output Elasticsearch address");
-    let server = tokio::spawn(async move {
-        axum::serve(
-            listener,
-            Router::new().route("/", get(info)).route("/{*path}", post(bulk)),
-        )
-        .await
-        .expect("serve output Elasticsearch");
-    });
+    let mock = ElasticsearchMock::new().version("9.4.2");
+    let url = mock.serve().await;
 
     let output = tokio::task::spawn_blocking(move || {
         Command::new(env!("CARGO_BIN_EXE_esdiag"))
             .args(["process", fixture_archive()])
-            .env("ESDIAG_OUTPUT_URL", format!("http://{address}"))
+            .env("ESDIAG_OUTPUT_URL", url)
             .env_remove("ESDIAG_OUTPUT_APIKEY")
             .env_remove("ESDIAG_OUTPUT_USERNAME")
             .env_remove("ESDIAG_OUTPUT_PASSWORD")
@@ -244,48 +222,22 @@ async fn process_uses_environment_output_when_output_is_omitted() {
         "stdout: {}",
         String::from_utf8_lossy(&output.stdout)
     );
-    server.abort();
+    assert!(mock.created_documents() > 0, "processing must index documents");
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn report_capture_fails_cli_without_discarding_indexed_document_counts() {
-    async fn bulk(State(accepted): State<Arc<AtomicUsize>>, body: Bytes) -> impl IntoResponse {
-        let documents = body.iter().filter(|byte| **byte == b'\n').count() / 2;
-        accepted.fetch_add(documents, Ordering::Relaxed);
-        let items: Vec<_> = (0..documents)
-            .map(|_| serde_json::json!({"create":{"status":201}}))
-            .collect();
-        axum::Json(serde_json::json!({"errors":false,"items":items}))
-    }
-    let accepted = Arc::new(AtomicUsize::new(0));
-    let app = Router::new()
-        .route(
-            "/",
-            get(|| async { axum::Json(serde_json::json!({"name":"mock-output","version":{"number":"9.4.2"}})) }),
-        )
-        .route(
-            "/metrics-diagnostic-esdiag/_doc",
-            post(|| async {
-                (
-                    StatusCode::CREATED,
-                    axum::Json(serde_json::json!({
-                        "_index":".fs-metrics-diagnostic-esdiag-2026.09.19-000001", "failure_store":"used"
-                    })),
-                )
-            }),
-        )
-        .route("/{*path}", post(bulk))
-        .with_state(accepted.clone());
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let mock = ElasticsearchMock::new()
+        .version("9.4.2")
+        .doc_replies([DocReply::FailureStore]);
+    let url = mock.serve().await;
     let output = tokio::task::spawn_blocking(move || {
         let home = tempfile::tempdir().unwrap();
         Command::new(env!("CARGO_BIN_EXE_esdiag"))
             .args(["--format", "json", "process", fixture_archive()])
             .env("HOME", home.path())
             .env("ESDIAG_HOME", home.path())
-            .env("ESDIAG_OUTPUT_URL", format!("http://{address}"))
+            .env("ESDIAG_OUTPUT_URL", url)
             .env_remove("ESDIAG_OUTPUT_APIKEY")
             .env_remove("ESDIAG_OUTPUT_USERNAME")
             .env_remove("ESDIAG_OUTPUT_PASSWORD")
@@ -302,7 +254,8 @@ async fn report_capture_fails_cli_without_discarding_indexed_document_counts() {
     assert_eq!(result["failed_stage"], "process");
     assert_eq!(result["retry_safe"], false);
     let diagnostic = &result["completed"]["process"]["diagnostic"];
-    assert_eq!(diagnostic["documents"], accepted.load(Ordering::Relaxed));
+    assert!(mock.created_documents() > 0, "processing must index documents");
+    assert_eq!(diagnostic["documents"], mock.created_documents());
     assert_eq!(diagnostic["documents_failed"], 0);
     assert_eq!(
         diagnostic["outcome"],
@@ -311,39 +264,13 @@ async fn report_capture_fails_cli_without_discarding_indexed_document_counts() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(String::from_utf8_lossy(&output.stderr).contains("metrics-diagnostic-esdiag::failures"));
-    server.abort();
 }
 
 #[cfg(feature = "agent")]
 #[tokio::test(flavor = "multi_thread")]
 async fn process_ask_sends_the_completed_diagnostic_to_its_output_deployment_agent() {
-    async fn info() -> impl IntoResponse {
-        axum::Json(serde_json::json!({
-            "name": "mock-output",
-            "version": { "number": "9.4.2" }
-        }))
-    }
-
-    async fn bulk(body: Bytes) -> impl IntoResponse {
-        let documents = body.iter().filter(|byte| **byte == b'\n').count() / 2;
-        let items: Vec<_> = (0..documents)
-            .map(|_| serde_json::json!({ "create": { "status": 201 } }))
-            .collect();
-        axum::Json(serde_json::json!({ "errors": false, "items": items }))
-    }
-
-    let output_listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind output Elasticsearch");
-    let output_address = output_listener.local_addr().expect("output address");
-    let output_server = tokio::spawn(async move {
-        axum::serve(
-            output_listener,
-            Router::new().route("/", get(info)).route("/{*path}", post(bulk)),
-        )
-        .await
-        .expect("serve output Elasticsearch");
-    });
+    let output_mock = ElasticsearchMock::new().version("9.4.2");
+    let output_url = output_mock.serve().await;
 
     let requests = AgentBuilderRequests::default();
     let kibana_listener = TcpListener::bind("127.0.0.1:0")
@@ -373,7 +300,7 @@ async fn process_ask_sends_the_completed_diagnostic_to_its_output_deployment_age
     fs::write(
         &hosts,
         format!(
-            "output-es:\n  auth: NoAuth\n  app: elasticsearch\n  roles:\n    - send\n  url: http://{output_address}\n  viewer: kibana\nkibana:\n  auth: NoAuth\n  app: kibana\n  roles:\n    - view\n  url: http://{kibana_address}\n"
+            "output-es:\n  auth: NoAuth\n  app: elasticsearch\n  roles:\n    - send\n  url: {output_url}\n  viewer: kibana\nkibana:\n  auth: NoAuth\n  app: kibana\n  roles:\n    - view\n  url: http://{kibana_address}\n"
         ),
     )
     .expect("write linked output deployment");
@@ -433,7 +360,7 @@ async fn process_ask_sends_the_completed_diagnostic_to_its_output_deployment_age
     assert!(diagnostic.starts_with("diagnostic.id: "));
     assert_eq!(question, "What is the highest-risk finding?");
 
-    output_server.abort();
+    assert!(output_mock.created_documents() > 0, "processing must index documents");
     kibana_server.abort();
 }
 

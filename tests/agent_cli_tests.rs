@@ -20,7 +20,9 @@ fn run_esdiag(args: &[&str], home: &TempDir, extra_env: &[(&str, &str)]) -> Outp
         .env("USERPROFILE", home.path())
         .env("ESDIAG_HOSTS", home.path().join(".esdiag").join("hosts.yml"))
         .env("ESDIAG_KEYSTORE", home.path().join(".esdiag").join("secrets.yml"))
-        .env("LOG_LEVEL", "debug");
+        .env("LOG_LEVEL", "debug")
+        // Agent mode is inherited from the caller's environment; tests opt in explicitly.
+        .env_remove("CLAUDECODE");
 
     for (key, value) in extra_env {
         cmd.env(key, value);
@@ -46,6 +48,28 @@ fn assert_keystore_status_outcome(stdout: &str) {
     assert_eq!(outcome["unlock_active"], false);
 }
 
+/// True when stderr carries an INFO-level tracing line (`<timestamp>  INFO <target>: ...`).
+fn has_info_log(stderr: &str) -> bool {
+    stderr
+        .lines()
+        .any(|line| line.split_whitespace().nth(1) == Some("INFO"))
+}
+
+#[test]
+fn keystore_status_emits_info_logs_outside_agent_mode() {
+    // Positive control for the suppression tests below: the same command logs at INFO when allowed.
+    let home = setup_home();
+    let output = run_esdiag(&["keystore", "status"], &home, &[("LOG_LEVEL", "info")]);
+    assert_success(&output, "keystore status with info log level");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_keystore_status_outcome(&String::from_utf8_lossy(&output.stdout));
+    assert!(
+        has_info_log(&stderr),
+        "info log level should emit info logs, stderr was:\n{stderr}"
+    );
+}
+
 #[test]
 fn agent_flag_emits_yaml_outcome_without_info_logs() {
     let home = setup_home();
@@ -57,7 +81,7 @@ fn agent_flag_emits_yaml_outcome_without_info_logs() {
 
     assert_keystore_status_outcome(&stdout);
     assert!(
-        !stderr.contains("CLI unlock: inactive"),
+        !has_info_log(&stderr),
         "agent mode should suppress info logs, stderr was:\n{stderr}"
     );
 }
@@ -73,7 +97,7 @@ fn claudecode_auto_enables_agent_mode() {
 
     assert_keystore_status_outcome(&stdout);
     assert!(
-        !stderr.contains("CLI unlock: inactive"),
+        !has_info_log(&stderr),
         "CLAUDECODE should enable warn-level suppression, stderr was:\n{stderr}"
     );
 }
@@ -100,8 +124,13 @@ fn debug_overrides_agent_warn_level() {
     assert_success(&output, "keystore status with --agent --debug");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert_keystore_status_outcome(&stdout);
+    assert!(
+        has_info_log(&stderr),
+        "--debug should re-enable info logs in agent mode, stderr was:\n{stderr}"
+    );
 }
 
 #[test]
@@ -115,7 +144,7 @@ fn normal_mode_emits_yaml_outcome_when_logs_are_warn() {
 
     assert_keystore_status_outcome(&stdout);
     assert!(
-        !stderr.contains("CLI unlock: inactive"),
+        !has_info_log(&stderr),
         "warn log level should suppress info logs, stderr was:\n{stderr}"
     );
 }
