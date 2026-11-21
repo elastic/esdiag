@@ -1,6 +1,4 @@
-mod common;
-
-use common::elasticsearch::ElasticsearchMock;
+use crate::common::elasticsearch::ElasticsearchMock;
 use esdiag::data::{Application, HostRole, KnownHost, Settings};
 use std::{
     collections::BTreeMap,

@@ -248,16 +248,16 @@ Offline checks:
 
 ```sh
 cargo test --lib setup::
-cargo test --test serverless_setup_tests
-cargo test --test elasticsearch_asset_templates_tests
-cargo test --test elasticsearch_feedback_tests
+cargo test --test integration serverless_setup_tests::
+cargo test --test integration elasticsearch_asset_templates_tests::
+cargo test --test integration elasticsearch_feedback_tests::
 ```
 
 With `ESDIAG_OUTPUT_*` set for a Serverless test project, run the Elasticsearch
 setup and isolated rejection checks explicitly:
 
 ```sh
-cargo test --test elasticsearch_feedback_tests live_serverless_ -- --ignored --nocapture
+cargo test --test integration elasticsearch_feedback_tests::live_serverless_ -- --ignored --nocapture
 cargo test --lib live_serverless_dashboard_searches -- --ignored --nocapture
 ```
 

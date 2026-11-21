@@ -23,7 +23,7 @@ fn searchable_snapshot_template_matches_processed_documents() {
         zip::write::SimpleFileOptions::default(),
     )
     .expect("start stats file");
-    zip.write_all(include_bytes!("fixtures/searchable_snapshots_stats.json"))
+    zip.write_all(include_bytes!("../fixtures/searchable_snapshots_stats.json"))
         .expect("write stats fixture");
     zip.finish().expect("finish archive");
 
@@ -35,7 +35,7 @@ fn searchable_snapshot_template_matches_processed_documents() {
     assert_eq!(doc["data_stream"]["dataset"], "searchable_snapshot");
 
     let template: Value = serde_json::from_str(include_str!(
-        "../assets/elasticsearch/index_templates/metrics-searchable_snapshot.json"
+        "../../assets/elasticsearch/index_templates/metrics-searchable_snapshot.json"
     ))
     .expect("parse template");
     let properties = &template["template"]["mappings"]["properties"];

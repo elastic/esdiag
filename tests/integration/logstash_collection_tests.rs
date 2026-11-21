@@ -26,7 +26,7 @@
 //! ESDIAG_LOGSTASH_68_USERNAME=elastic \
 //! ESDIAG_LOGSTASH_68_PASSWORD=changeme \
 //! ESDIAG_LOGSTASH_68_ACCEPT_INVALID_CERTS=true \
-//! cargo test --test logstash_collection_tests -- --ignored
+//! cargo test --test integration logstash_collection_tests:: -- --ignored
 //! ```
 
 use serde_json::Value;
