@@ -3,7 +3,7 @@
 See proposal.md for motivation. Current state that shapes the approach, assuming the two prerequisites have merged:
 
 - After `extract-gui-crate`, the library is `esdiag-core` (`crates/esdiag-core/`), the web server and Tauri wrapper are `esdiag-gui` (`crates/esdiag-gui/`), and the root `esdiag` package holds `main.rs`, `local.rs`, `local/`, and a facade library. Only the root package depends on `esdiag-gui`.
-- After `extract-command-operations`, each finite command is a function in `esdiag-core::operations` that takes a `*Input` struct and returns `Result<CommandOutcome>` (`Completed(CliOutcome)` or `Streamed`) without printing, prompting, or reading `Cli`. `ProcessInput::writes_stdout()` and `job::saved_job_writes_stdout(name)` report stdout export before execution. `main.rs` keeps argument parsing, terminal prompts, tracing setup, and outcome rendering.
+- After `extract-command-operations`, each finite command is a function in `esdiag-core::operations` that takes a `*Input` struct and returns `Result<CommandOutcome>` (`Completed(CliOutcome)` or `Streamed`) without printing, prompting, or reading `Cli`. `ProcessInput::writes_stdout()` reports stdout export before execution, and `job::job_run(name, StdoutPolicy)` checks a saved job's stdout export against the caller's policy on the same loaded copy it runs. `HostAddInput` and `HostUpdateInput` take a `KeystorePasswordSource`; the binary passes `get_password_for_secret_commands`, and the catalog passes `get_keystore_password`. `main.rs` keeps argument parsing, terminal prompts, tracing setup, and outcome rendering.
 - `CliOutcome` and `CliFailure` (`cli_output`) are `Serialize` with a snake_case `result` or `category` discriminator, which is the structured-output contract in `cli-structured-output`.
 - `collect`, `process`, and `job run` run through `job::executor::execute_with_context(job, context)`. `ExecutionContext` already carries an observer that receives `ExecutionEvent { identity, stage, lifecycle, message }` for start, progress, and completion of each stage.
 - Keystore prompting is opt-in. `get_keystore_password` prompts only after the process calls `enable_keystore_password_prompt()`, which `async_main` does for foreground commands that don't log to the terminal. Otherwise it uses `ESDIAG_KEYSTORE_PASSWORD`, then the unlock lease, then fails. `esdiag serve` never enables it.
@@ -77,7 +77,7 @@ Host tool parameter structs have no `apikey`, `username`, or `password` fields; 
 
 ### Stdout ownership
 
-`esdiag mcp` initializes tracing with the stderr writer, as `--agent` does, and is listed in `command_owns_stdout`. The `process` tool rejects input where `ProcessInput::writes_stdout()` is true, and `job_run` rejects a job where `saved_job_writes_stdout(name)` is true, both before running anything.
+`esdiag mcp` initializes tracing with the stderr writer, as `--agent` does, and is listed in `command_owns_stdout`. The `process` tool rejects input where `ProcessInput::writes_stdout()` is true, and `job_run` calls `operations::job::job_run` with `StdoutPolicy::Reject`, which rejects a stdout-exporting job; both fail before running anything.
 
 ### Progress and cancellation
 
