@@ -17,13 +17,16 @@ use url::Url;
 
 /// Whether `value` starts with a Windows drive letter, such as `C:\diag.zip`,
 /// `C:/diag.zip`, or `C:`. `Url::parse` accepts these with the drive letter as
-/// the scheme, so they must be classified as paths before URL parsing.
+/// the scheme, so they must be classified as paths before URL parsing. The
+/// `x://` authority form stays a URL: it is how a template host with a
+/// one-letter name, such as `c://cluster-1`, is referenced.
 pub(crate) fn is_windows_drive_path(value: &str) -> bool {
     let bytes = value.as_bytes();
     bytes.len() >= 2
         && bytes[0].is_ascii_alphabetic()
         && bytes[1] == b':'
         && matches!(bytes.get(2), None | Some(b'\\' | b'/'))
+        && !value[2..].starts_with("//")
 }
 
 /// The different types of supported URIs
@@ -368,6 +371,7 @@ mod tests {
         assert!(!is_windows_drive_path("prod://abc123"));
         assert!(!is_windows_drive_path("https://example.test"));
         assert!(!is_windows_drive_path("c:prod"));
+        assert!(!is_windows_drive_path("c://cluster-1/elasticsearch"));
     }
 
     #[test]

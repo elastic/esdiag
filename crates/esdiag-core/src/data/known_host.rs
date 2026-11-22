@@ -2484,6 +2484,21 @@ mod tests {
     }
 
     #[test]
+    fn one_letter_template_reference_is_not_a_drive_path() {
+        let reference = parse_template_reference("c://cluster-1/elasticsearch")
+            .expect("valid reference")
+            .expect("template reference");
+
+        assert_eq!(reference.template_name, "c");
+        assert_eq!(reference.id, "cluster-1");
+        assert!(
+            parse_template_reference(r"C:\diagnostics\output")
+                .expect("path")
+                .is_none()
+        );
+    }
+
+    #[test]
     fn template_reference_rejects_extra_path_segments() {
         let err = parse_template_reference("elastic-cloud://cluster-1/elasticsearch/extra")
             .expect_err("extra path segment should fail");
