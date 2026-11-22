@@ -70,7 +70,7 @@ A successful tool call SHALL return the command's typed outcome as structured co
 - **THEN** the structured content identifies the job and includes the save, process, and send results
 
 ### Requirement: Failures Are Structured Tool Errors
-An operation that fails after its parameters are accepted SHALL return a tool result marked as an error, whose structured content is the same structured failure the CLI emits, including its `category` and a message that contains no secret material. Parameters that do not match the tool's schema SHALL be rejected as an invalid-parameters protocol error without running the operation.
+An operation that fails after its parameters are accepted SHALL return a tool result marked as an error, whose structured content is the same structured failure the CLI emits, including its `category` and a message that contains no secret material. Arguments that do not match the tool's schema SHALL be rejected without running the operation, as a tool result marked as an error that has no structured content and whose text describes the mismatch, so that a model can correct its arguments.
 
 #### Scenario: Unknown saved job
 - **GIVEN** no saved job named `nightly`
@@ -80,8 +80,13 @@ An operation that fails after its parameters are accepted SHALL return a tool re
 
 #### Scenario: Schema violation
 - **WHEN** a client calls `collect` without the required `host` parameter
-- **THEN** the server returns an invalid-parameters protocol error
+- **THEN** the tool result is marked as an error without structured content
 - **AND** no collection starts
+
+#### Scenario: Unknown parameter
+- **WHEN** a client calls `process` with a `sources` parameter
+- **THEN** the tool result is marked as an error without structured content
+- **AND** no processing starts
 
 ### Requirement: Tools Never Accept Raw Credentials
 Tool parameters SHALL NOT accept passwords, API keys, or keystore passwords. `host_add` and `host_update` SHALL accept authentication only as a `secret` reference to an existing keystore entry. A tool that needs the keystore while it is locked SHALL fail with `category: keystore_failed` and a message directing the user to unlock it from a terminal, and SHALL NOT prompt for input.
@@ -132,7 +137,7 @@ When the client supplies a progress token, `collect`, `process`, `job_run`, and 
 - **AND** a subsequent `host_list` call succeeds
 
 ### Requirement: Local Configuration Writes Are Serialized
-Tools that change hosts, saved jobs, or the output context SHALL run one at a time, so that concurrent calls cannot lose each other's changes. Read-only tools and long-running operations MAY run concurrently.
+Tools that change hosts, saved jobs, or the output context SHALL run one at a time, so that concurrent calls cannot lose each other's changes. A `collect` or `process` call with `save_job` counts as such a tool for its whole duration. Read-only tools and other long-running operations MAY run concurrently.
 
 #### Scenario: Concurrent host additions
 - **GIVEN** no saved hosts named `a` or `b`

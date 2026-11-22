@@ -26,6 +26,25 @@ pub enum StdoutPolicy {
     Reject,
 }
 
+/// [`StdoutPolicy::Reject`] refused a saved job that exports processed
+/// documents to stdout.
+#[derive(Debug)]
+pub struct SavedJobStdoutRejected {
+    pub name: String,
+}
+
+impl std::fmt::Display for SavedJobStdoutRejected {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "Saved job '{}' exports processed documents to stdout, which is not available here",
+            self.name
+        )
+    }
+}
+
+impl std::error::Error for SavedJobStdoutRejected {}
+
 /// Runs a saved job. Returns [`CommandOutcome::Streamed`] when the job exports
 /// processed documents to stdout. The policy check and the run use one loaded
 /// copy of the job.
@@ -33,9 +52,7 @@ pub async fn job_run(name: String, stdout: StdoutPolicy) -> Result<CommandOutcom
     let job = crate::job::load_saved_job(&name)?;
     let writes_stdout = job_writes_stdout(&job);
     if writes_stdout && stdout == StdoutPolicy::Reject {
-        return Err(eyre!(
-            "Saved job '{name}' exports processed documents to stdout, which is not available here"
-        ));
+        return Err(SavedJobStdoutRejected { name }.into());
     }
     let outcome = crate::job::run_saved_job(&name, job).await?;
     if writes_stdout {

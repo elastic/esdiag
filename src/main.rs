@@ -173,6 +173,9 @@ enum Commands {
         )]
         kibana: Option<String>,
     },
+    /// Serve ESDiag tools to a local MCP client over stdin and stdout
+    #[cfg(feature = "mcp")]
+    Mcp,
     /// Manage saved host connections in `~/.esdiag/hosts.yml`
     Host {
         #[command(subcommand)]
@@ -760,6 +763,10 @@ fn cli_command(extension_profile: bool) -> clap::Command {
     {
         command = command.mut_subcommand("agent", |subcommand| subcommand.hide(true));
     }
+    #[cfg(feature = "mcp")]
+    {
+        command = command.mut_subcommand("mcp", |subcommand| subcommand.hide(true));
+    }
     command
 }
 
@@ -815,7 +822,7 @@ fn unsupported_extension_command(args: &[OsString]) -> Option<String> {
     };
     matches!(
         command.as_str(),
-        "agent" | "host" | "init" | "keystore" | "local" | "secret" | "serve"
+        "agent" | "host" | "init" | "keystore" | "local" | "mcp" | "secret" | "serve"
     )
     .then(|| command.clone())
 }
@@ -933,12 +940,31 @@ fn command_owns_stdout(cli: &Cli) -> bool {
         })
     );
     let version_stdout = matches!(&cli.command, Some(Commands::Version));
-    direct_process_stream || saved_job_stream || local_raw_stdout || completions_script_stdout || version_stdout
+    direct_process_stream
+        || saved_job_stream
+        || local_raw_stdout
+        || completions_script_stdout
+        || version_stdout
+        || is_mcp(cli)
+}
+
+fn is_mcp(cli: &Cli) -> bool {
+    #[cfg(feature = "mcp")]
+    {
+        matches!(cli.command, Some(Commands::Mcp))
+    }
+    #[cfg(not(feature = "mcp"))]
+    {
+        let _ = cli;
+        false
+    }
 }
 
 fn resolve_tracing_filter(cli: &Cli) -> EnvFilter {
     if cli.debug {
         EnvFilter::new("debug")
+    } else if is_mcp(cli) {
+        EnvFilter::try_from_env("LOG_LEVEL").unwrap_or_else(|_| EnvFilter::new("warn"))
     } else if is_agent_mode(cli) {
         EnvFilter::new("warn")
     } else if let Ok(filter) = EnvFilter::try_from_env("LOG_LEVEL") {
@@ -960,17 +986,14 @@ fn resolve_log_file_filter(cli: &Cli) -> Option<EnvFilter> {
     }
 }
 
-/// Long-running services log to stderr, which their supervisor captures.
+/// Long-running services log to stderr, which their supervisor captures, and
+/// never prompt for the keystore password.
 fn logs_to_terminal(cli: &Cli) -> bool {
     #[cfg(feature = "server")]
-    {
-        matches!(cli.command, Some(Commands::Serve { .. }))
-    }
+    let serve = matches!(cli.command, Some(Commands::Serve { .. }));
     #[cfg(not(feature = "server"))]
-    {
-        let _ = cli;
-        false
-    }
+    let serve = false;
+    serve || is_mcp(cli)
 }
 
 async fn run_local_lifecycle(args: Vec<OsString>) -> Result<CommandOutcome> {
@@ -1119,6 +1142,8 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandOutcome> {
                 })
                 .await
             }
+            #[cfg(feature = "mcp")]
+            Commands::Mcp => serve_mcp().await,
             Commands::Init => run_init_wizard().await,
             Commands::Local { args } => run_local_lifecycle(args).await,
             #[cfg(feature = "agent")]
@@ -1330,7 +1355,28 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandOutcome> {
     }
 }
 
-#[cfg(all(feature = "server", unix))]
+/// Serves the MCP tool catalog over stdio until the client closes stdin or a
+/// shutdown signal arrives.
+#[cfg(feature = "mcp")]
+async fn serve_mcp() -> Result<CommandOutcome> {
+    use rmcp::ServiceExt;
+
+    tracing::info!("Starting ESDiag MCP server on stdio");
+    let service = esdiag::mcp::EsdiagMcp::new(esdiag::mcp::McpPolicy::Local)
+        .serve(rmcp::transport::stdio_pipes())
+        .await
+        .map_err(|err| eyre!("MCP session initialization failed: {err}"))?;
+    let cancel = service.cancellation_token();
+    tokio::spawn(async move {
+        if wait_for_shutdown_signal().await.is_ok() {
+            cancel.cancel();
+        }
+    });
+    service.waiting().await?;
+    Ok(CommandOutcome::Streamed)
+}
+
+#[cfg(all(any(feature = "server", feature = "mcp"), unix))]
 async fn wait_for_shutdown_signal() -> Result<()> {
     use tokio::signal::unix::{SignalKind, signal};
 
@@ -1350,7 +1396,7 @@ async fn wait_for_shutdown_signal() -> Result<()> {
     Ok(())
 }
 
-#[cfg(all(feature = "server", not(unix)))]
+#[cfg(all(any(feature = "server", feature = "mcp"), not(unix)))]
 async fn wait_for_shutdown_signal() -> Result<()> {
     tokio::signal::ctrl_c()
         .await

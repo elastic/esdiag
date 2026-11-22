@@ -57,7 +57,7 @@ Alternatives considered:
 | `mcp` | `esdiag-core/mcp`, `dep:rmcp` (root, `transport-io`) |
 | `full` | adds `mcp` to `agent`, `server`, `setup`, `keystore`, `elasticrc` |
 
-Per-tool gates reuse the existing `keystore`, `agent`, and `setup` features through `#[cfg]` on router methods. `rmcp`'s `#[tool_router]` collects only the methods that compile, so the listed tools follow the build.
+Per-tool gates reuse the existing `keystore`, `agent`, and `setup` features. `rmcp`'s `#[tool_router]` ignores `#[cfg]` on individual methods, so each gate is its own `#[cfg]`-gated `impl` block with a named router (`core_tools`, `job_tools`, `agent_tools`, `setup_tools`), and `EsdiagMcp::new` adds the compiled routers together. The listed tools follow the build.
 
 `rmcp` 3.11 requires Rust 1.88; the workspace MSRV is 1.89.
 
@@ -65,7 +65,9 @@ Per-tool gates reuse the existing `keystore`, `agent`, and `setup` features thro
 
 - Success: `CommandOutcome::Completed(outcome)` becomes `CallToolResult::structured(serde_json::to_value(outcome))`, which sets both `structuredContent` and one JSON text item. `Streamed` cannot occur, because tools reject stdout export before calling the operation.
 - Operation failure: `CallToolResult::structured_error(...)` with the `CliFailure` from `cli_output::structured_failure`, which `extract-command-operations` moves into `esdiag-core`.
-- Parameter failure: rmcp's `Parameters<T>` extractor returns JSON-RPC `-32602` before the method runs.
+- Parameter failure: rmcp's `Parameters<T>` extractor fails before the method runs, and rmcp reports it as a tool result with `isError` and a "failed to deserialize parameters" text item, not as JSON-RPC `-32602`. This follows the MCP guidance that input validation errors are tool errors a model can correct. Parameter structs use `deny_unknown_fields`, so an unsupported argument such as `sources` fails the same way.
+
+Two failures the substring classifier in `classify_failure` would misreport get typed errors that `structured_failure` downcasts: `operations::job::SavedJobStdoutRejected` maps to `invalid_input`, and `data::KeystoreLocked`, found anywhere in the error chain, maps to `keystore_failed` with a message directing the user to `esdiag keystore unlock`. The second also changes the CLI's JSON failure for a locked keystore, which previously took whichever category its wrapping context's wording matched.
 
 Alternative considered: return only text YAML. Rejected: clients would have to parse YAML, which is the problem this change removes.
 
@@ -77,17 +79,17 @@ Host tool parameter structs have no `apikey`, `username`, or `password` fields; 
 
 ### Stdout ownership
 
-`esdiag mcp` initializes tracing with the stderr writer, as `--agent` does, and is listed in `command_owns_stdout`. The `process` tool rejects input where `ProcessInput::writes_stdout()` is true, and `job_run` calls `operations::job::job_run` with `StdoutPolicy::Reject`, which rejects a stdout-exporting job; both fail before running anything.
+`esdiag mcp` initializes tracing with the stderr writer, as `serve` does, writes no `last_run/esdiag.log`, and is listed in `command_owns_stdout`. Its default level is `warn`; `LOG_LEVEL` or `--debug` raises it. The `process` tool rejects input where `ProcessInput::writes_stdout()` is true, and `job_run` calls `operations::job::job_run` with `StdoutPolicy::Reject`, which rejects a stdout-exporting job; both fail before running anything.
 
 ### Progress and cancellation
 
-Each long-running tool builds an `ExecutionContext` whose observer forwards `ExecutionEvent`s as `notifications/progress` through the request's `Peer`, when the request carries a progress token. Progress is a monotonic event counter, `total` is unset, and the message is `"<stage> <lifecycle>"` plus the event message.
+Operations build their own `ExecutionContext`, so the tool cannot pass one in without changing every operation signature. Instead, `job::context` holds a task-local `SCOPED_OBSERVER`, set with `with_scoped_observer`, that `ExecutionContext::default()` adopts in place of the no-op observer, following the `SCOPED_KEYSTORE_PASSWORD` pattern. When the request carries a progress token, each long-running tool runs its operation in that scope with an observer that queues `ExecutionEvent`s on a channel, and forwards them as `notifications/progress` through the request's `Peer`. The tool drains the channel before returning, so every notification precedes the result. Progress is a monotonic event counter, `total` is unset, and the message is `"<stage> <lifecycle>"` plus the event message. `send` does not run through the executor and reports its own start and completion.
 
-rmcp cancels a request's `CancellationToken` on `notifications/cancelled`. The tool races the operation future against it with `tokio::select!` and drops the operation on cancellation. Dropping the future stops collection and export loops at their next await point. Tasks the executor spawned may finish their current request; see Risks.
+rmcp cancels a request's cancellation token on `notifications/cancelled`; tools read it from the `RequestContext` extractor. The tool races the boxed operation future against it with `tokio::select!` and drops the operation on cancellation. Dropping the future stops collection and export loops at their next await point. Tasks the executor spawned may finish their current request; see Risks.
 
 ### Serialized configuration writes
 
-`EsdiagMcp` holds a `tokio::sync::Mutex<()>` that `host_add`, `host_update`, `host_remove`, `job_delete`, `output_set`, `output_clear`, and the job save of `collect` and `process` (when `save_job` is set) lock for the duration of their file write. `hosts.yml`, `jobs.yml`, and settings are read-modify-write files without locking, and a stdio server is the first ESDiag process where two writes can overlap.
+`EsdiagMcp` holds a `tokio::sync::Mutex<()>` that `host_add`, `host_update`, `host_remove`, `job_delete`, `output_set`, `output_clear`, and `collect` and `process` with `save_job` lock for the whole call. The operations save the job inside their bodies, so locking around only the write would need another operation split; a saving collection therefore delays other configuration writes, but not reads or other runs. `hosts.yml`, `jobs.yml`, and settings are read-modify-write files without locking, and a stdio server is the first ESDiag process where two writes can overlap.
 
 ### `sources` excluded, `save_job` kept
 
@@ -101,7 +103,7 @@ rmcp cancels a request's `CancellationToken` on `notifications/cancelled`. The t
 { "mcpServers": { "esdiag": { "command": "esdiag", "args": ["mcp"] } } }
 ```
 
-Claude Code discovers `.mcp.json` at the plugin root. The Codex manifest references it from `plugin.json` (`"mcpServers": "./.mcp.json"`); confirm the field name against the current Codex plugin schema before merging. `bin/sync-plugin-skill.sh` drift checks do not cover `.mcp.json`, which is hand-maintained.
+Claude Code discovers `.mcp.json` at the plugin root. The Codex manifest references it from `plugin.json` (`"mcpServers": "./.mcp.json"`), the field Codex's `core-plugins` manifest parser reads. `bin/sync-plugin-skill.sh` drift checks do not cover `.mcp.json`, which is hand-maintained; `tests/plugin.sh` asserts its contents.
 
 ## Risks / Trade-offs
 
@@ -109,8 +111,8 @@ Claude Code discovers `.mcp.json` at the plugin root. The Codex manifest referen
 - [Operations refactor slips] → This change does not start until `extract-command-operations` merges. Implementing tools against `main.rs` would need a second copy of each command body.
 - [Agents call `send` or `collect` without user intent] → Open-world and non-read-only annotations let hosts require confirmation. The skill's intent-driven collection rule still applies.
 - [Concurrent `collect` calls write to the same output directory] → Archive names include a timestamp to the second. Two collections from the same application in the same second could collide, which is also true for two CLI processes today.
-- [Codex plugin MCP field differs] → Validate against the Codex plugin schema in the plugin task. The Claude Code registration does not depend on it.
+- [Codex plugin MCP field differs] → Validated against the Codex manifest parser. The Claude Code registration does not depend on it.
 
 ## Migration Plan
 
-Additive. The release adds `esdiag mcp`; no CLI or output contract changes. Rollback is disabling `mcp` in `full` and removing `.mcp.json` from the plugin.
+Additive. The release adds `esdiag mcp`. The only CLI output change is that a locked keystore always reports `keystore_failed` with the unlock message. Rollback is disabling `mcp` in `full` and removing `.mcp.json` from the plugin.

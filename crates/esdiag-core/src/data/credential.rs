@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::keystore::{get_keystore_password, resolve_secret_auth};
+use super::keystore::{KeystoreLocked, get_keystore_password, resolve_secret_auth};
 use super::{Auth, SecretAuth};
 use eyre::{Result, eyre};
 
@@ -142,8 +142,12 @@ impl From<SecretAuth> for Auth {
 }
 
 fn resolve_keystore_secret(secret_id: &str) -> Result<Auth> {
-    let keystore_password =
-        get_keystore_password().map_err(|err| eyre!("Host references secret '{secret_id}' but {err}"))?;
+    let keystore_password = get_keystore_password().map_err(|err| match err.downcast::<KeystoreLocked>() {
+        Ok(_) => eyre::Report::new(KeystoreLocked {
+            secret_id: Some(secret_id.to_string()),
+        }),
+        Err(err) => eyre!("Host references secret '{secret_id}' but {err}"),
+    })?;
     let secret = resolve_secret_auth(secret_id, keystore_password.expose_secret())?
         .ok_or_else(|| eyre!("Secret '{secret_id}' was not found in keystore"))?;
     Ok(secret.into())

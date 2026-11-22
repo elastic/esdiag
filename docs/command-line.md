@@ -25,6 +25,7 @@ experimental Elastic CLI extension.
 |---|---|
 | `collect` | Collects an archive from a saved source. |
 | `serve` | Starts the diagnostic submission web service. |
+| `mcp` | Serves ESDiag tools to a local MCP client over stdin and stdout. |
 | `host` | Saves, tests, and removes host definitions. |
 | `init` | Runs interactive user setup. |
 | `local` | Manages a local Elasticsearch, Kibana, and ESDiag stack. |
@@ -44,7 +45,7 @@ Finite commands write one result to stdout. Short progress messages, warnings,
 and errors go to stderr. Each command's full log, including container runtime
 output from `esdiag local`, goes to `~/.esdiag/last_run/esdiag.log`, which is
 replaced on the next run. `--debug` adds debug detail to the log and the
-terminal. `esdiag serve` logs to stderr instead.
+terminal. `esdiag serve` and `esdiag mcp` log to stderr instead.
 Processing results include `outcome`, `documents_failed`, and `indexing_failures`
 with destination data stream names and rejection counts, including documents
 redirected to a failure store. `output` identifies the resolved
@@ -70,7 +71,7 @@ and the command exits non-zero.
 `process ... -` writes only NDJSON documents to stdout. It never appends a YAML
 or JSON result. `esdiag setup completions <shell> --print` writes only a shell
 script to stdout. `serve` writes one readiness result after it binds unless its output
-owns stdout.
+owns stdout. `mcp` writes only MCP protocol messages to stdout.
 
 ## Local state and environment
 
@@ -557,6 +558,23 @@ onboarding state.
 `ESDIAG_SERVICE_OWNER_JOB_CAP` sets the per-user cap.
 
 See [Use a shared ESDiag service](setup/shared-service.md).
+
+## `mcp`
+
+```sh
+esdiag mcp
+```
+
+Serves ESDiag commands as Model Context Protocol tools to the client that
+starts it, over stdin and stdout, until the client closes stdin or the process
+receives a shutdown signal. Logs go to stderr at `warn` unless `LOG_LEVEL` or
+`--debug` asks for more, and the run writes no `last_run/esdiag.log`.
+
+The server never prompts for a keystore password. Run `esdiag keystore unlock`
+first, or tools that need a secret fail with `keystore_failed`. The command is
+available when the binary is built with the `mcp` feature and is not offered
+through the Elastic CLI extension. See
+[Use ESDiag as an MCP server](setup/mcp.md) for registration and the tool list.
 
 ## `send`
 

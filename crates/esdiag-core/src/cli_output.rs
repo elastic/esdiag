@@ -615,6 +615,16 @@ pub fn structured_failure(error: &eyre::Report) -> CliFailure {
         return CliFailure::new(CliFailureCategory::NotFound, "saved job was not found")
             .resource(missing_job.name.clone());
     }
+    #[cfg(feature = "keystore")]
+    if let Some(rejected) = error.downcast_ref::<crate::operations::job::SavedJobStdoutRejected>() {
+        return CliFailure::new(CliFailureCategory::InvalidInput, rejected.to_string());
+    }
+    if error.chain().any(|cause| cause.is::<crate::data::KeystoreLocked>()) {
+        return CliFailure::new(
+            CliFailureCategory::KeystoreFailed,
+            "keystore is locked; run `esdiag keystore unlock` from a terminal or set ESDIAG_KEYSTORE_PASSWORD",
+        );
+    }
     #[cfg(feature = "agent")]
     if let Some(agent_failure) = error.downcast_ref::<crate::agent::builder::AgentFailure>() {
         use crate::agent::builder::AgentFailure;

@@ -51,6 +51,17 @@ impl ExecutionObserver for NoopObserver {
     fn observe(&self, _event: &ExecutionEvent) {}
 }
 
+tokio::task_local! {
+    static SCOPED_OBSERVER: Arc<dyn ExecutionObserver>;
+}
+
+/// Runs `future` so every [`ExecutionContext::default`] created on its task
+/// reports to `observer`, letting a caller observe operations that build
+/// their own context.
+pub async fn with_scoped_observer<F: Future>(observer: Arc<dyn ExecutionObserver>, future: F) -> F::Output {
+    SCOPED_OBSERVER.scope(observer, future).await
+}
+
 #[derive(Clone)]
 pub struct ExecutionContext {
     pub inputs: InputResolver,
@@ -73,7 +84,9 @@ impl Default for ExecutionContext {
             retention: RetentionPolicy::Ephemeral,
             inherited_platform: None,
             child_depth: 0,
-            observer: Arc::new(NoopObserver),
+            observer: SCOPED_OBSERVER
+                .try_with(Arc::clone)
+                .unwrap_or_else(|_| Arc::new(NoopObserver)),
         }
     }
 }

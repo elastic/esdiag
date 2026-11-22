@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "esdiag": {
+      "command": "esdiag",
+      "args": ["mcp"]
+    }
+  }
+}

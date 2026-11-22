@@ -38,7 +38,7 @@ The `esdiag` package SHALL provide an `mcp` cargo feature that builds the MCP to
 - **THEN** the process exits with status zero
 
 ### Requirement: Standard Output Carries Only Protocol Messages
-While `esdiag mcp` runs, standard output SHALL contain only MCP protocol messages. All tracing, warnings, and progress text SHALL go to standard error or the configured log file, at the agent-mode default level unless `--debug` or `RUST_LOG` selects another. The global `--format` option SHALL have no effect on protocol messages.
+While `esdiag mcp` runs, standard output SHALL contain only MCP protocol messages. All tracing, warnings, and progress text SHALL go to standard error at `warn` unless `--debug` or `LOG_LEVEL` selects another level, and the run SHALL NOT replace the last command's run log. The global `--format` option SHALL have no effect on protocol messages.
 
 #### Scenario: Debug logging does not corrupt the stream
 - **GIVEN** a client runs `esdiag --debug mcp`

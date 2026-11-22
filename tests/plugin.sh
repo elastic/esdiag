@@ -71,6 +71,13 @@ test_host_manifests_are_valid_json() {
         fail "marketplace manifest is not valid JSON"
 }
 
+test_mcp_registration_launches_only_esdiag_mcp() {
+    local registration="${root}/plugin/.mcp.json"
+    assert_eq "$(tq -c '.mcpServers | keys' "$registration")" '["esdiag"]'
+    assert_eq "$(tq -c '.mcpServers.esdiag' "$registration")" '{"command":"esdiag","args":["mcp"]}'
+    assert_eq "$(tq -r '.mcpServers' "${root}/plugin/.codex-plugin/plugin.json")" './.mcp.json'
+}
+
 test_plugin_version_matches_package_version() {
     local package_version claude_version codex_version
     package_version="$(awk -F '"' '/^version = / {print $2; exit}' "${root}/Cargo.toml")"

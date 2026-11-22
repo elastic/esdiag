@@ -17,6 +17,7 @@
     "agent-builder"
   ],
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "ESDiag",
     "shortDescription": "Collect and analyze Elastic diagnostics",

@@ -12,6 +12,7 @@ published release notes, maintenance branches, and tagged history.
 
 ### Added
 
+- Added `esdiag mcp`, a local stdio MCP server that offers host, output, keystore status, collect, process, send, job, Agent Builder, and setup commands as tools with structured results, progress notifications, and safety annotations, and registered it in the Claude Code and Codex plugins (#307).
 - Added `esdiag setup completions <shell>` to install bash, zsh, fish, and PowerShell completion scripts for the running binary, or print them with `--print`.
 - Added `esdiag setup env [--env-file <path>]` to install assets into the deployment that `ESDIAG_OUTPUT_*`, `ESDIAG_KIBANA_URL`, and `ESDIAG_KIBANA_SPACE` declare, and `esdiag setup context [name]` to install assets into the services an Elastic CLI `.elasticrc` context defines. Both set up whichever of Elasticsearch and Kibana the source declares (#431).
 - Added `--activate-trial` and `ESDIAG_SETUP_ACTIVATE_TRIAL` to start a 30-day Elasticsearch trial license during setup, a trial checkbox to the web onboarding output setup, and `--activate-trial=true|false` to `esdiag local` and `esdiag-local` (#431).
@@ -37,6 +38,7 @@ published release notes, maintenance branches, and tagged history.
 - **Breaking:** ESDiag's Kibana assets now require Elasticsearch and Kibana 9.5 or later. The bundled saved searches use the Kibana 9.5 format, which Kibana 9.4 cannot import.
 - Setup failures without an HTTP response now report the `setup_failed` outcome category.
 - CLI commands that need a saved secret from a locked keystore, such as `esdiag collect`, now prompt for the keystore password on an interactive terminal and continue instead of failing. Non-interactive runs still fail.
+- A command that cannot read a saved secret because the keystore is locked now always reports the `keystore_failed` category, with a message to run `esdiag keystore unlock` or set `ESDIAG_KEYSTORE_PASSWORD`.
 - Updated workspace dependency requirements and the lockfile for the 0.18 development cycle, and regenerated third-party notices.
 - Split the library into the `esdiag-core` and `esdiag-gui` crates, published to crates.io alongside `esdiag` at the same version. They have no supported public API; `cargo install esdiag` is unchanged. Log lines now name `esdiag_core` or `esdiag_gui` modules instead of `esdiag`.
 - Log lines from `collect`, `process`, `send`, `output`, `host`, `job`, `keystore`, `agent ask`, and `setup` now name `esdiag_core::operations` modules instead of `esdiag`. When `esdiag host remove` deletes the host but cannot update settings, it now reports a `WARN` log line instead of printing `Warning:` to stderr.
