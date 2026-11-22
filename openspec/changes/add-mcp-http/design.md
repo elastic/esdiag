@@ -9,7 +9,12 @@ See proposal.md for motivation. Current state that shapes the approach, assuming
 - The web server is in `esdiag-gui` (`crates/esdiag-gui/src/server/`). `Server::start` builds one axum `Router`, then applies `require_authenticated_user` (when `ServerPolicy::requires_authentication()`), a 512 MiB body limit, and client-hint headers as layers over all routes.
 - `ServerPolicy` composes runtime mode, authentication provider, identity header, web features, and job caps. Web feature parsing fails startup for unknown names and for `job-builder` without `keystore`.
 - Service-mode admission is `ServerState::record_job_started(owner)`, which returns `JobAdmissionError::{GlobalCapReached, OwnerCapReached}` against `active_jobs_by_owner`. Its counterpart releases the slot when the job ends.
-- Service-mode web processing accepts Elastic Upload Service links (`service_link`) and file uploads, and exports to the startup exporter.
+- Service-mode web processing accepts Elastic Upload Service links (`service_link`) and file uploads, and exports to the startup exporter. The `service_link` handler takes the download URL and its token as separate fields, sets the token as the URL's `token:` userinfo, and runs `execute_synchronous_processing`, which binds the startup exporter into the caller's `ExecutionContext`.
+- `Uri::try_from` is not side-effect free: it first parses the input as a saved-host reference and resolves it, which reads `hosts.yml` and can read the keystore, and it checks filesystem metadata for path inputs. Upload links become `Uri::ServiceLink` (with a `token:` password) or `Uri::ServiceLinkNoAuth`; the receiver accepts only `ServiceLink`.
+- `UploadServiceDownloader::download_bytes` runs a blocking `reqwest` request inside `block_in_place`, so dropping its future cannot interrupt a download in progress.
+- `ServerState::resolve_identity(headers)` resolves the request identity for every provider: the identity header for `google-iap`, and `ESDIAG_USER`/`ESDIAG_ACCOUNT` (plus `esdiag.yml` in `user` mode only) for `none`. `require_authenticated_user` is mounted only when the policy requires authentication, and it inserts nothing into request extensions.
+- The desktop app starts its ephemeral-port server through `Server::start` in `user` mode with no web feature override, so `ESDIAG_WEB_FEATURES` reaches it.
+- `operations::process::process` takes a `ProcessInput`, resolves local input and output defaults, and creates its own `ExecutionContext`.
 - rmcp 3.11 `StreamableHttpService` is a tower service. It inserts the request's `http::request::Parts`, including axum extensions set by earlier middleware, into each MCP request's `RequestContext::extensions`. Its config validates `Host` against loopback by default (`allowed_hosts`) and `Origin` when `allowed_origins` is non-empty. `legacy_session_mode: false` serves requests statelessly. With `json_response: true` it answers in JSON unless the handler emits notifications first, in which case it switches to server-sent events (SSE). Protocol version `2026-07-28` removes sessions (SEP-2567).
 
 ## Goals / Non-Goals
@@ -38,24 +43,30 @@ sequenceDiagram
   participant T as EsdiagMcp (policy)
   participant G as ServerState (esdiag-gui)
   C->>A: POST /mcp tools/call process
-  A->>A: validate Host/Origin, authenticate, insert RequestIdentity
-  A->>S: request + extensions
+  A->>A: validate Host/Origin, authenticate (when required)
+  A->>S: request
   S->>T: call_tool(ctx with Parts)
+  T->>G: McpHost::identity(headers)
+  T->>T: parse upload URL and token (no local state)
   T->>G: McpHost::admit(owner)
   G-->>T: AdmissionGuard or cap error
-  T->>T: run process operation
+  T->>T: run process_upload with the startup exporter
   T-->>C: SSE progress..., result
 ```
 
 `McpPolicy` gains `Service { host: Arc<dyn McpHost> }`. `McpHost` is a trait defined in `esdiag-core::mcp` and implemented by `esdiag-gui`:
 
-- `identity(&RequestContext) -> Identity` reads the `RequestIdentity` extension that the authentication layer inserted; the anonymous default when the provider is `none`.
+- `identity(&http::HeaderMap) -> Result<RequestIdentity>` calls `ServerState::resolve_identity` on the headers from the request's `Parts`, for every request and every provider, so provider `none` keeps the configured `ESDIAG_USER`/`ESDIAG_ACCOUNT` that web jobs use. It inherits that function's service-mode rule of never reading `esdiag.yml`. Identity does not depend on the authentication layer, which is absent for provider `none`. A resolution error fails the call before admission.
 - `admit(&self, owner) -> Result<AdmissionGuard, JobAdmissionError>` wraps `record_job_started`, and the guard's `Drop` releases the slot.
 - `exporter() -> Exporter` returns the startup exporter.
 
 `McpPolicy::Local` also uses `McpHost` in `user` mode from the GUI, so that identity reaches `Identifiers` and active-job stats update; its `admit` never rejects. The stdio binary uses a no-op local host. `JobAdmissionError` and the `RequestIdentity` type move to `esdiag-core` if the operations refactor has not already moved them.
 
-Service policy lists only `process`, with a separate parameter struct (`input` only). It validates `input` with the existing `Uri` resolution and accepts only `Uri::ElasticUploadService` variants. It passes the host exporter instead of resolving one.
+Service policy lists only `process`, with a separate parameter struct: `url` and `token`, both required.
+
+- `url` goes through `UploadLink::parse`, a new upload-only parser in `esdiag-core` that never calls `Uri::try_from`, `HostReference`, or the filesystem. It accepts only an absolute `https` URL whose host is `upload.elastic.co`, with no userinfo, query, or fragment, and a non-empty path. Anything else, including saved-host names, archive paths, and directories, fails with `invalid_input` before any I/O. Bare upload identifiers are not accepted, because no verified mapping from an identifier to a download URL exists.
+- `token` is the per-upload download token, the same value the web `service_link` form takes. It is the one credential a tool parameter may carry, and only in service mode, where no keystore or terminal exists to supply it. The parser sets it as the URL's `token:` userinfo and builds `Uri::ServiceLink` directly. The token is never echoed in results or failures, logged, persisted, or accepted inside `url`. The `user`-mode catalog keeps rejecting download tokens, as in `add-mcp-stdio`.
+- The tool calls a new core entry point, `operations::process::process_upload(link, exporter, identifiers, context)`. It takes the validated `ServiceLink`, the host exporter bound into the caller's `ExecutionContext`, the request's `Identifiers`, and the context that carries the MCP progress observer and request ownership. It resolves no local defaults. `esdiag-gui`'s `execute_synchronous_processing` moves onto the same entry point, so the web `service_link` route and service-mode MCP share one path.
 
 Alternatives considered:
 
@@ -66,13 +77,19 @@ Alternatives considered:
 
 `/mcp` is a `nest_service("/mcp", StreamableHttpService::new(...))` added to the same router before the authentication layer, so it inherits `require_authenticated_user` and the body limit. A `mcp_host_guard` layer scoped to `/mcp` performs the `Host` and `Origin` checks. rmcp's own checks are configured with the same list, so a misconfiguration cannot open one path without the other.
 
-The `require_authenticated_user` middleware inserts `RequestIdentity` into request extensions. If it does not already do this, the change adds it; other handlers keep their current extractors.
+The authentication layer only rejects; it does not carry identity. Tools resolve identity from the request headers through `McpHost::identity`, as described above.
 
 ### Stateless, JSON when possible
 
 `StreamableHttpServerConfig { legacy_session_mode: false, json_response: true, cancellation_token: <server shutdown token>, allowed_hosts, allowed_origins, .. }`. Statelessness lets service-mode replicas run without session affinity and needs no session expiry. Progress notifications switch a response to SSE. Server shutdown cancels the token, which ends in-flight streams.
 
-Cancellation over stateless HTTP is the client closing the stream. rmcp drops the handler future, which the stdio design already treats as cancellation.
+Cancellation over stateless HTTP is the client closing the stream, or server shutdown cancelling the token. rmcp drops the handler future, which the stdio design already treats as cancellation. Dropping the future only stops work that runs inside it or is aborted with it:
+
+- The Upload Service download becomes an async `reqwest` request awaited inside the operation future, replacing `block_in_place` with a blocking client. Dropping the future aborts the request. The web `service_link` route uses the same downloader.
+- Export consumers already run under `AbortOnDropHandle` (`add-mcp-stdio`), so queued bulk requests stop when the future drops.
+- The `AdmissionGuard` is owned by the operation future, not by the transport or handler wrapper. Its slot is released when that future is dropped, which is after the download request and export consumers are aborted. A cancelled call cannot free its slot while its download keeps running.
+
+Tests cover a client disconnect and a server shutdown during a stalled download from a local mock server: the download connection closes, the call reports no success, and the owner's slot is free afterwards.
 
 Alternative considered: stateful sessions (`LocalSessionManager`). Rejected: sessions are removed in protocol `2026-07-28`, they need affinity behind a load balancer, and no tool needs per-session state.
 
@@ -88,11 +105,18 @@ Alternative considered: stateful sessions (`LocalSessionManager`). Rejected: ses
 
 `esdiag-gui/mcp` enables `esdiag-core/mcp` and `rmcp` with `transport-streamable-http-server`. `WebFeature::Mcp` is always parseable. `ServerPolicy` rejects it at startup without `esdiag-gui/mcp`, mirroring `job-builder` without `keystore`. `ServerPolicy::allows_mcp()` gates the route. Service mode does not strip `mcp` the way it strips local-artifact features, because the service policy, not route omission, enforces the envelope.
 
+Cargo unifies features per package, so whenever `esdiag-gui/mcp` is in the build graph, the single `rmcp` that core also links has the HTTP transport enabled. The boundary is therefore about code, not compiled features: only `esdiag-gui` contains HTTP transport integration, and `esdiag-core` never names the transport. CI checks the compiled boundary in an isolated `cargo tree -p esdiag-core --features mcp` build, where no GUI dependency can enable it.
+
+### Desktop never mounts `/mcp`
+
+`ServerStartOptions` gains `mcp_endpoint: bool`, false by default. Only `esdiag serve` sets it. `Server::start`, which the desktop app uses, leaves it false. When it is false, `/mcp` is never mounted, whatever `ESDIAG_WEB_FEATURES` or the build features say. If `mcp` is in the web feature list anyway, startup logs a warning that the MCP endpoint is not available in this host and continues, so a shell profile shared with `esdiag serve` does not break the desktop app.
+
 ## Risks / Trade-offs
 
 - [Agents automate submissions to the shared service] → Per-owner and global caps apply. The deferred output-cluster load budget in `web-runtime-modes` names rising automation as its trigger, and this change is such a trigger. Revisit that budget when MCP traffic appears in service-mode metrics.
 - [`none` authentication in service mode exposes `process` to anyone who can reach the port] → Same exposure as the existing upload-service web flow. `mcp` is opt-in, and the `Host` allowlist blocks DNS rebinding.
-- [Desktop user-mode server enables `mcp` through `ESDIAG_WEB_FEATURES`] → The tools reach the same local configuration the desktop UI already edits, on loopback with host validation. There is no registration path, so this is not advertised.
+- [Desktop user-mode server inherits `ESDIAG_WEB_FEATURES=mcp`] → `mcp_endpoint` is false for desktop startup, so the route is never mounted there, and startup warns instead of failing.
+- [Service-mode `process` takes a download token as a tool parameter] → It is the same per-upload token the web `service_link` form already accepts, scoped to one upload, and the only credential service mode can obtain. It is never echoed, logged, persisted, or accepted embedded in a URL, and the `user`-mode catalog still rejects tokens.
 - [Clients on protocol versions earlier than `2026-07-28` expect a session ID] → Streamable HTTP allows servers that issue no session ID. Verify with Claude Code and Codex HTTP clients in the verification task.
 
 ## Migration Plan

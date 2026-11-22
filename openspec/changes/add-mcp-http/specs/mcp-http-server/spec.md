@@ -5,7 +5,7 @@ Defines the Streamable HTTP MCP endpoint that `esdiag serve` exposes at `/mcp`: 
 ## ADDED Requirements
 
 ### Requirement: MCP Endpoint Enablement
-The web server SHALL mount a Model Context Protocol endpoint at `/mcp`, using the Streamable HTTP transport, only when the binary includes MCP support and server policy allows the `mcp` web feature. When the endpoint is not mounted, requests to `/mcp` SHALL receive the router's not-found response.
+The web server SHALL mount a Model Context Protocol endpoint at `/mcp`, using the Streamable HTTP transport, only when the binary includes MCP support, server policy allows the `mcp` web feature, and the server was started by `esdiag serve`. The desktop app's server SHALL NOT mount `/mcp` for any web feature list or build. When the endpoint is not mounted, requests to `/mcp` SHALL receive the router's not-found response.
 
 #### Scenario: Endpoint enabled
 - **GIVEN** an ESDiag binary built with default features
@@ -18,8 +18,23 @@ The web server SHALL mount a Model Context Protocol endpoint at `/mcp`, using th
 - **WHEN** a client posts to `/mcp`
 - **THEN** the response is not found
 
+#### Scenario: Desktop ignores an MCP feature override
+- **GIVEN** a binary built with default features
+- **AND** `ESDIAG_WEB_FEATURES=advanced,mcp` is set
+- **WHEN** the desktop app starts its server and a client posts to `/mcp`
+- **THEN** the response is not found
+- **AND** the desktop server starts with a warning that the MCP endpoint is not available
+
 ### Requirement: Stateless Transport
-The endpoint SHALL serve each request without server-held MCP session state, so that any server instance can answer any request. Responses that carry progress notifications SHALL be streamed as server-sent events. Simple responses SHALL be returned as JSON. When a client closes the response stream of an in-progress call, the server SHALL stop that operation and SHALL NOT report it as successful.
+The endpoint SHALL serve each request without server-held MCP session state, so that any server instance can answer any request. Responses that carry progress notifications SHALL be streamed as server-sent events. Simple responses SHALL be returned as JSON. When a client closes the response stream of an in-progress call, or the server shuts down, the server SHALL stop that operation, including any Elastic Upload Service download and queued exports, and SHALL NOT report it as successful. A stopped call's concurrency slot SHALL be released only after its work has stopped.
+
+#### Scenario: Client disconnects during a download
+- **GIVEN** the server runs in `service` mode with a per-owner cap of 1
+- **AND** an owner's `process` call is waiting on an Elastic Upload Service download that has not finished
+- **WHEN** the client closes the response stream
+- **THEN** the server closes the download connection
+- **AND** the call is not reported as successful
+- **AND** the owner's next `process` call is admitted
 
 #### Scenario: Requests served without a session
 - **GIVEN** the endpoint is enabled
@@ -40,25 +55,39 @@ In `user` mode, the endpoint SHALL offer the same tools, parameters, results, fa
 - **THEN** both lists contain the same tool names and input schemas
 
 ### Requirement: Service Mode Tool Policy
-In `service` mode, the endpoint SHALL offer only `process`. Its `input` SHALL accept only an Elastic Upload Service URL or identifier, and SHALL reject archive paths, directories, and saved host names with `category: invalid_input`. Its schema SHALL NOT offer `output` or `save_job`; processed documents SHALL go to the startup-defined exporter. No tool in `service` mode SHALL read or write `hosts.yml`, `jobs.yml`, the keystore, or the output context. This restriction SHALL hold for every authentication provider.
+In `service` mode, the endpoint SHALL offer only `process`, with two required parameters: `url` and `token`. `url` SHALL accept only an absolute `https` URL on `upload.elastic.co` with no userinfo, query, or fragment. Archive paths, directories, saved host names, other URLs, and URLs that embed a token SHALL be rejected with `category: invalid_input`. Validation SHALL be syntactic: it SHALL NOT resolve saved hosts, read the keystore, or inspect the filesystem, so rejected input causes no local-state access. `token` SHALL be the Elastic Upload Service download token for that URL. The token SHALL NOT appear in tool results, failures, or logs, and SHALL NOT be persisted. The schema SHALL NOT offer `output` or `save_job`; processed documents SHALL go to the startup-defined exporter. No tool in `service` mode SHALL read or write `hosts.yml`, `jobs.yml`, the keystore, or the output context. This restriction SHALL hold for every authentication provider.
 
 #### Scenario: Service mode lists one tool
 - **GIVEN** the server runs in `service` mode with the `mcp` web feature
 - **WHEN** a client lists tools
 - **THEN** the list contains only `process`
-- **AND** its input schema contains no `output` or `save_job` parameter
+- **AND** its input schema contains `url` and `token` and no `output` or `save_job` parameter
 
 #### Scenario: Upload service input processed to the shared cluster
 - **GIVEN** the server runs in `service` mode with a startup-defined Elasticsearch exporter
-- **WHEN** a client calls `process` with an Elastic Upload Service URL for a valid diagnostic
+- **WHEN** a client calls `process` with an Elastic Upload Service URL for a valid diagnostic and its download token
 - **THEN** the diagnostic is processed to the startup-defined exporter
 - **AND** the result has `result: diagnostic_processed`
+- **AND** the result does not contain the token
 
 #### Scenario: Local path rejected
 - **GIVEN** the server runs in `service` mode
-- **WHEN** a client calls `process` with `input: /tmp/diag.zip`
+- **WHEN** a client calls `process` with `url: /tmp/diag.zip`
 - **THEN** the tool result is an error with `category: invalid_input`
 - **AND** the server does not read the path
+
+#### Scenario: Saved host name rejected without local state
+- **GIVEN** the server runs in `service` mode
+- **AND** the server's user has a saved host named `prod`
+- **WHEN** a client calls `process` with `url: prod`
+- **THEN** the tool result is an error with `category: invalid_input`
+- **AND** the server does not read `hosts.yml` or the keystore
+
+#### Scenario: Embedded token rejected
+- **GIVEN** the server runs in `service` mode
+- **WHEN** a client calls `process` with a `url` of the form `https://token:<token>@upload.elastic.co/...`
+- **THEN** the tool result is an error with `category: invalid_input`
+- **AND** the error does not repeat the token
 
 ### Requirement: Service Mode Concurrency Caps Apply
 In `service` mode, each `process` call SHALL count against the per-owner and global concurrent-job caps, with the owner resolved from the request's authenticated identity. A call that would exceed either cap SHALL return a tool error stating which cap was reached, and SHALL NOT start processing.
@@ -71,7 +100,7 @@ In `service` mode, each `process` call SHALL count against the per-owner and glo
 - **AND** no additional job starts
 
 ### Requirement: Requests Use The Configured Authentication Provider
-Requests to `/mcp` SHALL be authenticated by the server's configured request authentication provider, exactly as other web requests are. Requests that fail authentication SHALL be rejected with an HTTP error before any MCP message is processed. A tool call that runs a job SHALL record the authenticated user and account in the diagnostic's `Identifiers`.
+Requests to `/mcp` SHALL be authenticated by the server's configured request authentication provider, exactly as other web requests are. Requests that fail authentication SHALL be rejected with an HTTP error before any MCP message is processed. Every tool call that runs a job SHALL resolve the request identity the same way web jobs do, for every provider including `none`, and SHALL record that user and account in the diagnostic's `Identifiers` and use that user as the job's admission owner. In `service` mode, identity resolution SHALL NOT read user configuration files.
 
 #### Scenario: Identity-aware proxy header required
 - **GIVEN** the server runs in `service` mode with the Google identity-aware proxy provider and the `mcp` web feature
@@ -83,6 +112,13 @@ Requests to `/mcp` SHALL be authenticated by the server's configured request aut
 - **GIVEN** a request authenticated as `operator@example.com`
 - **WHEN** the request's `process` call completes
 - **THEN** the processed diagnostic's report identifies `operator@example.com` as its user
+
+#### Scenario: Configured identity used without an authentication provider
+- **GIVEN** the server runs in `service` mode with authentication provider `none`
+- **AND** `ESDIAG_USER=operator@example.com` and `ESDIAG_ACCOUNT=acme` are set
+- **WHEN** a client's `process` call completes
+- **THEN** the processed diagnostic's report identifies `operator@example.com` as its user and `acme` as its account
+- **AND** the job counted against the owner `operator@example.com` while it ran
 
 ### Requirement: Host And Origin Validation
 The endpoint SHALL reject requests whose `Host` header is not an allowed host, and requests that carry an `Origin` header whose scheme, host, and port do not match an allowed host, with HTTP status 403. By default the allowed hosts SHALL be `localhost`, `127.0.0.1`, and `::1`. `serve --mcp-allowed-hosts`, then `ESDIAG_MCP_ALLOWED_HOSTS`, SHALL replace the default with a comma-separated list of host names or `host:port` authorities.
