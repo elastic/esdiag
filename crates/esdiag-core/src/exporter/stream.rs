@@ -50,11 +50,16 @@ impl Export for StreamExporter {
         // (ADR-0016); write failures travel in `errors`, not the status.
         let mut batch = BatchResponse::new(doc_count);
         tracing::debug!("{} wrote {} docs to stdout", index, doc_count);
-        let stdout = std::io::stdout();
-        let mut writer = stdout.lock();
+        let mut buf = Vec::with_capacity(docs.len().saturating_mul(512).min(8 * 1024 * 1024));
         for doc in docs {
-            serde_json::to_writer(&mut writer, &doc)?;
-            writer.write_all(b"\n")?;
+            serde_json::to_writer(&mut buf, &doc)?;
+            buf.push(b'\n');
+        }
+        {
+            let stdout = std::io::stdout();
+            let mut writer = stdout.lock();
+            writer.write_all(&buf)?;
+            writer.flush()?;
         }
         batch.size = doc_count;
         batch.time = start_time.elapsed().as_millis() as u32;
