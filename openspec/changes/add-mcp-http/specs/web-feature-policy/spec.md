@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Web Feature Allowlist
-The server SHALL support `serve --web-features` and `ESDIAG_WEB_FEATURES` as optional comma-separated allowlists of web feature names. Supported feature names SHALL include `advanced`, `job-builder`, and `mcp`. When neither override is set, the server SHALL use runtime-mode defaults, and `mcp` SHALL be disabled by default in both runtime modes. When an override is set, the server SHALL enable exactly the listed known web features after trimming whitespace. When an override is set to an empty or whitespace-only value, the server SHALL disable all optional web features. The CLI argument SHALL take precedence over the environment variable.
+The server SHALL support `serve --web-features` and `ESDIAG_WEB_FEATURES` as optional comma-separated allowlists of web feature names. Supported feature names SHALL include `advanced`, `job-builder`, and `mcp`. When neither override is set, the server SHALL use runtime-mode defaults, and `mcp` SHALL be disabled by default in both runtime modes. When an override is set, the server SHALL enable exactly the listed known web features after trimming whitespace, except that the desktop-hosted server SHALL drop `mcp` with a warning instead of enabling it or failing startup. When an override is set to an empty or whitespace-only value, the server SHALL disable all optional web features. The CLI argument SHALL take precedence over the environment variable.
 
 #### Scenario: Unset feature list uses user defaults
 - **GIVEN** the server starts in `user` mode
@@ -70,6 +70,14 @@ The server SHALL support `serve --web-features` and `ESDIAG_WEB_FEATURES` as opt
 #### Scenario: Unsupported build rejects MCP
 - **GIVEN** the server binary was built without `mcp` support
 - **AND** `ESDIAG_WEB_FEATURES=mcp` is set or `--web-features mcp` is provided
-- **WHEN** the server starts
+- **WHEN** `esdiag serve` starts
 - **THEN** startup fails with an error naming `mcp`
 - **AND** the error explains that the MCP endpoint requires a build with MCP support
+
+#### Scenario: Desktop drops MCP from the feature list
+- **GIVEN** the desktop app, built with or without `mcp` support
+- **AND** `ESDIAG_WEB_FEATURES=advanced,mcp` is set
+- **WHEN** the desktop-hosted server starts
+- **THEN** startup succeeds with a warning that the MCP endpoint is not available
+- **AND** the `advanced` web feature is enabled
+- **AND** the `mcp` web feature is disabled
