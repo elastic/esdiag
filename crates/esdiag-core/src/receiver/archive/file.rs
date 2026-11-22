@@ -26,12 +26,20 @@ use zip::ZipArchive;
 
 #[derive(Clone)]
 pub struct ArchiveFileReceiver {
-    archive: Arc<RwLock<IndexedArchive<File>>>,
+    path: PathBuf,
     filename: String,
     subdir: Option<PathBuf>,
     modified_date: SystemTime,
     source_product: Arc<OnceLock<&'static str>>,
     scrubbed: bool,
+}
+
+impl ArchiveFileReceiver {
+    fn open_archive(&self) -> Result<IndexedArchive<File>> {
+        let file = File::open(&self.path)?;
+        let archive = ZipArchive::new(file)?;
+        Ok(IndexedArchive::new(archive))
+    }
 }
 
 impl TryFrom<PathBuf> for ArchiveFileReceiver {
@@ -42,11 +50,11 @@ impl TryFrom<PathBuf> for ArchiveFileReceiver {
         match path.is_file() {
             true => {
                 tracing::debug!("File is valid: {}", path.display());
-                let file = File::open(path)?;
+                let file = File::open(&path)?;
                 let modified_date = file.metadata()?.modified()?;
-                let archive = ZipArchive::new(file)?;
+                ZipArchive::new(file)?;
                 Ok(Self {
-                    archive: Arc::new(RwLock::new(IndexedArchive::new(archive))),
+                    path,
                     modified_date,
                     filename,
                     subdir: None,
@@ -68,14 +76,21 @@ impl Receive for ArchiveFileReceiver {
     }
 
     async fn is_connected(&self) -> bool {
-        let archive = self.archive.read().await;
-        let is_empty = archive.is_empty();
-        if tracing::enabled!(tracing::Level::TRACE) {
-            let file_names: Vec<String> = archive.file_names().map(|name| name.to_string()).collect();
-            tracing::trace!("Files in archive: {:?}", file_names);
+        match self.open_archive() {
+            Ok(archive) => {
+                let is_empty = archive.is_empty();
+                if tracing::enabled!(tracing::Level::TRACE) {
+                    let file_names: Vec<String> = archive.file_names().map(|name| name.to_string()).collect();
+                    tracing::trace!("Files in archive: {:?}", file_names);
+                }
+                tracing::debug!("Archive {} is valid: {}", &self.filename, !is_empty);
+                !is_empty
+            }
+            Err(e) => {
+                tracing::debug!("Archive {} is not connected: {}", &self.filename, e);
+                false
+            }
         }
-        tracing::debug!("Archive {} is valid: {}", &self.filename, !is_empty);
-        !is_empty
     }
 
     fn filename(&self) -> Option<String> {
@@ -87,7 +102,7 @@ impl Receive for ArchiveFileReceiver {
     where
         T: DeserializeOwned + DataSource,
     {
-        let mut archive = self.archive.write().await;
+        let mut archive = self.open_archive()?;
         let ctx = self.source_context()?;
         get_from_archive::<File, T>(
             &mut archive,
@@ -104,7 +119,8 @@ impl Receive for ArchiveFileReceiver {
         T::Item: DeserializeOwned + Send + 'static,
     {
         let ctx = self.source_context()?;
-        super::get_stream_from_archive::<File, T>(self.archive.clone(), self.subdir.clone(), ctx, self.scrubbed).await
+        let archive = Arc::new(RwLock::new(self.open_archive()?));
+        super::get_stream_from_archive::<File, T>(archive, self.subdir.clone(), ctx, self.scrubbed).await
     }
 }
 
@@ -120,13 +136,13 @@ impl ReceiveRaw for ArchiveFileReceiver {
     where
         T: DataSource,
     {
-        let mut archive = self.archive.write().await;
+        let mut archive = self.open_archive()?;
         let ctx = self.source_context()?;
         let source_paths = T::candidate_source_file_paths(&ctx)?;
         let mut last_resolve_error = None;
 
         for source_path in source_paths {
-            match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
+            match resolve_archive_path(self.subdir.as_ref(), &mut archive, &source_path) {
                 Ok(filename) => {
                     if self.scrubbed {
                         tracing::debug!("Reading {} (scrubbed mode)", filename);
@@ -193,14 +209,14 @@ impl ArchiveFileReceiver {
     where
         T: DataSource + DeserializeOwned,
     {
-        let mut archive = self.archive.write().await;
+        let mut archive = self.open_archive()?;
         let ctx = self.source_context()?;
         super::get_all_from_archive::<File, T>(&mut archive, self.subdir.as_ref(), &ctx, self.scrubbed)
     }
 
     pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
         Self {
-            archive: self.archive.clone(),
+            path: self.path.clone(),
             filename: self.filename.clone(),
             subdir: Some(PathBuf::from(work_dir)),
             modified_date: self.modified_date,
@@ -213,34 +229,49 @@ impl ArchiveFileReceiver {
     where
         T: DeserializeOwned,
     {
-        let mut archive = self.archive.write().await;
-        let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, filename)?;
+        let mut archive = self.open_archive()?;
+        let filename = resolve_archive_path(self.subdir.as_ref(), &mut archive, filename)?;
         tracing::debug!("Reading bundle file {}", filename);
-        let file = archive.by_name(&filename)?;
-        let mut reader = BufReader::new(file);
-        if !crate::receiver::source_has_json(&mut reader)? {
+        let mut file = archive.by_name(&filename)?;
+        if (self.scrubbed && super::supports_json_normalization(&filename)) || file.size() > super::MAX_SLICE_READ_BYTES
+        {
+            let mut reader = BufReader::with_capacity(super::STREAM_BUF_CAPACITY, file);
+            if !crate::receiver::source_has_json(&mut reader)? {
+                return Err(MissingSource::Empty { path: filename }.into());
+            }
+            return with_normalized_json_reader(&filename, reader, self.scrubbed, |reader| {
+                serde_json::from_reader(reader).map_err(Into::into)
+            });
+        }
+        let mut buf = Vec::with_capacity(super::capped_prealloc_capacity(file.size()));
+        file.read_to_end(&mut buf)?;
+        if !super::slice_has_json(&buf) {
             return Err(MissingSource::Empty { path: filename }.into());
         }
-        with_normalized_json_reader(&filename, reader, self.scrubbed, |reader| {
-            serde_json::from_reader(reader).map_err(Into::into)
-        })
+        serde_json::from_slice(&buf).map_err(Into::into)
     }
 
     pub async fn list_bundle_dirs(&self, dir: &str) -> Result<Vec<String>> {
-        let mut archive = self.archive.write().await;
-        super::list_archive_dirs(self.subdir.as_ref(), &mut *archive, dir)
+        let mut archive = self.open_archive()?;
+        super::list_archive_dirs(self.subdir.as_ref(), &mut archive, dir)
     }
 
     pub async fn read_bundle_lines(&self, filename: &str) -> Result<BoxStream<'static, Result<String>>> {
-        super::read_lines_from_archive(self.archive.clone(), self.subdir.clone(), filename).await
+        let archive = Arc::new(RwLock::new(self.open_archive()?));
+        super::read_lines_from_archive(archive, self.subdir.clone(), filename).await
     }
 
     /// Whether the bundle contains `dir` as a directory component within the
     /// receiver's working subdirectory. Used for platform indicators such as
     /// the `syscalls` folder.
     pub async fn has_bundle_dir(&self, dir: &str) -> bool {
-        let archive = self.archive.read().await;
-        super::archive_has_dir(archive.file_names(), self.subdir.as_ref(), dir)
+        match self.open_archive() {
+            Ok(archive) => super::archive_has_dir(archive.file_names(), self.subdir.as_ref(), dir),
+            Err(e) => {
+                tracing::debug!("Failed to open archive {} for has_bundle_dir: {}", &self.filename, e);
+                false
+            }
+        }
     }
 
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {

@@ -29,6 +29,20 @@ pub use file::*;
 pub(crate) use scrub::with_normalized_json_reader;
 pub use scrub::{normalize_supported_content, supports_json_normalization};
 
+// Entries at or below this size are read into memory and parsed with `from_slice`.
+// Larger non-streaming entries fall back to a 256 KB buffered `from_reader` to
+// cap peak RSS on multi-hundred-MB files (e.g., settings.json).
+pub(crate) const MAX_SLICE_READ_BYTES: u64 = 256 * 1024 * 1024;
+pub(crate) const STREAM_BUF_CAPACITY: usize = 256 * 1024;
+
+pub(crate) fn capped_prealloc_capacity(zip_size: u64) -> usize {
+    zip_size.min(MAX_SLICE_READ_BYTES) as usize
+}
+
+pub(crate) fn slice_has_json(bytes: &[u8]) -> bool {
+    bytes.iter().any(|b| !matches!(b, b' ' | b'\n' | b'\r' | b'\t'))
+}
+
 pub fn get_all_from_archive<R, T>(
     archive: &mut ZipArchive<R>,
     subdir: Option<&PathBuf>,
@@ -78,17 +92,26 @@ where
     R: Read + Seek,
     T: DataSource + DeserializeOwned,
 {
-    let file = archive
+    let mut file = archive
         .by_name(&filename)
         .wrap_err_with(|| format!("Failed to read {filename} from archive"))?;
-    let mut reader = BufReader::new(file);
-    if !source_has_json(&mut reader).wrap_err_with(|| format!("Failed to read {filename} for {}", T::name()))? {
+    if (scrubbed && supports_json_normalization(&filename)) || file.size() > MAX_SLICE_READ_BYTES {
+        let mut reader = BufReader::with_capacity(STREAM_BUF_CAPACITY, file);
+        if !source_has_json(&mut reader).wrap_err_with(|| format!("Failed to read {filename} for {}", T::name()))? {
+            return Err(MissingSource::Empty { path: filename }.into());
+        }
+        return with_normalized_json_reader(&filename, reader, scrubbed, |reader| {
+            serde_json::from_reader(reader).map_err(Into::into)
+        })
+        .wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()));
+    }
+    let mut buf = Vec::with_capacity(capped_prealloc_capacity(file.size()));
+    file.read_to_end(&mut buf)
+        .wrap_err_with(|| format!("Failed to read {filename} for {}", T::name()))?;
+    if !slice_has_json(&buf) {
         return Err(MissingSource::Empty { path: filename }.into());
     }
-    with_normalized_json_reader(&filename, reader, scrubbed, |reader| {
-        serde_json::from_reader(reader).map_err(Into::into)
-    })
-    .wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()))
+    serde_json::from_slice(&buf).wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()))
 }
 
 fn strip_archive_root<'a>(filename: &'a str, root: &str) -> Option<&'a str> {
@@ -169,19 +192,28 @@ where
         } else {
             tracing::debug!("Reading {}", filename);
         }
-        let file = archive.by_name(&filename).map_err(|error| match opening_error {
+        let mut file = archive.by_name(&filename).map_err(|error| match opening_error {
             ArchiveOpeningError::Zip => eyre::Report::from(error),
-            ArchiveOpeningError::MemoryContext => eyre!("Failed to read file {filename} from archive"),
+            ArchiveOpeningError::MemoryContext => eyre!("Failed to read file {filename} from archive: {error}"),
         })?;
-        let mut reader = BufReader::new(file);
-        if !source_has_json(&mut reader)? {
+        if (scrubbed && supports_json_normalization(&filename)) || file.size() > MAX_SLICE_READ_BYTES {
+            let mut reader = BufReader::with_capacity(STREAM_BUF_CAPACITY, file);
+            if !source_has_json(&mut reader)? {
+                last_resolve_error = Some(MissingSource::Empty { path: filename }.into());
+                continue;
+            }
+            return with_normalized_json_reader(&filename, reader, scrubbed, |reader| {
+                Ok(serde_json::from_reader(reader)?)
+            })
+            .wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()));
+        }
+        let mut buf = Vec::with_capacity(capped_prealloc_capacity(file.size()));
+        file.read_to_end(&mut buf)?;
+        if !slice_has_json(&buf) {
             last_resolve_error = Some(MissingSource::Empty { path: filename }.into());
             continue;
         }
-        return with_normalized_json_reader(&filename, reader, scrubbed, |reader| {
-            Ok(serde_json::from_reader(reader)?)
-        })
-        .wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()));
+        return serde_json::from_slice(&buf).wrap_err_with(|| format!("Failed to parse {filename} for {}", T::name()));
     }
 
     match last_resolve_error {
@@ -223,10 +255,12 @@ where
 
         tracing::debug!("Streaming from archive: {}", filename);
         let stream_result = match archive_guard.by_name(&filename) {
-            Ok(file) => with_normalized_json_reader(&filename, BufReader::new(file), scrubbed, |reader| {
-                let mut deserializer = serde_json::Deserializer::from_reader(reader);
-                T::deserialize_stream(&mut deserializer, tx.clone()).map_err(|e| eyre::eyre!(e.to_string()))
-            }),
+            Ok(file) => {
+                let reader = BufReader::with_capacity(STREAM_BUF_CAPACITY, file);
+                with_normalized_json_reader(&filename, reader, scrubbed, |reader| {
+                    T::deserialize_stream_buffered(reader, tx.clone())
+                })
+            }
             Err(e) => Err(eyre::eyre!(e)),
         };
 
@@ -710,5 +744,11 @@ mod tests {
             Some(&PathBuf::from("cluster")),
             "syscalls"
         ));
+    }
+
+    #[test]
+    fn capped_prealloc_capacity_caps_before_casting_to_usize() {
+        assert_eq!(capped_prealloc_capacity(42), 42);
+        assert_eq!(capped_prealloc_capacity(u64::MAX), MAX_SLICE_READ_BYTES as usize);
     }
 }

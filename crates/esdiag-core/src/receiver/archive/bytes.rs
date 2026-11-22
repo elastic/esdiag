@@ -24,14 +24,19 @@ use tokio::sync::RwLock;
 use zip::ZipArchive;
 
 type ArchiveCursor = IndexedArchive<BufReader<Cursor<Bytes>>>;
-type ArchivePointer = Arc<RwLock<ArchiveCursor>>;
-
 #[derive(Clone)]
 pub struct ArchiveBytesReceiver {
-    archive: ArchivePointer,
+    bytes: Bytes,
     subdir: Option<PathBuf>,
     source_product: Arc<OnceLock<&'static str>>,
     scrubbed: bool,
+}
+
+impl ArchiveBytesReceiver {
+    fn open_archive(&self) -> Result<ArchiveCursor> {
+        let archive = ZipArchive::new(BufReader::new(Cursor::new(self.bytes.clone())))?;
+        Ok(IndexedArchive::new(archive))
+    }
 }
 
 /// A receiver for the Elastic Upload Service (https://upload.elastic.co).
@@ -54,7 +59,7 @@ impl Receive for ArchiveBytesReceiver {
     where
         T: DataSource + DeserializeOwned,
     {
-        let mut archive = self.archive.write().await;
+        let mut archive = self.open_archive()?;
         let ctx = self.source_context()?;
         get_from_archive::<BufReader<Cursor<Bytes>>, T>(
             &mut archive,
@@ -71,13 +76,9 @@ impl Receive for ArchiveBytesReceiver {
         T::Item: DeserializeOwned + Send + 'static,
     {
         let ctx = self.source_context()?;
-        super::get_stream_from_archive::<BufReader<Cursor<Bytes>>, T>(
-            self.archive.clone(),
-            self.subdir.clone(),
-            ctx,
-            self.scrubbed,
-        )
-        .await
+        let archive = Arc::new(RwLock::new(self.open_archive()?));
+        super::get_stream_from_archive::<BufReader<Cursor<Bytes>>, T>(archive, self.subdir.clone(), ctx, self.scrubbed)
+            .await
     }
 }
 
@@ -86,13 +87,13 @@ impl ReceiveRaw for ArchiveBytesReceiver {
     where
         T: DataSource,
     {
-        let mut archive = self.archive.write().await;
+        let mut archive = self.open_archive()?;
         let ctx = self.source_context()?;
         let source_paths = T::candidate_source_file_paths(&ctx)?;
         let mut last_resolve_error = None;
 
         for source_path in source_paths {
-            match resolve_archive_path(self.subdir.as_ref(), &mut *archive, &source_path) {
+            match resolve_archive_path(self.subdir.as_ref(), &mut archive, &source_path) {
                 Ok(filename) => {
                     if self.scrubbed {
                         tracing::debug!("Reading {} (scrubbed mode)", filename);
@@ -102,7 +103,7 @@ impl ReceiveRaw for ArchiveBytesReceiver {
 
                     let file = match archive.by_name(&filename) {
                         Ok(file) => file,
-                        Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
+                        Err(err) => return Err(eyre!("Failed to read file {filename} from archive: {err}")),
                     };
                     let mut reader = BufReader::new(file);
                     let mut data = String::new();
@@ -151,9 +152,9 @@ impl TryFrom<Bytes> for ArchiveBytesReceiver {
 
     fn try_from(bytes: Bytes) -> Result<Self> {
         tracing::debug!("Using in-memory archive");
-        let archive = ZipArchive::new(BufReader::new(Cursor::new(bytes)))?;
+        ZipArchive::new(BufReader::new(Cursor::new(bytes.clone())))?;
         Ok(Self {
-            archive: Arc::new(RwLock::new(IndexedArchive::new(archive))),
+            bytes,
             subdir: None,
             source_product: Arc::new(OnceLock::new()),
             scrubbed: false,
@@ -172,7 +173,7 @@ impl ArchiveBytesReceiver {
     where
         T: DataSource + DeserializeOwned,
     {
-        let mut archive = self.archive.write().await;
+        let mut archive = self.open_archive()?;
         let ctx = self.source_context()?;
         super::get_all_from_archive::<BufReader<Cursor<Bytes>>, T>(
             &mut archive,
@@ -184,7 +185,7 @@ impl ArchiveBytesReceiver {
 
     pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
         Self {
-            archive: self.archive.clone(),
+            bytes: self.bytes.clone(),
             subdir: Some(PathBuf::from(work_dir)),
             source_product: Arc::new(OnceLock::new()),
             scrubbed: self.scrubbed,
@@ -195,37 +196,52 @@ impl ArchiveBytesReceiver {
     where
         T: DeserializeOwned,
     {
-        let mut archive = self.archive.write().await;
-        let filename = resolve_archive_path(self.subdir.as_ref(), &mut *archive, filename)?;
+        let mut archive = self.open_archive()?;
+        let filename = resolve_archive_path(self.subdir.as_ref(), &mut archive, filename)?;
         tracing::debug!("Reading bundle file {}", filename);
-        let file = match archive.by_name(&filename) {
+        let mut file = match archive.by_name(&filename) {
             Ok(file) => file,
-            Err(_) => return Err(eyre!("Failed to read file {filename} from archive")),
+            Err(err) => return Err(eyre!("Failed to read file {filename} from archive: {err}")),
         };
-        let mut reader = BufReader::new(file);
-        if !crate::receiver::source_has_json(&mut reader)? {
+        if (self.scrubbed && super::supports_json_normalization(&filename)) || file.size() > super::MAX_SLICE_READ_BYTES
+        {
+            let mut reader = BufReader::with_capacity(super::STREAM_BUF_CAPACITY, file);
+            if !crate::receiver::source_has_json(&mut reader)? {
+                return Err(MissingSource::Empty { path: filename }.into());
+            }
+            return with_normalized_json_reader(&filename, reader, self.scrubbed, |reader| {
+                serde_json::from_reader(reader).map_err(Into::into)
+            });
+        }
+        let mut buf = Vec::with_capacity(super::capped_prealloc_capacity(file.size()));
+        file.read_to_end(&mut buf)?;
+        if !super::slice_has_json(&buf) {
             return Err(MissingSource::Empty { path: filename }.into());
         }
-        with_normalized_json_reader(&filename, reader, self.scrubbed, |reader| {
-            serde_json::from_reader(reader).map_err(Into::into)
-        })
+        serde_json::from_slice(&buf).map_err(Into::into)
     }
 
     pub async fn list_bundle_dirs(&self, dir: &str) -> Result<Vec<String>> {
-        let mut archive = self.archive.write().await;
-        super::list_archive_dirs(self.subdir.as_ref(), &mut *archive, dir)
+        let mut archive = self.open_archive()?;
+        super::list_archive_dirs(self.subdir.as_ref(), &mut archive, dir)
     }
 
     pub async fn read_bundle_lines(&self, filename: &str) -> Result<BoxStream<'static, Result<String>>> {
-        super::read_lines_from_archive(self.archive.clone(), self.subdir.clone(), filename).await
+        let archive = Arc::new(RwLock::new(self.open_archive()?));
+        super::read_lines_from_archive(archive, self.subdir.clone(), filename).await
     }
 
     /// Whether the bundle contains `dir` as a directory component within the
     /// receiver's working subdirectory. Used for platform indicators such as
     /// the `syscalls` folder.
     pub async fn has_bundle_dir(&self, dir: &str) -> bool {
-        let archive = self.archive.read().await;
-        super::archive_has_dir(archive.file_names(), self.subdir.as_ref(), dir)
+        match self.open_archive() {
+            Ok(archive) => super::archive_has_dir(archive.file_names(), self.subdir.as_ref(), dir),
+            Err(e) => {
+                tracing::debug!("Failed to open archive for has_bundle_dir: {}", e);
+                false
+            }
+        }
     }
 
     pub fn set_source_product(&self, product: &'static str) -> Result<()> {

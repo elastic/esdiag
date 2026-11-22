@@ -62,6 +62,10 @@ impl StreamingDataSource for MappingStats {
 
         deserializer.deserialize_map(MappingStatsVisitor { sender })
     }
+
+    fn deserialize_stream_buffered<R: std::io::BufRead>(reader: R, sender: Sender<Result<Self::Item>>) -> Result<()> {
+        crate::processor::diagnostic::json_stream::stream_root_map(reader, sender)
+    }
 }
 
 #[derive(Deserialize, Serialize)]
