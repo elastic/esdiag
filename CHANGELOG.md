@@ -49,7 +49,7 @@ published release notes, maintenance branches, and tagged history.
 - Limited node-name fallback enrichment to unambiguous matches, preserving exact node-ID precedence.
 - Preserved HTTP-client identifiers unchanged during scrub normalization.
 - Rejected unterminated JSON strings during scrubbed diagnostic reads instead of silently supplying a missing closing quote.
-- Improved diagnostic archive processing performance and memory efficiency by opening independent ZIP handles per read, using `from_slice` with a 256 MB cap for non-streaming JSON entries, framing streaming JSON entries into a reusable buffer, switching deflate decompression to `zlib-rs`, pre-serializing exporter batches outside writer locks, caching flattened Elasticsearch metadata values, and eliminating `serde` `Content` buffering and rayon spin-contention on hot paths (#333).
+- Improved diagnostic archive processing performance and memory efficiency by opening independent ZIP handles per read, using `from_slice` with a 256 MB cap for non-streaming JSON entries, framing streaming JSON entries into a reusable buffer, switching deflate decompression to `zlib-rs`, pre-serializing exporter batches outside writer locks, caching flattened Elasticsearch metadata values, and eliminating `serde` `Content` buffering and rayon spin-contention on hot paths (#324).
 
 ### Fixed
 

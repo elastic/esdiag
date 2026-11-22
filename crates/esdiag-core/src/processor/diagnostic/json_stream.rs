@@ -213,7 +213,6 @@ impl<R: BufRead> JsonScanner<R> {
                 }
                 self.consume_byte()?;
                 let mut first_field = true;
-                let mut key_buf = Vec::with_capacity(64);
                 loop {
                     match self.peek_non_ws()? {
                         Some(b'}') => {
@@ -233,9 +232,7 @@ impl<R: BufRead> JsonScanner<R> {
                         }
                     }
                     first_field = false;
-                    key_buf.clear();
-                    self.read_string_raw(&mut key_buf)?;
-                    serde_json::from_slice::<serde::de::IgnoredAny>(&key_buf)?;
+                    self.skip_validated_string()?;
                     self.expect_byte(b':')?;
                     self.skip_value_recursive(depth)?;
                 }
@@ -269,12 +266,7 @@ impl<R: BufRead> JsonScanner<R> {
                     self.skip_value_recursive(depth)?;
                 }
             }
-            b'"' => {
-                let mut str_buf = Vec::with_capacity(64);
-                self.read_string_raw(&mut str_buf)?;
-                serde_json::from_slice::<serde::de::IgnoredAny>(&str_buf)?;
-                Ok(())
-            }
+            b'"' => self.skip_validated_string(),
             b',' | b'}' | b']' | b':' => Err(eyre!("Unexpected token '{}' while expecting JSON value", first as char)),
             _ => {
                 let mut prim_buf = Vec::with_capacity(32);
@@ -302,6 +294,106 @@ impl<R: BufRead> JsonScanner<R> {
                 Ok(())
             }
         }
+    }
+
+    /// Incrementally validate and discard a JSON string in O(1) memory,
+    /// validating UTF-8, unescaped control characters, escape sequences,
+    /// and UTF-16 surrogate pairs across arbitrary `BufRead` chunk boundaries.
+    fn skip_validated_string(&mut self) -> Result<()> {
+        self.expect_byte(b'"')?;
+        let mut utf8_buf = [0u8; 4];
+        let mut utf8_len: usize = 0;
+        let mut utf8_expected: usize = 0;
+        let mut pending_high_surrogate = false;
+
+        loop {
+            let b = self.consume_byte()?;
+            if utf8_expected > 0 {
+                if (b & 0xC0) != 0x80 {
+                    return Err(eyre!("Invalid UTF-8 continuation byte in skipped JSON string"));
+                }
+                utf8_buf[utf8_len] = b;
+                utf8_len += 1;
+                if utf8_len == utf8_expected {
+                    if std::str::from_utf8(&utf8_buf[..utf8_len]).is_err() {
+                        return Err(eyre!("Invalid UTF-8 sequence in skipped JSON string"));
+                    }
+                    utf8_len = 0;
+                    utf8_expected = 0;
+                }
+                continue;
+            }
+
+            if pending_high_surrogate {
+                if b != b'\\' {
+                    return Err(eyre!("Lone high surrogate in skipped JSON string"));
+                }
+                if self.consume_byte()? != b'u' {
+                    return Err(eyre!("Lone high surrogate in skipped JSON string"));
+                }
+                let low = self.read_hex4()?;
+                if !(0xDC00..=0xDFFF).contains(&low) {
+                    return Err(eyre!("Invalid low surrogate in skipped JSON string"));
+                }
+                pending_high_surrogate = false;
+                continue;
+            }
+
+            match b {
+                b'"' => return Ok(()),
+                b'\\' => match self.consume_byte()? {
+                    b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => {}
+                    b'u' => {
+                        let code = self.read_hex4()?;
+                        if (0xD800..=0xDBFF).contains(&code) {
+                            pending_high_surrogate = true;
+                        } else if (0xDC00..=0xDFFF).contains(&code) {
+                            return Err(eyre!("Lone low surrogate in skipped JSON string"));
+                        }
+                    }
+                    other => {
+                        return Err(eyre!("Invalid escape '\\{}' in skipped JSON string", other as char));
+                    }
+                },
+                0x00..=0x1F => {
+                    return Err(eyre!("Unescaped control character 0x{:02X} in skipped JSON string", b));
+                }
+                0x20..=0x7F => {}
+                0xC2..=0xDF => {
+                    utf8_buf[0] = b;
+                    utf8_len = 1;
+                    utf8_expected = 2;
+                }
+                0xE0..=0xEF => {
+                    utf8_buf[0] = b;
+                    utf8_len = 1;
+                    utf8_expected = 3;
+                }
+                0xF0..=0xF4 => {
+                    utf8_buf[0] = b;
+                    utf8_len = 1;
+                    utf8_expected = 4;
+                }
+                _ => {
+                    return Err(eyre!("Invalid UTF-8 lead byte 0x{:02X} in skipped JSON string", b));
+                }
+            }
+        }
+    }
+
+    fn read_hex4(&mut self) -> Result<u16> {
+        let mut val: u16 = 0;
+        for _ in 0..4 {
+            let b = self.consume_byte()?;
+            let digit = match b {
+                b'0'..=b'9' => (b - b'0') as u16,
+                b'a'..=b'f' => (b - b'a' + 10) as u16,
+                b'A'..=b'F' => (b - b'A' + 10) as u16,
+                _ => return Err(eyre!("Invalid hex digit '{}' in unicode escape", b as char)),
+            };
+            val = (val << 4) | digit;
+        }
+        Ok(val)
     }
 
     fn expect_eof(&mut self) -> Result<()> {
@@ -663,6 +755,40 @@ mod tests {
                 !exported_ok2,
                 "subsequent entry must not be exported after syntax error: {}",
                 String::from_utf8_lossy(bad)
+            );
+        }
+    }
+
+    #[test]
+    fn skip_validated_string_handles_large_strings_and_escapes_across_small_chunks() {
+        // Small-chunk BufReader (7 bytes) forces escapes, surrogate pairs, UTF-8,
+        // and skipped object keys to split across buffer boundaries.
+        let big_payload = "a".repeat(256 * 1024);
+        let big_key = "k".repeat(64 * 1024);
+        let valid = format!(
+            r#"{{"skipped_obj":{{"{big_key}":"{big_payload}\n\t\"\\\u0041\uD83D\uDE00é🦀"}},"indices":{{"ok":{{"name":"kept","count":7}}}}}}"#
+        );
+        let reader = std::io::BufReader::with_capacity(7, std::io::Cursor::new(valid.as_bytes()));
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Result<(String, Entry)>>(16);
+        stream_nested_map(reader, "indices", tx).unwrap();
+        let item = rx.try_recv().unwrap().unwrap();
+        assert_eq!(item.0, "ok");
+        assert_eq!(item.1.count, 7);
+
+        // Invalid escapes, control chars, lone surrogates, and bad UTF-8 across chunk boundaries must fail.
+        for bad in [
+            br#"{"skip":"abc\x20def","indices":{}}"#.as_slice(),
+            b"{\"skip\":\"abc\ndef\",\"indices\":{}}".as_slice(),
+            br#"{"skip":"\uD83Dabc","indices":{}}"#.as_slice(),
+            br#"{"skip":"\uDE00","indices":{}}"#.as_slice(),
+            b"{\"skip\":\"\xFF\xFE\",\"indices\":{}}".as_slice(),
+            br#"{"skip_obj":{"bad\qkey":1},"indices":{}}"#.as_slice(),
+        ] {
+            let reader = std::io::BufReader::with_capacity(3, std::io::Cursor::new(bad));
+            let (tx, _rx) = tokio::sync::mpsc::channel::<Result<(String, Entry)>>(16);
+            assert!(
+                stream_nested_map(reader, "indices", tx).is_err(),
+                "expected error for malformed skipped string"
             );
         }
     }
