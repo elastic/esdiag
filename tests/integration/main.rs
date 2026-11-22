@@ -27,6 +27,8 @@ mod executor_cli_send_parity_tests;
 mod host_cli_tests;
 mod logstash_archive_processing_tests;
 mod logstash_collection_tests;
+#[cfg(feature = "mcp")]
+mod mcp_stdio_tests;
 mod provenance_writers_tests;
 mod raw_receiver_tests;
 mod runtime_mode_desktop_settings_tests;

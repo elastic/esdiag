@@ -17,7 +17,7 @@ use super::{
     outcome::{ChildExecutionOutcome, ExecutionEvent, ExecutionOutcome, Lifecycle, SendResult, Stage, StageStatus},
 };
 use crate::{
-    data::{Application, Platform, Uri},
+    data::{Application, KeystoreLocked, Platform, Uri},
     exporter::BundleExporter,
     processor::{
         CollectOptions, DiagnosticOutcome, Identifiers,
@@ -128,7 +128,7 @@ fn failed_stage(outcome: &ExecutionOutcome) -> FailedStage {
 /// (staged vs streaming), and run the selected stages. Phase 3 is and/or —
 /// `Export` (inside `Process`) and `Send` may both run in one job.
 pub async fn execute(job: Job) -> Result<JobOutcome> {
-    let outcome = execute_with_context(job, ExecutionContext::default()).await;
+    let mut outcome = execute_with_context(job, ExecutionContext::default()).await;
     if outcome.failed() {
         let failures = outcome
             .stages
@@ -141,9 +141,8 @@ pub async fn execute(job: Job) -> Result<JobOutcome> {
             .reduce(|joined, error| format!("{joined}; {error}"))
             .unwrap_or_else(|| "diagnostic report failed".to_string());
         let stage = failed_stage(&outcome);
-        return Err(
-            JobExecutionFailure::new(stage, job_outcome(outcome), eyre!("Job execution failed: {failures}")).into(),
-        );
+        let source = outcome.failure_error(format!("Job execution failed: {failures}"));
+        return Err(JobExecutionFailure::new(stage, job_outcome(outcome), source).into());
     }
     Ok(job_outcome(outcome))
 }
@@ -178,12 +177,7 @@ pub async fn execute_with_context(job: Job, context: ExecutionContext) -> Execut
     {
         Ok(resolved) => resolved,
         Err(error) => {
-            record_stage(
-                &context,
-                &mut outcome,
-                input_stage,
-                StageStatus::Failed(error.to_string()),
-            );
+            record_failure(&context, &mut outcome, input_stage, &error);
             record_blocked_outputs(&context, &job, &mut outcome, "Phase-1 input failed");
             return outcome;
         }
@@ -320,12 +314,7 @@ pub async fn execute_with_context(job: Job, context: ExecutionContext) -> Execut
         {
             Ok(collection) => collection,
             Err(error) => {
-                record_stage(
-                    &context,
-                    &mut outcome,
-                    Stage::Collect,
-                    StageStatus::Failed(error.to_string()),
-                );
+                record_failure(&context, &mut outcome, Stage::Collect, &error);
                 record_stage(
                     &context,
                     &mut outcome,
@@ -440,7 +429,7 @@ async fn run_independent_outputs(
                 outcome.send = Some(upload);
                 record_stage(context, outcome, Stage::Send, StageStatus::Succeeded);
             }
-            Err(error) => record_stage(context, outcome, Stage::Send, StageStatus::Failed(error.to_string())),
+            Err(error) => record_failure(context, outcome, Stage::Send, &error),
         }
     }
 }
@@ -647,7 +636,7 @@ fn apply_process_result(
             }
         }
         Err(error) => {
-            record_stage(context, outcome, Stage::Process, StageStatus::Failed(error.to_string()));
+            record_failure(context, outcome, Stage::Process, &error);
             record_stage(
                 context,
                 outcome,
@@ -656,6 +645,16 @@ fn apply_process_result(
             );
         }
     }
+}
+
+fn record_failure(context: &ExecutionContext, outcome: &mut ExecutionOutcome, stage: Stage, error: &eyre::Report) {
+    if outcome.locked_keystore.is_none() {
+        outcome.locked_keystore = error
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<KeystoreLocked>())
+            .cloned();
+    }
+    record_stage(context, outcome, stage, StageStatus::Failed(error.to_string()));
 }
 
 fn record_stage(context: &ExecutionContext, outcome: &mut ExecutionOutcome, stage: Stage, status: StageStatus) {

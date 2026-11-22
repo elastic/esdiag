@@ -18,9 +18,11 @@ That trade is a transfer, not a saving: cluster input tokens grow with each turn
 
 Claude Code discovers the skill through `.claude-plugin/plugin.json`. The explicit skill command is `/esdiag:esdiag`, or you can ask naturally.
 
+The plugin also registers the `esdiag mcp` server through `.mcp.json`, so an `esdiag` binary built with the `mcp` feature exposes ESDiag commands as MCP tools. The skill prefers those tools when they are present and falls back to the CLI otherwise. See [Use ESDiag as an MCP server](../docs/setup/mcp.md).
+
 ## Codex and OpenCode
 
-The package also includes `.codex-plugin/plugin.json`, pointing at the same generated `skills/` directory. Codex users working in this repository can invoke the canonical project skill as `$esdiag` without installing the package.
+The package also includes `.codex-plugin/plugin.json`, pointing at the same generated `skills/` directory and the `.mcp.json` server registration. Codex users working in this repository can invoke the canonical project skill as `$esdiag` without installing the package.
 
 OpenCode discovers the same canonical skill directly at `.agents/skills/esdiag/`. No JavaScript or TypeScript OpenCode plugin is needed because this integration is an Agent Skill, not an OpenCode event hook.
 

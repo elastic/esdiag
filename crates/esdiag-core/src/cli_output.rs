@@ -599,11 +599,15 @@ pub fn command_failure(error: &eyre::Report, setup_command: bool) -> CliFailure 
         .is_some();
     #[cfg(not(feature = "agent"))]
     let skill_failure = false;
-    if setup_command && !skill_failure && http_response_details(error).is_none() {
+    let keystore_locked = error.chain().any(|cause| cause.is::<crate::data::KeystoreLocked>());
+    if setup_command && !skill_failure && !keystore_locked && http_response_details(error).is_none() {
         return CliFailure::new(CliFailureCategory::SetupFailed, "setup failed");
     }
     structured_failure(error)
 }
+
+const KEYSTORE_LOCKED_MESSAGE: &str =
+    "keystore is locked; run `esdiag keystore unlock` from a terminal or set ESDIAG_KEYSTORE_PASSWORD";
 
 pub fn structured_failure(error: &eyre::Report) -> CliFailure {
     use crate::job::{FailedStage, JobExecutionFailure, SavedJobNotFound};
@@ -614,6 +618,14 @@ pub fn structured_failure(error: &eyre::Report) -> CliFailure {
     if let Some(missing_job) = error.downcast_ref::<SavedJobNotFound>() {
         return CliFailure::new(CliFailureCategory::NotFound, "saved job was not found")
             .resource(missing_job.name.clone());
+    }
+    #[cfg(feature = "keystore")]
+    if let Some(rejected) = error.downcast_ref::<crate::operations::job::SavedJobStdoutRejected>() {
+        return CliFailure::new(CliFailureCategory::InvalidInput, rejected.to_string());
+    }
+    let keystore_locked = error.chain().any(|cause| cause.is::<crate::data::KeystoreLocked>());
+    if keystore_locked && error.downcast_ref::<JobExecutionFailure>().is_none() {
+        return CliFailure::new(CliFailureCategory::KeystoreFailed, KEYSTORE_LOCKED_MESSAGE);
     }
     #[cfg(feature = "agent")]
     if let Some(agent_failure) = error.downcast_ref::<crate::agent::builder::AgentFailure>() {
@@ -687,7 +699,11 @@ pub fn structured_failure(error: &eyre::Report) -> CliFailure {
             destination: format!("https://upload.elastic.co/g/{slug}"),
         }),
     };
-    let mut failure = CliFailure::new(category, safe_failure_message(error));
+    let mut failure = if keystore_locked {
+        CliFailure::new(CliFailureCategory::KeystoreFailed, KEYSTORE_LOCKED_MESSAGE)
+    } else {
+        CliFailure::new(category, safe_failure_message(error))
+    };
     failure.failed_stage = Some(failed_stage);
     failure.retry_safe = Some(false);
     if completed.save.is_some() || completed.process.is_some() || completed.send.is_some() {
@@ -829,6 +845,29 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn locked_keystore_job_failure_keeps_recovery_metadata() {
+        use crate::job::{FailedStage, JobExecutionFailure, JobOutcome};
+        let error = eyre::Report::new(JobExecutionFailure::new(
+            FailedStage::Send,
+            JobOutcome {
+                bundle_path: Some("/tmp/bundle.zip".into()),
+                bundle_retained: true,
+                bundle_created: true,
+                ..JobOutcome::default()
+            },
+            eyre::Report::new(crate::data::KeystoreLocked { secret_id: None }),
+        ));
+
+        let failure = structured_failure(&error);
+
+        assert_eq!(failure.category, "keystore_failed");
+        assert!(matches!(failure.failed_stage, Some(JobStage::Send)));
+        assert_eq!(failure.retry_safe, Some(false));
+        let completed = failure.completed.expect("completed stages");
+        assert_eq!(completed.save.expect("saved bundle").path, "/tmp/bundle.zip");
     }
 
     #[test]

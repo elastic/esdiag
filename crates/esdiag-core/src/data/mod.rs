@@ -41,18 +41,18 @@ pub use keystore::get_active_unlock_keystore_password;
 #[cfg(all(feature = "server", feature = "keystore"))]
 pub use keystore::list_secret_entries;
 pub use keystore::{
-    BasicSecret, SecretAlreadyExists, SecretAuth, SecretEntry, UnlockLease, UnlockStatus, add_secret, authenticate,
-    clear_unlock_lease, create_keystore, default_unlock_ttl, enable_keystore_password_prompt, get_keystore_password,
-    get_keystore_path, get_password_for_secret_commands, get_secret, get_unlock_path, get_unlock_status,
-    keystore_exists, list_secret_names, parse_unlock_ttl, read_unlock_lease, remove_secret, resolve_secret_auth,
-    rotate_keystore_password, update_secret, upsert_secret_auth, validate_existing_keystore_password,
-    with_scoped_keystore_password, write_unlock_lease,
+    BasicSecret, KeystoreLocked, SecretAlreadyExists, SecretAuth, SecretEntry, UnlockLease, UnlockStatus, add_secret,
+    authenticate, clear_unlock_lease, create_keystore, default_unlock_ttl, enable_keystore_password_prompt,
+    get_keystore_password, get_keystore_path, get_password_for_secret_commands, get_secret, get_unlock_path,
+    get_unlock_status, keystore_exists, list_secret_names, parse_unlock_ttl, read_unlock_lease, remove_secret,
+    resolve_secret_auth, rotate_keystore_password, update_secret, upsert_secret_auth,
+    validate_existing_keystore_password, with_scoped_keystore_password, write_unlock_lease,
 };
 #[cfg(feature = "test-support")]
 pub use known_host::write_hosts_yml_for_tests;
 pub use known_host::{
     CredentialDirection, ElasticCloud, HostRole, HostRoute, KnownHost, KnownHostBuilder, KnownHostCliUpdate,
-    ResolvedKnownHost,
+    ResolvedKnownHost, embeds_url_userinfo,
 };
 pub use output_deployment::{OutputDeployment, OutputDeploymentSource, output_auth_from, runtime_output_is_declared};
 pub use platform::Platform;

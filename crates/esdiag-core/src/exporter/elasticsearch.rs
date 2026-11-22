@@ -348,6 +348,10 @@ impl Export for ElasticsearchExporter {
         tokio::spawn(async move {
             // Acquire semaphore permit inside task - blocks if at limit (backpressure)
             let _permit = semaphore.acquire().await.expect("Failed to acquire semaphore permit");
+            // A dropped receiver means the export was abandoned, such as a cancelled request.
+            if tx.is_closed() {
+                return;
+            }
 
             match exporter.batch_send(index, docs).await {
                 Ok(batch_response) => {

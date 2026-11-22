@@ -10,6 +10,19 @@ esdiag keystore status
 If `unlock_active` is false, ask the user to run `esdiag keystore unlock` in
 their terminal. Keep credentials out of the conversation.
 
+## MCP tools
+
+When the session offers the `esdiag` MCP tools, call the tool named after the
+command instead of running it: `keystore_status`, `host_list`, `collect`,
+`process`, `send`, `job_run`, `agent_ask`, `setup_output`, and so on. The
+guidance below applies to both. Each tool returns the same structured result
+as `--format json`, and failures carry the same `category`.
+
+The MCP server never prompts for a password. A `keystore_failed` result means
+the keystore is locked: ask the user to run `esdiag keystore unlock` in their
+terminal, then retry. Tools reject output `-`; pass a directory or saved output
+host. Saved host credentials are referenced by keystore `secret` name only.
+
 ## Install the skill
 
 When asked to install this skill for a coding agent, run `esdiag setup skills`.

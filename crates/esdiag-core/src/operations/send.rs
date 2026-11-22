@@ -10,7 +10,7 @@ use eyre::Result;
 
 #[derive(Debug, Clone)]
 pub struct SendInput {
-    /// Archive file name or path; bare names resolve against the default upload directory.
+    /// Archive file name or path; relative paths, including bare names, resolve against the current working directory.
     pub file_name: String,
     pub upload_id: String,
     pub api_url: String,

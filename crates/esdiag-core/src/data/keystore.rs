@@ -689,10 +689,30 @@ where
         *prompted = Some(password.clone());
         return Ok(password);
     }
-    Err(eyre!(
-        "{ESDIAG_KEYSTORE_PASSWORD} is not set and no valid unlock lease is available; cannot decrypt secrets from keystore."
-    ))
+    Err(KeystoreLocked { secret_id: None }.into())
 }
+
+/// No keystore password is available without prompting: no scoped password,
+/// no `ESDIAG_KEYSTORE_PASSWORD`, and no valid unlock lease.
+#[derive(Debug, Clone)]
+pub struct KeystoreLocked {
+    /// The host secret that needed the password, when known.
+    pub secret_id: Option<String>,
+}
+
+impl std::fmt::Display for KeystoreLocked {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(secret_id) = &self.secret_id {
+            write!(formatter, "Host references secret '{secret_id}' but ")?;
+        }
+        write!(
+            formatter,
+            "{ESDIAG_KEYSTORE_PASSWORD} is not set and no valid unlock lease is available; cannot decrypt secrets from keystore."
+        )
+    }
+}
+
+impl std::error::Error for KeystoreLocked {}
 
 #[cfg(all(feature = "server", feature = "keystore"))]
 pub fn get_active_unlock_keystore_password() -> Result<Option<Secret<String>>> {

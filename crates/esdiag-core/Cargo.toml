@@ -16,6 +16,7 @@ setup = ["dep:elasticrc", "dep:dotenvy"]
 server = []
 keystore = []
 elasticrc = ["dep:elasticrc"]
+mcp = ["dep:rmcp"]
 test-support = []
 
 [dependencies]
@@ -39,6 +40,7 @@ rayon = "1.12"
 redact.workspace = true
 regex.workspace = true
 reqwest.workspace = true
+rmcp = { workspace = true, optional = true, features = ["server", "macros"] }
 rpassword.workspace = true
 rust-embed.workspace = true
 semver.workspace = true
@@ -48,6 +50,7 @@ serde_with = { version = "3.24.0", default-features = false, features = ["macros
 sha2 = "0.10.9"
 tempfile.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 tracing.workspace = true
 url.workspace = true
 urlencoding.workspace = true
@@ -59,6 +62,7 @@ zip.workspace = true
 axum.workspace = true
 flate2.workspace = true
 kibana-sync = { workspace = true, features = ["test-support"] }
+rmcp = { workspace = true, features = ["client"] }
 tokio = { workspace = true, features = ["fs", "test-util"] }
 tokio-test = "0.4.6"
 
