@@ -106,7 +106,7 @@ Alternative considered: stateful sessions (`LocalSessionManager`). Rejected: ses
 |---|---|
 | `mcp` | `esdiag-core/mcp`, `esdiag-gui?/mcp`, root `rmcp` (`transport-io`) |
 
-`esdiag-gui/mcp` enables `esdiag-core/mcp` and `rmcp` with `transport-streamable-http-server`. `WebFeature::Mcp` is always parseable. `ServerPolicy` rejects it at startup without `esdiag-gui/mcp`, mirroring `job-builder` without `keystore`. `ServerPolicy::allows_mcp()` gates the route. Service mode does not strip `mcp` the way it strips local-artifact features, because the service policy, not route omission, enforces the envelope.
+`esdiag-gui` has no `server` feature; it is the server crate, and root `server` is what adds it as a dependency. Its new `mcp` feature enables `esdiag-core/mcp` and `rmcp` with `transport-streamable-http-server`. Because root `mcp` forwards it as `esdiag-gui?/mcp`, it takes effect only when root `server` is also enabled. `WebFeature::Mcp` is always parseable. `ServerPolicy` rejects it at startup without `esdiag-gui/mcp`, mirroring `job-builder` without `keystore`. `ServerPolicy::allows_mcp()` gates the route. Service mode does not strip `mcp` the way it strips local-artifact features, because the service policy, not route omission, enforces the envelope.
 
 Cargo unifies features per package, so whenever `esdiag-gui/mcp` is in the build graph, the single `rmcp` that core also links has the HTTP transport enabled. The boundary is therefore about code, not compiled features: only `esdiag-gui` contains HTTP transport integration, and `esdiag-core` never names the transport. CI checks the compiled boundary in an isolated `cargo tree -p esdiag-core --features mcp` build, where no GUI dependency can enable it.
 
