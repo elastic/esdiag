@@ -36,4 +36,4 @@
 
 - [x] 6.1 Run `cargo test --workspace` and `cargo clippy --workspace --all-targets --all-features`; tests pass and clippy reports no warnings beyond the base branch's count
 - [x] 6.2 Verify the `workspace.yml` layering checks pass locally: `esdiag-core` with `mcp` does not depend on `esdiag-gui`
-- [ ] 6.3 Register `esdiag mcp` in Claude Code, run `host_list` and `job_run` on a saved job, and confirm the structured results and progress display
+- [x] 6.3 Register `esdiag mcp` in Claude Code, run `host_list` and `job_run` on a saved job, and confirm the structured results and progress display
