@@ -108,21 +108,15 @@ impl<R: BufRead> JsonScanner<R> {
     }
 
     /// Capture one complete JSON value (object, array, string, number, bool, null)
-    /// into `out`. If `out` is `None`, the value is skipped without allocating.
-    fn scan_value(&mut self, mut out: Option<&mut Vec<u8>>) -> Result<()> {
+    /// into `out`.
+    fn capture_value(&mut self, out: &mut Vec<u8>) -> Result<()> {
         let first = match self.peek_non_ws()? {
             Some(b) => b,
             None => return Err(eyre!("Unexpected EOF while expecting JSON value")),
         };
 
         match first {
-            b'"' => {
-                if let Some(buf) = out {
-                    self.read_string_raw(buf)
-                } else {
-                    self.skip_string()
-                }
-            }
+            b'"' => self.read_string_raw(out),
             b'{' | b'[' => {
                 let mut depth: usize = 0;
                 let mut in_string = false;
@@ -158,9 +152,7 @@ impl<R: BufRead> JsonScanner<R> {
                                     depth -= 1;
                                     i += 1;
                                     if depth == 0 {
-                                        if let Some(dest) = out.as_deref_mut() {
-                                            dest.extend_from_slice(&buf[..i]);
-                                        }
+                                        out.extend_from_slice(&buf[..i]);
                                         self.reader.consume(i);
                                         return Ok(());
                                     }
@@ -171,13 +163,12 @@ impl<R: BufRead> JsonScanner<R> {
                             }
                         }
                     }
-                    if let Some(dest) = out.as_deref_mut() {
-                        dest.extend_from_slice(buf);
-                    }
+                    out.extend_from_slice(buf);
                     let len = buf.len();
                     self.reader.consume(len);
                 }
             }
+            b',' | b'}' | b']' | b':' => Err(eyre!("Unexpected token '{}' while expecting JSON value", first as char)),
             _ => {
                 // Primitive: number, true, false, null. Scan until delimiter or whitespace.
                 loop {
@@ -189,15 +180,11 @@ impl<R: BufRead> JsonScanner<R> {
                         .iter()
                         .position(|b| matches!(b, b' ' | b'\t' | b'\r' | b'\n' | b',' | b'}' | b']'))
                     {
-                        if let Some(dest) = out.as_deref_mut() {
-                            dest.extend_from_slice(&buf[..pos]);
-                        }
+                        out.extend_from_slice(&buf[..pos]);
                         self.reader.consume(pos);
                         return Ok(());
                     }
-                    if let Some(dest) = out.as_deref_mut() {
-                        dest.extend_from_slice(buf);
-                    }
+                    out.extend_from_slice(buf);
                     let len = buf.len();
                     self.reader.consume(len);
                 }
@@ -205,29 +192,125 @@ impl<R: BufRead> JsonScanner<R> {
         }
     }
 
-    fn skip_string(&mut self) -> Result<()> {
-        self.expect_byte(b'"')?;
-        let mut escaped = false;
-        loop {
-            let buf = self.reader.fill_buf()?;
-            if buf.is_empty() {
-                return Err(eyre!("Unexpected EOF inside JSON string"));
-            }
-            let mut i = 0;
-            while i < buf.len() {
-                let b = buf[i];
-                if escaped {
-                    escaped = false;
-                } else if b == b'\\' {
-                    escaped = true;
-                } else if b == b'"' {
-                    self.reader.consume(i + 1);
-                    return Ok(());
+    /// Skip and validate one complete JSON value with bounded memory without
+    /// over-reading past the value boundary in the underlying `BufRead`.
+    fn skip_value(&mut self) -> Result<()> {
+        let mut depth: usize = 0;
+        self.skip_value_recursive(&mut depth)
+    }
+
+    fn skip_value_recursive(&mut self, depth: &mut usize) -> Result<()> {
+        const MAX_DEPTH: usize = 128;
+        let first = match self.peek_non_ws()? {
+            Some(b) => b,
+            None => return Err(eyre!("Unexpected EOF while expecting JSON value")),
+        };
+        match first {
+            b'{' => {
+                *depth += 1;
+                if *depth > MAX_DEPTH {
+                    return Err(eyre!("JSON nesting depth exceeded while skipping value"));
                 }
-                i += 1;
+                self.consume_byte()?;
+                let mut first_field = true;
+                let mut key_buf = Vec::with_capacity(64);
+                loop {
+                    match self.peek_non_ws()? {
+                        Some(b'}') => {
+                            self.consume_byte()?;
+                            *depth -= 1;
+                            return Ok(());
+                        }
+                        Some(b',') if !first_field => {
+                            self.consume_byte()?;
+                            if matches!(self.peek_non_ws()?, Some(b'}')) {
+                                return Err(eyre!("Trailing comma in skipped JSON object"));
+                            }
+                        }
+                        Some(_) if first_field => {}
+                        other => {
+                            return Err(eyre!("Unexpected token in skipped object: {:?}", other));
+                        }
+                    }
+                    first_field = false;
+                    key_buf.clear();
+                    self.read_string_raw(&mut key_buf)?;
+                    serde_json::from_slice::<serde::de::IgnoredAny>(&key_buf)?;
+                    self.expect_byte(b':')?;
+                    self.skip_value_recursive(depth)?;
+                }
             }
-            let len = buf.len();
-            self.reader.consume(len);
+            b'[' => {
+                *depth += 1;
+                if *depth > MAX_DEPTH {
+                    return Err(eyre!("JSON nesting depth exceeded while skipping value"));
+                }
+                self.consume_byte()?;
+                let mut first_elem = true;
+                loop {
+                    match self.peek_non_ws()? {
+                        Some(b']') => {
+                            self.consume_byte()?;
+                            *depth -= 1;
+                            return Ok(());
+                        }
+                        Some(b',') if !first_elem => {
+                            self.consume_byte()?;
+                            if matches!(self.peek_non_ws()?, Some(b']')) {
+                                return Err(eyre!("Trailing comma in skipped JSON array"));
+                            }
+                        }
+                        Some(_) if first_elem => {}
+                        other => {
+                            return Err(eyre!("Unexpected token in skipped array: {:?}", other));
+                        }
+                    }
+                    first_elem = false;
+                    self.skip_value_recursive(depth)?;
+                }
+            }
+            b'"' => {
+                let mut str_buf = Vec::with_capacity(64);
+                self.read_string_raw(&mut str_buf)?;
+                serde_json::from_slice::<serde::de::IgnoredAny>(&str_buf)?;
+                Ok(())
+            }
+            b',' | b'}' | b']' | b':' => Err(eyre!("Unexpected token '{}' while expecting JSON value", first as char)),
+            _ => {
+                let mut prim_buf = Vec::with_capacity(32);
+                loop {
+                    let buf = self.reader.fill_buf()?;
+                    if buf.is_empty() {
+                        break;
+                    }
+                    if let Some(pos) = buf
+                        .iter()
+                        .position(|b| matches!(b, b' ' | b'\t' | b'\r' | b'\n' | b',' | b'}' | b']'))
+                    {
+                        prim_buf.extend_from_slice(&buf[..pos]);
+                        self.reader.consume(pos);
+                        break;
+                    }
+                    prim_buf.extend_from_slice(buf);
+                    let len = buf.len();
+                    self.reader.consume(len);
+                    if prim_buf.len() > 1024 {
+                        return Err(eyre!("Invalid JSON primitive while skipping value"));
+                    }
+                }
+                serde_json::from_slice::<serde::de::IgnoredAny>(&prim_buf)?;
+                Ok(())
+            }
+        }
+    }
+
+    fn expect_eof(&mut self) -> Result<()> {
+        match self.peek_non_ws()? {
+            None => Ok(()),
+            Some(other) => Err(eyre!(
+                "Unexpected trailing byte '{}' after root JSON value",
+                other as char
+            )),
         }
     }
 }
@@ -240,7 +323,8 @@ where
     V: DeserializeOwned + Send + 'static,
 {
     let mut scanner = JsonScanner::new(reader);
-    stream_map_body(&mut scanner, &sender)
+    stream_map_body(&mut scanner, &sender)?;
+    scanner.expect_eof()
 }
 
 /// Stream entries `(String, V)` from a named map field inside a top-level JSON object:
@@ -258,10 +342,13 @@ where
         match scanner.peek_non_ws()? {
             Some(b'}') => {
                 scanner.consume_byte()?;
-                return Ok(());
+                return scanner.expect_eof();
             }
             Some(b',') if !first => {
                 scanner.consume_byte()?;
+                if matches!(scanner.peek_non_ws()?, Some(b'}')) {
+                    return Err(eyre!("Trailing comma in root JSON object"));
+                }
             }
             Some(_) if first => {}
             other => {
@@ -274,7 +361,7 @@ where
         if key == field {
             stream_map_body(&mut scanner, &sender)?;
         } else {
-            scanner.scan_value(None)?;
+            scanner.skip_value()?;
         }
     }
 }
@@ -296,10 +383,13 @@ where
         match scanner.peek_non_ws()? {
             Some(b'}') => {
                 scanner.consume_byte()?;
-                return Ok(());
+                return scanner.expect_eof();
             }
             Some(b',') if !first => {
                 scanner.consume_byte()?;
+                if matches!(scanner.peek_non_ws()?, Some(b'}')) {
+                    return Err(eyre!("Trailing comma in root JSON object"));
+                }
             }
             Some(_) if first => {}
             other => {
@@ -312,7 +402,7 @@ where
         if key == field {
             stream_array_body(&mut scanner, &sender)?;
         } else {
-            scanner.scan_value(None)?;
+            scanner.skip_value()?;
         }
     }
 }
@@ -336,6 +426,9 @@ where
             }
             Some(b',') if !first => {
                 scanner.consume_byte()?;
+                if matches!(scanner.peek_non_ws()?, Some(b'}')) {
+                    return Err(eyre!("Trailing comma in JSON map"));
+                }
             }
             Some(_) if first => {}
             other => {
@@ -347,12 +440,12 @@ where
         scanner.expect_byte(b':')?;
 
         if sender_closed {
-            scanner.scan_value(None)?;
+            scanner.skip_value()?;
             continue;
         }
 
         val_buf.clear();
-        scanner.scan_value(Some(&mut val_buf))?;
+        scanner.capture_value(&mut val_buf)?;
         let value: V = serde_json::from_slice(&val_buf)?;
         if sender.blocking_send(Ok((key, value))).is_err() {
             sender_closed = true;
@@ -382,6 +475,9 @@ where
             }
             Some(b',') if !first => {
                 scanner.consume_byte()?;
+                if matches!(scanner.peek_non_ws()?, Some(b']')) {
+                    return Err(eyre!("Trailing comma in JSON array"));
+                }
             }
             Some(_) if first => {}
             other => {
@@ -391,12 +487,12 @@ where
         first = false;
 
         if sender_closed {
-            scanner.scan_value(None)?;
+            scanner.skip_value()?;
             continue;
         }
 
         val_buf.clear();
-        scanner.scan_value(Some(&mut val_buf))?;
+        scanner.capture_value(&mut val_buf)?;
         match serde_json::from_slice::<V>(&val_buf) {
             Ok(item) => {
                 if sender.blocking_send(Ok(item)).is_err() {
@@ -404,6 +500,11 @@ where
                 }
             }
             Err(err) => {
+                // Only treat semantically invalid (type/data) frames as recoverable
+                // per-item errors. Validate the entire frame as JSON syntax first so
+                // malformed JSON (including syntax errors hidden after an early type
+                // error) aborts the stream instead of exporting later entries.
+                serde_json::from_slice::<serde::de::IgnoredAny>(&val_buf)?;
                 if sender.blocking_send(Err(eyre!(err))).is_err() {
                     sender_closed = true;
                 }
@@ -499,5 +600,70 @@ mod tests {
         assert_eq!(results[0].as_ref().unwrap().name, "ok-1");
         assert!(results[1].is_err());
         assert_eq!(results[2].as_ref().unwrap().name, "ok-2");
+    }
+
+    #[test]
+    fn stream_nested_map_rejects_malformed_skipped_values() {
+        for bad in [
+            br#"{"_shards":garbage,"indices":{}}"#.as_slice(),
+            br#"{"_shards":[},"indices":{}}"#.as_slice(),
+            br#"{"_shards":{"a":1,},"indices":{}}"#.as_slice(),
+            br#"{"_shards":[1,],"indices":{}}"#.as_slice(),
+            br#"{"_shards":"\uZZZZ","indices":{}}"#.as_slice(),
+            br#"{"indices":{}} trailing"#.as_slice(),
+        ] {
+            let (tx, _rx) = tokio::sync::mpsc::channel::<Result<(String, Entry)>>(16);
+            assert!(
+                stream_nested_map(std::io::Cursor::new(bad), "indices", tx).is_err(),
+                "expected error for malformed input: {}",
+                String::from_utf8_lossy(bad)
+            );
+        }
+    }
+
+    #[test]
+    fn stream_map_validates_entries_after_receiver_closes() {
+        let json = br#"{
+            "a": {"name": "ok", "count": 1},
+            "b": {"name": "malformed", trailing}
+        }"#;
+        let (tx, rx) = tokio::sync::mpsc::channel::<Result<(String, Entry)>>(1);
+        drop(rx);
+        assert!(stream_root_map(std::io::Cursor::new(&json[..]), tx).is_err());
+    }
+
+    #[test]
+    fn stream_nested_array_aborts_on_syntax_errors_including_hidden_ones() {
+        for bad in [
+            // Trailing comma
+            br#"{"snapshots":[{"name":"ok","count":1},]}"#.as_slice(),
+            // Doubled comma (empty frame)
+            br#"{"snapshots":[{"name":"ok","count":1},,{"name":"ok2","count":2}]}"#.as_slice(),
+            // Syntax error inside frame
+            br#"{"snapshots":[{"name":"ok","count":1},{bad},{"name":"ok2","count":2}]}"#.as_slice(),
+            // Type error early in frame hiding a syntax error later in the same frame
+            br#"{"snapshots":[{"name":123,"count":bad_token},{"name":"ok2","count":2}]}"#.as_slice(),
+        ] {
+            let (tx, mut rx) = tokio::sync::mpsc::channel::<Result<Entry>>(16);
+            let res = stream_nested_array(std::io::Cursor::new(bad), "snapshots", tx);
+            assert!(
+                res.is_err(),
+                "expected stream error for malformed array: {}",
+                String::from_utf8_lossy(bad)
+            );
+            let mut exported_ok2 = false;
+            while let Ok(item) = rx.try_recv() {
+                if let Ok(entry) = item
+                    && entry.name == "ok2"
+                {
+                    exported_ok2 = true;
+                }
+            }
+            assert!(
+                !exported_ok2,
+                "subsequent entry must not be exported after syntax error: {}",
+                String::from_utf8_lossy(bad)
+            );
+        }
     }
 }

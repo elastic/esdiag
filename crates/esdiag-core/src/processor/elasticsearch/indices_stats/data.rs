@@ -138,6 +138,89 @@ impl<'de> Deserialize<'de> for ShardEntry {
     where
         D: serde::Deserializer<'de>,
     {
+        enum Field {
+            Routing,
+            Commit,
+            SeqNo,
+            RetentionLeases,
+            ShardPath,
+            SearchIdle,
+            SearchIdleTime,
+            Bulk,
+            Completion,
+            DenseVector,
+            Docs,
+            Fielddata,
+            Flush,
+            Get,
+            Indexing,
+            Merges,
+            QueryCache,
+            Recovery,
+            Refresh,
+            RequestCache,
+            Search,
+            Segments,
+            ShardStats,
+            SparseVector,
+            Store,
+            Translog,
+            Warmer,
+            Ignore,
+        }
+
+        impl<'de> Deserialize<'de> for Field {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct FieldVisitor;
+
+                impl serde::de::Visitor<'_> for FieldVisitor {
+                    type Value = Field;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                        formatter.write_str("ShardEntry field name")
+                    }
+
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<Field, E> {
+                        Ok(match value {
+                            "routing" => Field::Routing,
+                            "commit" => Field::Commit,
+                            "seq_no" => Field::SeqNo,
+                            "retention_leases" => Field::RetentionLeases,
+                            "shard_path" => Field::ShardPath,
+                            "search_idle" => Field::SearchIdle,
+                            "search_idle_time" => Field::SearchIdleTime,
+                            "bulk" => Field::Bulk,
+                            "completion" => Field::Completion,
+                            "dense_vector" => Field::DenseVector,
+                            "docs" => Field::Docs,
+                            "fielddata" => Field::Fielddata,
+                            "flush" => Field::Flush,
+                            "get" => Field::Get,
+                            "indexing" => Field::Indexing,
+                            "merges" => Field::Merges,
+                            "query_cache" => Field::QueryCache,
+                            "recovery" => Field::Recovery,
+                            "refresh" => Field::Refresh,
+                            "request_cache" => Field::RequestCache,
+                            "search" => Field::Search,
+                            "segments" => Field::Segments,
+                            "shard_stats" => Field::ShardStats,
+                            "sparse_vector" => Field::SparseVector,
+                            "store" => Field::Store,
+                            "translog" => Field::Translog,
+                            "warmer" => Field::Warmer,
+                            _ => Field::Ignore,
+                        })
+                    }
+                }
+
+                deserializer.deserialize_identifier(FieldVisitor)
+            }
+        }
+
         struct ShardEntryVisitor;
 
         impl<'de> serde::de::Visitor<'de> for ShardEntryVisitor {
@@ -180,36 +263,36 @@ impl<'de> Deserialize<'de> for ShardEntry {
                 let mut translog: Option<Translog> = None;
                 let mut warmer: Option<Warmer> = None;
 
-                while let Some(key) = map.next_key::<&str>()? {
+                while let Some(key) = map.next_key::<Field>()? {
                     match key {
-                        "routing" => routing = Some(map.next_value()?),
-                        "commit" => commit = Some(map.next_value()?),
-                        "seq_no" => seq_no = Some(map.next_value()?),
-                        "retention_leases" => retention_leases = Some(map.next_value()?),
-                        "shard_path" => shard_path = map.next_value()?,
-                        "search_idle" => search_idle = map.next_value()?,
-                        "search_idle_time" => search_idle_time = map.next_value()?,
-                        "bulk" => bulk = map.next_value()?,
-                        "completion" => completion = map.next_value()?,
-                        "dense_vector" => dense_vector = map.next_value()?,
-                        "docs" => docs = map.next_value()?,
-                        "fielddata" => fielddata = map.next_value()?,
-                        "flush" => flush = map.next_value()?,
-                        "get" => get = map.next_value()?,
-                        "indexing" => indexing = map.next_value()?,
-                        "merges" => merges = map.next_value()?,
-                        "query_cache" => query_cache = map.next_value()?,
-                        "recovery" => recovery = map.next_value()?,
-                        "refresh" => refresh = map.next_value()?,
-                        "request_cache" => request_cache = map.next_value()?,
-                        "search" => search = map.next_value()?,
-                        "segments" => segments = map.next_value()?,
-                        "shard_stats" => shard_stats = Some(map.next_value()?),
-                        "sparse_vector" => sparse_vector = map.next_value()?,
-                        "store" => store = map.next_value()?,
-                        "translog" => translog = map.next_value()?,
-                        "warmer" => warmer = map.next_value()?,
-                        _ => {
+                        Field::Routing => routing = Some(map.next_value()?),
+                        Field::Commit => commit = Some(map.next_value()?),
+                        Field::SeqNo => seq_no = Some(map.next_value()?),
+                        Field::RetentionLeases => retention_leases = Some(map.next_value()?),
+                        Field::ShardPath => shard_path = map.next_value()?,
+                        Field::SearchIdle => search_idle = map.next_value()?,
+                        Field::SearchIdleTime => search_idle_time = map.next_value()?,
+                        Field::Bulk => bulk = map.next_value()?,
+                        Field::Completion => completion = map.next_value()?,
+                        Field::DenseVector => dense_vector = map.next_value()?,
+                        Field::Docs => docs = map.next_value()?,
+                        Field::Fielddata => fielddata = map.next_value()?,
+                        Field::Flush => flush = map.next_value()?,
+                        Field::Get => get = map.next_value()?,
+                        Field::Indexing => indexing = map.next_value()?,
+                        Field::Merges => merges = map.next_value()?,
+                        Field::QueryCache => query_cache = map.next_value()?,
+                        Field::Recovery => recovery = map.next_value()?,
+                        Field::Refresh => refresh = map.next_value()?,
+                        Field::RequestCache => request_cache = map.next_value()?,
+                        Field::Search => search = map.next_value()?,
+                        Field::Segments => segments = map.next_value()?,
+                        Field::ShardStats => shard_stats = Some(map.next_value()?),
+                        Field::SparseVector => sparse_vector = map.next_value()?,
+                        Field::Store => store = map.next_value()?,
+                        Field::Translog => translog = map.next_value()?,
+                        Field::Warmer => warmer = map.next_value()?,
+                        Field::Ignore => {
                             let _ = map.next_value::<serde::de::IgnoredAny>()?;
                         }
                     }

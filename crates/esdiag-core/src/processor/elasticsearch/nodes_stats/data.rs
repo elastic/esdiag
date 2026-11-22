@@ -293,6 +293,47 @@ impl<'de> Deserialize<'de> for IngestProcessor {
     where
         D: Deserializer<'de>,
     {
+        enum Field {
+            Type,
+            Stats,
+            Count,
+            TimeInMillis,
+            Current,
+            Failed,
+            Ignore,
+        }
+
+        impl<'de> Deserialize<'de> for Field {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                struct FieldVisitor;
+
+                impl serde::de::Visitor<'_> for FieldVisitor {
+                    type Value = Field;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                        formatter.write_str("ingest processor stats field name")
+                    }
+
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<Field, E> {
+                        Ok(match value {
+                            "type" => Field::Type,
+                            "stats" => Field::Stats,
+                            "count" => Field::Count,
+                            "time_in_millis" => Field::TimeInMillis,
+                            "current" => Field::Current,
+                            "failed" => Field::Failed,
+                            _ => Field::Ignore,
+                        })
+                    }
+                }
+
+                deserializer.deserialize_identifier(FieldVisitor)
+            }
+        }
+
         struct IngestProcessorVisitor;
 
         impl<'de> serde::de::Visitor<'de> for IngestProcessorVisitor {
@@ -313,15 +354,15 @@ impl<'de> Deserialize<'de> for IngestProcessor {
                 let mut current: Option<u64> = None;
                 let mut failed: Option<u64> = None;
 
-                while let Some(key) = map.next_key::<&str>()? {
+                while let Some(key) = map.next_key::<Field>()? {
                     match key {
-                        "type" => r#type = Some(map.next_value()?),
-                        "stats" => stats = Some(map.next_value()?),
-                        "count" => count = Some(map.next_value()?),
-                        "time_in_millis" => time_in_millis = Some(map.next_value()?),
-                        "current" => current = Some(map.next_value()?),
-                        "failed" => failed = Some(map.next_value()?),
-                        _ => {
+                        Field::Type => r#type = Some(map.next_value()?),
+                        Field::Stats => stats = Some(map.next_value()?),
+                        Field::Count => count = Some(map.next_value()?),
+                        Field::TimeInMillis => time_in_millis = Some(map.next_value()?),
+                        Field::Current => current = Some(map.next_value()?),
+                        Field::Failed => failed = Some(map.next_value()?),
+                        Field::Ignore => {
                             let _ = map.next_value::<serde::de::IgnoredAny>()?;
                         }
                     }
