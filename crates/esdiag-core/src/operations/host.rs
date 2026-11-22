@@ -55,7 +55,7 @@ pub async fn host_add(input: HostAddInput) -> Result<CommandOutcome> {
     if KnownHost::get_known(&name).is_some() {
         return Err(eyre!("Host '{name}' already exists"));
     }
-    let (secret_auth, keystore_password) = resolve_add_host_secret_auth(&name, &mut update, keystore_password)?
+    let (secret_auth, resolved_password) = resolve_add_host_secret_auth(&name, &mut update, keystore_password)?
         .map(|resolved| (resolved.auth, resolved.keystore_password))
         .unzip();
     let host = if url_template {
@@ -65,7 +65,15 @@ pub async fn host_add(input: HostAddInput) -> Result<CommandOutcome> {
     } else {
         build_host_from_definition(app, &target, false, &update, secret_auth)?
     };
-    save_host(&name, host.clone(), "added", !host.is_template(), keystore_password).await?;
+    save_host(
+        &name,
+        host.clone(),
+        "added",
+        !host.is_template(),
+        resolved_password,
+        keystore_password,
+    )
+    .await?;
     Ok(CommandOutcome::Completed(CliOutcome::HostAdded {
         host: host_result(name, &host),
     }))
@@ -84,11 +92,19 @@ pub async fn host_update(input: HostUpdateInput) -> Result<CommandOutcome> {
         ));
     }
     let existing = KnownHost::get_known(&name).ok_or_else(|| eyre!("Host '{name}' not found"))?;
-    let (secret_auth, keystore_password) = resolve_host_secret_auth(update.secret.as_deref(), keystore_password)?
+    let (secret_auth, resolved_password) = resolve_host_secret_auth(update.secret.as_deref(), keystore_password)?
         .map(|resolved| (resolved.auth, resolved.keystore_password))
         .unzip();
     let host = existing.merge_cli_update(&update, secret_auth)?;
-    save_host(&name, host.clone(), "updated", !host.is_template(), keystore_password).await?;
+    save_host(
+        &name,
+        host.clone(),
+        "updated",
+        !host.is_template(),
+        resolved_password,
+        keystore_password,
+    )
+    .await?;
     Ok(CommandOutcome::Completed(CliOutcome::HostUpdated {
         host: host_result(name, &host),
     }))
@@ -195,15 +211,24 @@ fn build_host_from_definition(
     }
 }
 
-/// Connection validation reads the host's secret again, so a password resolved
-/// while building the host is scoped over it.
+/// Connection validation reads the host's secret again, so the password is
+/// scoped over it: the one resolved while building the host, otherwise one
+/// asked of `keystore_password` when validation will read an inherited or
+/// template secret.
 async fn save_host(
     name: &str,
     host: KnownHost,
     action: &str,
     validate_connection: bool,
-    keystore_password: Option<Secret<String>>,
+    resolved_password: Option<Secret<String>>,
+    keystore_password: KeystorePasswordSource,
 ) -> Result<String> {
+    let keystore_password = match resolved_password {
+        Some(password) => Some(password),
+        // On failure, validation reports the missing password itself.
+        None if validate_connection && host.requires_keystore_secret() => keystore_password().ok(),
+        None => None,
+    };
     let save = validate_and_save_host(name, host, action, validate_connection);
     match keystore_password {
         Some(keystore_password) => with_scoped_keystore_password(keystore_password, save).await,
@@ -501,5 +526,16 @@ mod tests {
         })
         .await
         .expect("update to another secret");
+
+        host_update(HostUpdateInput {
+            name: "explicit".to_string(),
+            update: KnownHostCliUpdate {
+                accept_invalid_certs: Some(true),
+                ..Default::default()
+            },
+            keystore_password: source,
+        })
+        .await
+        .expect("update that keeps the saved secret");
     }
 }
