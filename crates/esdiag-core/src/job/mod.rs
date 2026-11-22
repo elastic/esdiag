@@ -39,12 +39,15 @@ impl std::fmt::Display for SavedJobNotFound {
 
 impl std::error::Error for SavedJobNotFound {}
 
-pub async fn handle_job_run(name: &str) -> Result<JobOutcome> {
-    let jobs = load_saved_jobs()?;
-    let job = jobs
-        .get(name)
-        .ok_or_else(|| eyre::Report::new(SavedJobNotFound { name: name.to_string() }))?;
+pub fn load_saved_job(name: &str) -> Result<SavedJob> {
+    load_saved_jobs()?
+        .shift_remove(name)
+        .ok_or_else(|| eyre::Report::new(SavedJobNotFound { name: name.to_string() }))
+}
 
+/// Runs a job loaded by [`load_saved_job`], so checks made on that value hold
+/// for the run even if `jobs.yml` changes meanwhile.
+pub async fn run_saved_job(name: &str, job: SavedJob) -> Result<JobOutcome> {
     if let Input::Collect { host, .. } = job.input() {
         let host_key = host.trim();
         if host_key.is_empty() {
@@ -53,7 +56,7 @@ pub async fn handle_job_run(name: &str) -> Result<JobOutcome> {
     }
 
     tracing::info!("Running saved job '{name}'");
-    let outcome = run_job(job.clone()).await?;
+    let outcome = run_job(job).await?;
     tracing::info!("Saved job '{name}' completed successfully");
     Ok(outcome)
 }

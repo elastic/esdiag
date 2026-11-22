@@ -1308,7 +1308,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandOutcome> {
             #[cfg(feature = "keystore")]
             Commands::Job { command } => match command {
                 JobCommands::List => operations::job::job_list(),
-                JobCommands::Run { name } => operations::job::job_run(name).await,
+                JobCommands::Run { name } => operations::job::job_run(name, operations::job::StdoutPolicy::Allow).await,
                 JobCommands::Delete { name } => operations::job::job_delete(name),
             },
         }

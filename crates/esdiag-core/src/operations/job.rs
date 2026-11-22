@@ -19,13 +19,26 @@ pub fn job_list() -> Result<CommandOutcome> {
     Ok(CommandOutcome::Completed(CliOutcome::JobsListed { jobs }))
 }
 
+/// Whether the front end can give stdout to processed documents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StdoutPolicy {
+    Allow,
+    Reject,
+}
+
 /// Runs a saved job. Returns [`CommandOutcome::Streamed`] when the job exports
-/// processed documents to stdout; check [`saved_job_writes_stdout`] first when
-/// stdout is not available for documents.
-pub async fn job_run(name: String) -> Result<CommandOutcome> {
-    let stdout_owned = saved_job_writes_stdout(&name)?;
-    let outcome = crate::job::handle_job_run(&name).await?;
-    if stdout_owned {
+/// processed documents to stdout. The policy check and the run use one loaded
+/// copy of the job.
+pub async fn job_run(name: String, stdout: StdoutPolicy) -> Result<CommandOutcome> {
+    let job = crate::job::load_saved_job(&name)?;
+    let writes_stdout = job_writes_stdout(&job);
+    if writes_stdout && stdout == StdoutPolicy::Reject {
+        return Err(eyre!(
+            "Saved job '{name}' exports processed documents to stdout, which is not available here"
+        ));
+    }
+    let outcome = crate::job::run_saved_job(&name, job).await?;
+    if writes_stdout {
         Ok(CommandOutcome::Streamed)
     } else {
         Ok(CommandOutcome::Completed(job_outcome(name, outcome)))
@@ -42,12 +55,15 @@ pub fn job_save(name: &str, job: Job) -> Result<()> {
 }
 
 /// Whether the named saved job exports processed documents to stdout.
-/// Unknown names return `false`; [`job_run`] reports them.
+/// Unknown names return `false`; [`job_run`] reports them. Only for choosing
+/// log routing before a run; [`job_run`] decides from the job it executes.
 pub fn saved_job_writes_stdout(name: &str) -> Result<bool> {
-    Ok(load_saved_jobs()?
-        .get(name)
-        .and_then(|job| job.process())
-        .is_some_and(|process| matches!(process.export, ExportTarget::Stdout)))
+    Ok(load_saved_jobs()?.get(name).is_some_and(job_writes_stdout))
+}
+
+fn job_writes_stdout(job: &Job) -> bool {
+    job.process()
+        .is_some_and(|process| matches!(process.export, ExportTarget::Stdout))
 }
 
 pub fn derive_collect_job(
@@ -202,5 +218,36 @@ mod tests {
         assert!(saved_job_writes_stdout("stdout-job").expect("stdout job"));
         assert!(!saved_job_writes_stdout("collect-job").expect("collect job"));
         assert!(!saved_job_writes_stdout("missing").expect("missing job"));
+    }
+
+    #[tokio::test]
+    async fn job_run_rejects_stdout_export_before_running() {
+        let _env = setup_env();
+        save_collect_host("prod-es");
+        let stdout_job = Job::try_new(
+            Identifiers::default(),
+            crate::job::model::Input::Collect {
+                host: "prod-es".to_string(),
+                diagnostic_type: "standard".to_string(),
+                include: None,
+                exclude: None,
+            },
+            None,
+            Some(crate::job::model::Process {
+                selection: None,
+                export: ExportTarget::Stdout,
+            }),
+            None,
+        )
+        .expect("valid streaming job");
+        job_save("stdout-job", stdout_job).expect("save stdout job");
+
+        let err = job_run("stdout-job".to_string(), StdoutPolicy::Reject)
+            .await
+            .expect_err("stdout export should be rejected");
+        assert!(
+            err.to_string().contains("exports processed documents to stdout"),
+            "{err}"
+        );
     }
 }
