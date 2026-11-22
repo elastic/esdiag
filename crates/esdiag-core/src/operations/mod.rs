@@ -313,6 +313,7 @@ mod tests {
     #[test]
     fn included_report_failure_is_not_rendered_as_completed() {
         let child_execution = ExecutionOutcome {
+            locked_keystore: None,
             identity: ExecutionIdentity::new(2, "test"),
             stages: vec![StageOutcome {
                 stage: Stage::Process,

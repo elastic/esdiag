@@ -9,6 +9,7 @@ use super::super::{
     indices_settings::{IndexSettings, IndexSettingsDocument, StoreSettings},
 };
 use super::{IndicesStats, data::*};
+use crate::exporter::spawn_consumer;
 use eyre::Report;
 use futures::stream::{BoxStream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -117,14 +118,14 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
         const BUFFER_SIZE: usize = 5000;
 
         let (index_tx, index_rx) = mpsc::channel::<IndexStatsDocument>(BUFFER_SIZE);
-        let index_processor = tokio::spawn(exporter.clone().document_channel::<IndexStatsDocument>(
+        let index_processor = spawn_consumer(exporter.clone().document_channel::<IndexStatsDocument>(
             index_rx,
             data_stream_name.clone(),
             batch_size,
         ));
 
         let (shard_tx, shard_rx) = mpsc::channel::<ShardStatsDocument>(BUFFER_SIZE);
-        let shard_processor = tokio::spawn(exporter.clone().document_channel::<ShardStatsDocument>(
+        let shard_processor = spawn_consumer(exporter.clone().document_channel::<ShardStatsDocument>(
             shard_rx,
             "metrics-shard-esdiag".to_string(),
             batch_size,

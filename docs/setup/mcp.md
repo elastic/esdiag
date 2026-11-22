@@ -65,7 +65,10 @@ Unlock the keystore and retry the tool.
 
 `host_add` and `host_update` accept only the name of an existing keystore
 `secret`. Add credentials with `esdiag keystore add` in your terminal; never
-paste them into the agent.
+paste them into the agent. Tools reject any URL that embeds credentials, such
+as `https://user:password@host` or an Elastic Upload Service download link with
+its token. Process those links with `esdiag process` in your terminal. An upload
+ID for `send` is not a secret.
 
 ## Tools
 

@@ -599,7 +599,8 @@ pub fn command_failure(error: &eyre::Report, setup_command: bool) -> CliFailure 
         .is_some();
     #[cfg(not(feature = "agent"))]
     let skill_failure = false;
-    if setup_command && !skill_failure && http_response_details(error).is_none() {
+    let keystore_locked = error.chain().any(|cause| cause.is::<crate::data::KeystoreLocked>());
+    if setup_command && !skill_failure && !keystore_locked && http_response_details(error).is_none() {
         return CliFailure::new(CliFailureCategory::SetupFailed, "setup failed");
     }
     structured_failure(error)

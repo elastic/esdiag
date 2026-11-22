@@ -147,3 +147,63 @@ fn stdio_session_carries_only_protocol_messages_and_exits_cleanly() {
     assert!(status.success(), "exit status {status:?}\nstderr:\n{stderr}");
     assert!(stderr.contains("DEBUG"), "debug logs belong on stderr:\n{stderr}");
 }
+
+#[cfg(unix)]
+#[test]
+fn shutdown_signal_exits_while_stdin_stays_open() {
+    let home = TempDir::new().expect("temp dir");
+    let config = home.path().join(".esdiag");
+    std::fs::create_dir_all(&config).expect("config dir");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_esdiag"))
+        .arg("mcp")
+        .env("HOME", home.path())
+        .env("ESDIAG_HOSTS", config.join("hosts.yml"))
+        .env("ESDIAG_KEYSTORE", config.join("secrets.yml"))
+        .env("ESDIAG_SETTINGS", config.join("settings.yml"))
+        .env_remove("ESDIAG_KEYSTORE_PASSWORD")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn esdiag mcp");
+    let mut stdin = child.stdin.take().expect("stdin");
+    let mut stdout = BufReader::new(child.stdout.take().expect("stdout"));
+    let mut response = String::new();
+    send(
+        &mut stdin,
+        json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": { "name": "esdiag-test", "version": "0" }
+            }
+        }),
+    );
+    stdout.read_line(&mut response).expect("initialize response");
+    send(
+        &mut stdin,
+        json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+    );
+    send(&mut stdin, json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }));
+    stdout.read_line(&mut response).expect("tools/list response");
+
+    let killed = Command::new("kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status()
+        .expect("send SIGTERM");
+    assert!(killed.success());
+    let started = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("poll esdiag mcp") {
+            break status;
+        }
+        if started.elapsed() > Duration::from_secs(10) {
+            let _ = child.kill();
+            panic!("esdiag mcp did not exit after SIGTERM with stdin open");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    drop(stdin);
+    assert!(status.success(), "exit status {status:?}");
+}

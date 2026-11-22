@@ -630,6 +630,14 @@ enum KeystoreCommands {
 
 const TOKIO_THREAD_STACK_SIZE: usize = 8 * 1024 * 1024;
 
+/// Set when a shutdown signal stops `esdiag mcp`. Its stdin reader may still
+/// be blocked in a read that cancellation cannot interrupt, and dropping the
+/// runtime would wait for that read indefinitely.
+#[cfg(feature = "mcp")]
+static MCP_STOPPED_BY_SIGNAL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[cfg(feature = "mcp")]
+const MCP_SIGNAL_SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
+
 fn main() -> ExitCode {
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -643,13 +651,18 @@ fn main() -> ExitCode {
         }
     };
 
-    match runtime.block_on(async_main()) {
+    let exit_code = match runtime.block_on(async_main()) {
         Ok(exit_code) => exit_code,
         Err(error) => {
             eprintln!("{error:?}");
             ExitCode::FAILURE
         }
+    };
+    #[cfg(feature = "mcp")]
+    if MCP_STOPPED_BY_SIGNAL.load(std::sync::atomic::Ordering::Relaxed) {
+        runtime.shutdown_timeout(MCP_SIGNAL_SHUTDOWN_GRACE);
     }
+    exit_code
 }
 
 async fn async_main() -> Result<ExitCode> {
@@ -1369,6 +1382,7 @@ async fn serve_mcp() -> Result<CommandOutcome> {
     let cancel = service.cancellation_token();
     tokio::spawn(async move {
         if wait_for_shutdown_signal().await.is_ok() {
+            MCP_STOPPED_BY_SIGNAL.store(true, std::sync::atomic::Ordering::Relaxed);
             cancel.cancel();
         }
     });

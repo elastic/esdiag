@@ -98,9 +98,9 @@ pub async fn collect(input: CollectInput) -> Result<CommandOutcome> {
                 None,
                 send_id.map(|upload_id| SendTarget { upload_id }),
             )?;
-            let outcome = execute_with_context(job, context).await;
+            let mut outcome = execute_with_context(job, context).await;
             if !outcome.succeeded() {
-                return Err(eyre!("{}", format_execution_failure(&outcome)));
+                return Err(outcome.failure_error(format_execution_failure(&outcome)));
             }
             let result = outcome
                 .collection

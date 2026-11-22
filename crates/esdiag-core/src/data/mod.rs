@@ -52,7 +52,7 @@ pub use keystore::{
 pub use known_host::write_hosts_yml_for_tests;
 pub use known_host::{
     CredentialDirection, ElasticCloud, HostRole, HostRoute, KnownHost, KnownHostBuilder, KnownHostCliUpdate,
-    ResolvedKnownHost,
+    ResolvedKnownHost, embeds_url_userinfo,
 };
 pub use output_deployment::{OutputDeployment, OutputDeploymentSource, output_auth_from, runtime_output_is_declared};
 pub use platform::Platform;

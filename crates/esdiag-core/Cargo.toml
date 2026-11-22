@@ -50,6 +50,7 @@ serde_with = { version = "3.24.0", default-features = false, features = ["macros
 sha2 = "0.10.9"
 tempfile.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 tracing.workspace = true
 url.workspace = true
 urlencoding.workspace = true

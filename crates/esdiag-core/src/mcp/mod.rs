@@ -14,7 +14,7 @@ mod tests;
 use crate::cli_output::command_failure;
 use crate::{
     cli_output::{CliFailure, CliFailureCategory, CommandOutcome, structured_failure},
-    data::{Application, HostRole, KnownHostCliUpdate, get_keystore_password},
+    data::{Application, HostRole, KnownHostCliUpdate, embeds_url_userinfo, get_keystore_password},
     job::{
         context::{ExecutionObserver, with_scoped_observer},
         outcome::ExecutionEvent,
@@ -98,6 +98,9 @@ impl EsdiagMcp {
         open_world_hint = true
     ))]
     async fn host_auth(&self, Parameters(params): Parameters<HostAuthParams>) -> CallToolResult {
+        if let Some(rejected) = reject_url_credentials(&[("target", Some(&params.target))]) {
+            return rejected;
+        }
         outcome_result(operations::host::host_auth(params.target).await)
     }
 
@@ -135,6 +138,11 @@ impl EsdiagMcp {
         Parameters(params): Parameters<ProcessParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
+        if let Some(rejected) =
+            reject_url_credentials(&[("input", Some(&params.input)), ("output", params.output.as_ref())])
+        {
+            return Ok(rejected);
+        }
         let input = operations::process::ProcessInput {
             input: params.input,
             output: params.output,
@@ -156,8 +164,10 @@ impl EsdiagMcp {
             )));
         }
         #[cfg(feature = "keystore")]
-        let _config_write = self.config_write_if(input.save_job.is_some()).await;
-        long_running(&context, operations::process::process(input)).await
+        let lock = self.save_job_lock(input.save_job.is_some());
+        #[cfg(not(feature = "keystore"))]
+        let lock = None;
+        long_running(&context, holding(lock, operations::process::process(input))).await
     }
 
     /// Collect a diagnostic archive from a saved host, as `esdiag collect`. Reports progress.
@@ -172,6 +182,9 @@ impl EsdiagMcp {
         Parameters(params): Parameters<CollectParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
+        if let Some(rejected) = reject_url_credentials(&[("host", Some(&params.host))]) {
+            return Ok(rejected);
+        }
         let input = operations::collect::CollectInput {
             host: params.host,
             output: params.output,
@@ -188,8 +201,10 @@ impl EsdiagMcp {
             save_job: params.save_job,
         };
         #[cfg(feature = "keystore")]
-        let _config_write = self.config_write_if(input.save_job.is_some()).await;
-        long_running(&context, operations::collect::collect(input)).await
+        let lock = self.save_job_lock(input.save_job.is_some());
+        #[cfg(not(feature = "keystore"))]
+        let lock = None;
+        long_running(&context, holding(lock, operations::collect::collect(input))).await
     }
 
     /// Send a raw diagnostic archive to Elastic Upload Service, as `esdiag send`. Reports progress.
@@ -204,6 +219,9 @@ impl EsdiagMcp {
         Parameters(params): Parameters<SendParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
+        if let Some(rejected) = reject_url_credentials(&[("api_url", Some(&params.api_url))]) {
+            return Ok(rejected);
+        }
         let mut progress = Progress::new(&context);
         if let Some(progress) = &mut progress {
             progress.notify("send started".to_string()).await;
@@ -231,6 +249,9 @@ impl EsdiagMcp {
         open_world_hint = false
     ))]
     async fn host_add(&self, Parameters(params): Parameters<HostAddParams>) -> CallToolResult {
+        if let Some(rejected) = reject_url_credentials(&[("target", Some(&params.target))]) {
+            return rejected;
+        }
         let update = match host_update_fields(params.accept_invalid_certs, params.secret, params.roles) {
             Ok(update) => update,
             Err(message) => return failure_result(CliFailure::new(CliFailureCategory::InvalidInput, message)),
@@ -363,14 +384,35 @@ impl EsdiagMcp {
 
 #[cfg(feature = "keystore")]
 impl EsdiagMcp {
-    /// Serializes a `collect` or `process` call that saves a job, for its
-    /// whole run, because the operation writes `jobs.yml` before running.
-    async fn config_write_if(&self, writes: bool) -> Option<tokio::sync::MutexGuard<'_, ()>> {
-        match writes {
-            true => Some(self.config_writes.lock().await),
-            false => None,
-        }
+    /// The configuration lock for a `collect` or `process` call that saves a
+    /// job, held for its whole run because the operation writes `jobs.yml`
+    /// before running.
+    fn save_job_lock(&self, saves_job: bool) -> Option<Arc<Mutex<()>>> {
+        saves_job.then(|| Arc::clone(&self.config_writes))
     }
+}
+
+/// Runs `operation` while holding `lock`, if any. Dropping the future while
+/// it waits for the lock abandons the wait.
+async fn holding<F: Future>(lock: Option<Arc<Mutex<()>>>, operation: F) -> F::Output {
+    let _guard = match &lock {
+        Some(lock) => Some(lock.lock().await),
+        None => None,
+    };
+    operation.await
+}
+
+/// Tools take credentials only as keystore secret references, so a URL
+/// parameter carrying userinfo, such as a password or an Elastic Upload
+/// Service download token, is rejected before the operation runs.
+fn reject_url_credentials(fields: &[(&str, Option<&String>)]) -> Option<CallToolResult> {
+    let (field, _) = fields
+        .iter()
+        .find(|(_, value)| value.is_some_and(|value| embeds_url_userinfo(value)))?;
+    Some(failure_result(CliFailure::new(
+        CliFailureCategory::InvalidInput,
+        format!("`{field}` embeds credentials in its URL; tools accept credentials only as keystore secret references"),
+    )))
 }
 
 #[cfg(feature = "agent")]

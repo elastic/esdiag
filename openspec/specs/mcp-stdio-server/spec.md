@@ -26,7 +26,7 @@ The `esdiag` package SHALL provide an `mcp` cargo feature that builds the MCP to
 - **AND** the tool catalog offers only the tools whose required features are present
 
 ### Requirement: Stdio Transport
-`esdiag mcp` SHALL run an MCP server that reads JSON-RPC messages from standard input and writes them to standard output, using the newline-delimited stdio transport defined by the MCP specification. The server SHALL exit with status zero when its standard input reaches end of file, and SHALL stop accepting new requests when it receives an interrupt or termination signal.
+`esdiag mcp` SHALL run an MCP server that reads JSON-RPC messages from standard input and writes them to standard output, using the newline-delimited stdio transport defined by the MCP specification. The server SHALL exit with status zero when its standard input reaches end of file, and SHALL stop accepting new requests and exit when it receives an interrupt or termination signal, even while its standard input stays open.
 
 #### Scenario: Client handshake
 - **GIVEN** a client starts `esdiag mcp` as a child process
@@ -38,6 +38,11 @@ The `esdiag` package SHALL provide an `mcp` cargo feature that builds the MCP to
 - **GIVEN** a running `esdiag mcp` session with no request in progress
 - **WHEN** the client closes the server's standard input
 - **THEN** the process exits with status zero
+
+#### Scenario: Termination signal with standard input open
+- **GIVEN** a running `esdiag mcp` session whose client keeps standard input open
+- **WHEN** the process receives a termination signal
+- **THEN** the process exits with status zero within a few seconds
 
 ### Requirement: Standard Output Carries Only Protocol Messages
 While `esdiag mcp` runs, standard output SHALL contain only MCP protocol messages. All tracing, warnings, and progress text SHALL go to standard error at `warn` unless `--debug` or `LOG_LEVEL` selects another level, and the run SHALL NOT replace the last command's run log. The global `--format` option SHALL have no effect on protocol messages.

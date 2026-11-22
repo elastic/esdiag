@@ -133,3 +133,4 @@ The root `esdiag` package SHALL keep the `default`, `full`, `agent`, `server`, `
 - **WHEN** a maintainer builds it with default features disabled and only the `mcp` feature enabled
 - **THEN** the build succeeds
 - **AND** neither `esdiag-gui` nor Tauri is compiled
+- **AND** the MCP SDK's HTTP transport is not compiled

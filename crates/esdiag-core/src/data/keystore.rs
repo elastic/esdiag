@@ -694,7 +694,7 @@ where
 
 /// No keystore password is available without prompting: no scoped password,
 /// no `ESDIAG_KEYSTORE_PASSWORD`, and no valid unlock lease.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct KeystoreLocked {
     /// The host secret that needed the password, when known.
     pub secret_id: Option<String>,

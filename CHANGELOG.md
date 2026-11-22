@@ -38,7 +38,7 @@ published release notes, maintenance branches, and tagged history.
 - **Breaking:** ESDiag's Kibana assets now require Elasticsearch and Kibana 9.5 or later. The bundled saved searches use the Kibana 9.5 format, which Kibana 9.4 cannot import.
 - Setup failures without an HTTP response now report the `setup_failed` outcome category.
 - CLI commands that need a saved secret from a locked keystore, such as `esdiag collect`, now prompt for the keystore password on an interactive terminal and continue instead of failing. Non-interactive runs still fail.
-- A command that cannot read a saved secret because the keystore is locked now always reports the `keystore_failed` category, with a message to run `esdiag keystore unlock` or set `ESDIAG_KEYSTORE_PASSWORD`.
+- A command that cannot read a saved secret because the keystore is locked now always reports the `keystore_failed` category, including saved jobs and setup commands, with a message to run `esdiag keystore unlock` or set `ESDIAG_KEYSTORE_PASSWORD`.
 - Updated workspace dependency requirements and the lockfile for the 0.18 development cycle, and regenerated third-party notices.
 - Split the library into the `esdiag-core` and `esdiag-gui` crates, published to crates.io alongside `esdiag` at the same version. They have no supported public API; `cargo install esdiag` is unchanged. Log lines now name `esdiag_core` or `esdiag_gui` modules instead of `esdiag`.
 - Log lines from `collect`, `process`, `send`, `output`, `host`, `job`, `keystore`, `agent ask`, and `setup` now name `esdiag_core::operations` modules instead of `esdiag`. When `esdiag host remove` deletes the host but cannot update settings, it now reports a `WARN` log line instead of printing `Warning:` to stderr.
@@ -61,9 +61,11 @@ published release notes, maintenance branches, and tagged history.
 - Fixed `esdiag setup` failing on Elasticsearch Serverless Kibana projects with "Failed to search Kibana space 'default' for ESDiag assets (400 Bad Request)". The check that keeps ESDiag assets in one Kibana space now works on Serverless.
 - Fixed Kibana 9 collection failing for internal APIs, connectors, alerting rules, Fleet and security packages, and agent upgrade status, and stopped reporting missing endpoint exception lists as collection failures.
 - Fixed `esdiag host add` and `esdiag host update` asking for the keystore password twice when a host uses a keystore secret and the keystore is locked. They now ask once.
+- Fixed commands that read saved hosts while another command saves them seeing an empty or partial `hosts.yml`. The file is now replaced atomically, and on Unix it is readable only by its owner.
 
 ### Security
 
+- Saved host results from `esdiag host list`, `host add`, `host update`, and the web host list no longer show credentials embedded in a host's URL or URL template.
 - Limited upload scrub-checkbox metadata to 64 bytes and rejected oversized or unreadable (invalid UTF-8) values without retaining staged files.
 - Escaped uploaded filenames in HTML responses to prevent markup and script injection.
 - Limited scrub normalization to 128 nested JSON objects or arrays, rejecting deeper input before further traversal-context allocation; raw syntax validation retains its stricter `Value` recursion limit, and disabled normalization and excluded files retain existing consumer limits.

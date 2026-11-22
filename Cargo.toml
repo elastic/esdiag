@@ -58,6 +58,7 @@ tauri = { version = "2.11.6", features = [] }
 tauri-plugin-opener = "2"
 tempfile = "3.27.0"
 tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "time", "signal", "sync", "io-util", "net"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
 url = { version = "2.5.8", features = ["serde"] }
 urlencoding = "2.1.3"

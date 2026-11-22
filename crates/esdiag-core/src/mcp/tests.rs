@@ -352,6 +352,104 @@ async fn locked_keystore_fails_collect_with_keystore_failed() {
 }
 
 #[tokio::test]
+async fn urls_with_embedded_credentials_are_rejected_without_echoing_them() {
+    let env = TestEnv::new();
+    let output = env.tmp.path().display().to_string();
+    let (client, mut progress) = connect().await;
+
+    for (tool, arguments) in [
+        (
+            "host_add",
+            json!({ "name": "plain", "target": "https://elastic:hunter2@example.test:9200", "app": "elasticsearch" }),
+        ),
+        (
+            "host_add",
+            json!({ "name": "tmpl", "target": "https://elastic:hunter2@{id}.example.test", "url_template": true }),
+        ),
+        (
+            "process",
+            json!({ "input": "https://token:hunter2@upload.elastic.co/d/abc123" }),
+        ),
+        (
+            "collect",
+            json!({ "host": "https://elastic:hunter2@example.test:9200", "output": output }),
+        ),
+    ] {
+        let result = call(&client, tool, arguments).await;
+
+        assert_eq!(result.is_error, Some(true), "{tool}");
+        assert_eq!(structured(&result)["category"], "invalid_input", "{tool}");
+        let text = serde_json::to_string(&result).expect("result");
+        assert!(!text.contains("hunter2"), "{tool} echoed the credential: {text}");
+    }
+    assert!(progress.try_recv().is_err(), "no stage should start");
+    let hosts = structured(&call(&client, "host_list", json!({})).await).to_string();
+    assert!(!hosts.contains("plain") && !hosts.contains("tmpl"), "{hosts}");
+    let _ = client.cancel().await;
+}
+
+#[cfg(feature = "keystore")]
+#[tokio::test]
+async fn locked_keystore_fails_a_saved_job_with_keystore_failed() {
+    let env = TestEnv::new();
+    upsert_secret_auth("prod-secret", SecretAuth::apikey("prod-key"), "pw").expect("save secret");
+    save_host(
+        "prod",
+        "http://127.0.0.1:9",
+        vec![HostRole::Collect],
+        Credential::Keystore("prod-secret".to_string()),
+    );
+    let job = crate::data::Job::try_new(
+        Default::default(),
+        crate::job::model::Input::Collect {
+            host: "prod".to_string(),
+            diagnostic_type: "standard".to_string(),
+            include: None,
+            exclude: None,
+        },
+        Some(crate::job::model::SaveTarget::retained(env.tmp.path().to_path_buf())),
+        None,
+        None,
+    )
+    .expect("collect job");
+    operations::job::job_save("nightly", job).expect("save job");
+    let (client, _) = connect().await;
+
+    let result = call(&client, "job_run", json!({ "name": "nightly" })).await;
+
+    assert_eq!(result.is_error, Some(true));
+    let content = structured(&result);
+    assert_eq!(content["category"], "keystore_failed", "{content}");
+    assert!(
+        content["message"]
+            .as_str()
+            .expect("message")
+            .contains("esdiag keystore unlock")
+    );
+    let _ = client.cancel().await;
+}
+
+#[cfg(feature = "setup")]
+#[tokio::test]
+async fn locked_keystore_fails_setup_with_keystore_failed() {
+    let _env = TestEnv::new();
+    upsert_secret_auth("prod-secret", SecretAuth::apikey("prod-key"), "pw").expect("save secret");
+    save_host(
+        "prod",
+        "http://127.0.0.1:9",
+        vec![HostRole::Send],
+        Credential::Keystore("prod-secret".to_string()),
+    );
+    let (client, _) = connect().await;
+
+    let result = call(&client, "setup_elasticsearch", json!({ "host": "prod" })).await;
+
+    assert_eq!(result.is_error, Some(true));
+    assert_eq!(structured(&result)["category"], "keystore_failed", "{:?}", result);
+    let _ = client.cancel().await;
+}
+
+#[tokio::test]
 async fn cancelled_collect_stops_and_the_server_keeps_serving() {
     let env = TestEnv::new();
     let silent = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");

@@ -220,10 +220,10 @@ async fn execute(input: ProcessInput) -> Result<Processed> {
         }),
         None,
     )?;
-    let outcome = execute_with_context(job, context).await;
+    let mut outcome = execute_with_context(job, context).await;
     let process = execution_process_result(&outcome);
     if outcome.failed() {
-        let message = format_execution_failure(&outcome);
+        let source = outcome.failure_error(format_execution_failure(&outcome));
         return Err(JobExecutionFailure::new(
             FailedStage::Process,
             JobOutcome {
@@ -231,7 +231,7 @@ async fn execute(input: ProcessInput) -> Result<Processed> {
                 execution: Some(outcome),
                 ..JobOutcome::default()
             },
-            eyre!(message),
+            source,
         )
         .into());
     }

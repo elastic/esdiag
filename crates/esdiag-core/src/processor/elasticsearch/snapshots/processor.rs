@@ -4,7 +4,7 @@
 
 use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, ProcessorSummary};
 use super::{Repositories, RepositoryConfig, Snapshot, Snapshots, extract_snapshot_date};
-use crate::exporter::Exporter;
+use crate::exporter::{Exporter, spawn_consumer};
 use crate::processor::StreamingDocumentExporter;
 use eyre::Report;
 use futures::stream::{BoxStream, StreamExt};
@@ -65,7 +65,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for Snapshots {
         const BUFFER_SIZE: usize = 5000;
 
         let (tx, rx) = mpsc::channel::<SnapshotLogDocument>(BUFFER_SIZE);
-        let processor = tokio::spawn(exporter.clone().document_channel::<SnapshotLogDocument>(
+        let processor = spawn_consumer(exporter.clone().document_channel::<SnapshotLogDocument>(
             rx,
             data_stream.clone(),
             batch_size,
