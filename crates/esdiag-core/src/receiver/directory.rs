@@ -127,11 +127,12 @@ impl Receive for DirectoryReceiver {
         let tx_err = tx.clone();
         let handle = tokio::task::spawn_blocking(move || match File::open(&filename_clone) {
             Ok(file) => {
-                let result =
-                    with_normalized_json_reader(&source_path_for_scrub, BufReader::new(file), scrubbed, |reader| {
-                        let mut deserializer = serde_json::Deserializer::from_reader(reader);
-                        T::deserialize_stream(&mut deserializer, tx.clone()).map_err(|e| eyre!(e))
-                    });
+                let result = with_normalized_json_reader(
+                    &source_path_for_scrub,
+                    BufReader::with_capacity(256 * 1024, file),
+                    scrubbed,
+                    |reader| T::deserialize_stream_buffered(reader, tx.clone()),
+                );
                 if let Err(e) = result {
                     tracing::error!("Error deserializing stream: {}", e);
                     let _ = tx.blocking_send(Err(e));

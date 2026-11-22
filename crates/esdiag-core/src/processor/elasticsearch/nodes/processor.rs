@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::metadata::MetadataRawValue;
+use super::super::metadata::MetadataValue;
 use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, ProcessorSummary};
 use super::{Node, Nodes};
 use crate::exporter::Exporter;
@@ -59,7 +59,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Nodes {
 #[derive(Clone, Serialize)]
 struct NodeDoc {
     #[serde(flatten)]
-    metadata: MetadataRawValue,
+    metadata: MetadataValue,
     node: Option<Node>,
 }
 

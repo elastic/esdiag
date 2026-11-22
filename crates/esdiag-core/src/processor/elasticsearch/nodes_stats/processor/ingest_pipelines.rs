@@ -4,12 +4,11 @@
 
 use super::super::super::{
     ElasticsearchMetadata,
-    metadata::MetadataRawValue,
+    metadata::MetadataValue,
     nodes::NodeDocument,
     nodes_stats::{IngestPipelines, IngestProcessor, IngestProcessorStats, IngestProcessors},
 };
 use eyre::Result;
-use rayon::prelude::*;
 use serde::Serialize;
 use tokio::sync::mpsc::Sender;
 
@@ -59,15 +58,13 @@ async fn extract_ingest_processors(
     sender: &Sender<IngestDoc>,
     processors: Option<IngestProcessors>,
     pipeline_name: &str,
-    metadata: MetadataRawValue,
+    metadata: MetadataValue,
     node_summary: Option<NodeDocument>,
 ) -> Result<()> {
-    let docs: Vec<IngestDoc> = match processors {
-        Some(mut processors) => processors
-            .par_drain(..)
-            .enumerate()
-            .filter_map(|(index, mut processor)| {
-                processor.drain().next().map(|(name, processor)| IngestDoc {
+    if let Some(processors) = processors {
+        for (index, mut processor) in processors.into_iter().enumerate() {
+            if let Some((name, processor)) = processor.drain().next() {
+                let doc = IngestDoc {
                     metadata: metadata.clone(),
                     node: node_summary.clone(),
                     ingest: IngestProcessorDoc {
@@ -78,14 +75,10 @@ async fn extract_ingest_processors(
                             .with_name(name)
                             .with_order(index),
                     },
-                })
-            })
-            .collect(),
-        None => Vec::new(),
-    };
-
-    for doc in docs {
-        sender.send(doc).await?;
+                };
+                sender.send(doc).await?;
+            }
+        }
     }
     Ok(())
 }
@@ -93,7 +86,7 @@ async fn extract_ingest_processors(
 #[derive(Serialize)]
 pub struct IngestDoc {
     #[serde(flatten)]
-    metadata: MetadataRawValue,
+    metadata: MetadataValue,
     node: Option<NodeDocument>,
     ingest: IngestProcessorDoc,
 }
@@ -148,7 +141,7 @@ struct IngestPipelineName {
 #[derive(Serialize)]
 pub struct IngestPipelineDoc {
     #[serde(flatten)]
-    metadata: MetadataRawValue,
+    metadata: MetadataValue,
     node: Option<NodeDocument>,
     ingest: IngestPipelineContainer,
 }

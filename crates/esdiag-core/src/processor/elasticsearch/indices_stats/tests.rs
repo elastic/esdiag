@@ -116,3 +116,25 @@ async fn test_streaming_deserialization_handles_receiver_closed_mid_stream() {
     // Deserialization should still finish cleanly without trailing-comma parse failures.
     handle.await.unwrap();
 }
+
+#[test]
+fn test_shard_entry_deserializes_from_reader_value_and_escaped_keys() {
+    use crate::processor::elasticsearch::indices_stats::data::ShardEntry;
+
+    let json = r#"{
+        "rou\u0074ing": {"state": "STARTED", "primary": true, "node": "n1"},
+        "commit": {"id": "c1", "generation": 1, "num_docs": 10},
+        "seq_no": {"max_seq_no": 1, "local_checkpoint": 1, "global_checkpoint": 1},
+        "retention_leases": {"primary_term": 1, "version": 1},
+        "shard_stats": {"total_count": 1},
+        "search_idle": false
+    }"#;
+
+    let from_reader: ShardEntry = serde_json::from_reader(std::io::Cursor::new(json.as_bytes()))
+        .expect("ShardEntry should deserialize from reader");
+    assert_eq!(from_reader.search_idle, Some(false));
+
+    let value: serde_json::Value = serde_json::from_str(json).expect("valid json");
+    let from_value: ShardEntry = serde_json::from_value(value).expect("ShardEntry should deserialize from owned Value");
+    assert_eq!(from_value.search_idle, Some(false));
+}

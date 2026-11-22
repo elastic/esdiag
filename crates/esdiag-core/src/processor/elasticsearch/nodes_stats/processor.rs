@@ -9,7 +9,7 @@ mod ingest_pipelines;
 mod transport_actions;
 
 use super::super::super::{Exporter, ProcessorSummary};
-use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, SharedCacheStats, metadata::MetadataRawValue};
+use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, SharedCacheStats, metadata::MetadataValue};
 use super::NodesStats;
 use crate::processor::StreamingDocumentExporter;
 use futures::stream::{BoxStream, StreamExt};
@@ -23,11 +23,11 @@ static INGEST_ROLE: LazyLock<String> = LazyLock::new(|| String::from("ingest"));
 struct NodeProcessingContext<'a> {
     lookups: &'a Lookups,
     metadata: &'a ElasticsearchMetadata,
-    node_stats_metadata: &'a MetadataRawValue,
-    actions_metadata: &'a MetadataRawValue,
-    http_clients_metadata: &'a MetadataRawValue,
-    applier_metadata: &'a MetadataRawValue,
-    adaptive_metadata: &'a MetadataRawValue,
+    node_stats_metadata: &'a MetadataValue,
+    actions_metadata: &'a MetadataValue,
+    http_clients_metadata: &'a MetadataValue,
+    applier_metadata: &'a MetadataValue,
+    adaptive_metadata: &'a MetadataValue,
     nodes_stats_tx: &'a mpsc::Sender<NodeStatsDoc>,
     actions_tx: &'a mpsc::Sender<transport_actions::TransportActionDoc>,
     http_clients_tx: &'a mpsc::Sender<http_clients::HttpClientDoc>,
@@ -353,7 +353,7 @@ struct NodeStatsDoc {
     node: NodeStatsEnvelope,
     shared_cache: Option<SharedCacheStats>,
     #[serde(flatten)]
-    metadata: MetadataRawValue,
+    metadata: MetadataValue,
 }
 
 #[derive(Serialize)]

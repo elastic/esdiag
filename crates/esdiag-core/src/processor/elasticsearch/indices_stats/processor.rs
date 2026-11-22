@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::metadata::MetadataRawValue;
+use super::super::metadata::MetadataValue;
 use super::super::{
     Alias, DataStreamDocument, DocumentExporter, ElasticsearchMetadata, Exporter, IlmStats, Lookup, Lookups,
     MappingSummary, NodeDocument, ProcessorSummary, StreamingDocumentExporter,
@@ -18,8 +18,8 @@ use tokio::sync::mpsc;
 struct IndexProcessingContext<'a> {
     lookups: &'a Lookups,
     metadata: &'a ElasticsearchMetadata,
-    index_metadata: &'a MetadataRawValue,
-    shard_metadata: &'a MetadataRawValue,
+    index_metadata: &'a MetadataValue,
+    shard_metadata: &'a MetadataValue,
     index_tx: &'a mpsc::Sender<IndexStatsDocument>,
     shard_tx: &'a mpsc::Sender<ShardStatsDocument>,
 }
@@ -166,7 +166,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
 
 fn extract_shard_documents(
     mut shards: std::collections::HashMap<u16, Vec<ShardEntry>>,
-    shard_metadata: &MetadataRawValue,
+    shard_metadata: &MetadataValue,
     index_name: String,
     index_settings: Option<IndexSettingsDocument>,
     lookup_node: &Lookup<NodeDocument>,
@@ -209,11 +209,11 @@ fn extract_shard_documents(
 pub struct IndexStatsDocument {
     index: EnrichedIndexStatsWithSettings,
     #[serde(flatten)]
-    metadata: MetadataRawValue,
+    metadata: MetadataValue,
 }
 
 impl IndexStatsDocument {
-    fn new(index: EnrichedIndexStatsWithSettings, metadata: MetadataRawValue) -> Self {
+    fn new(index: EnrichedIndexStatsWithSettings, metadata: MetadataValue) -> Self {
         IndexStatsDocument { index, metadata }
     }
 
@@ -478,11 +478,11 @@ pub struct ShardStatsDocument {
     index: Option<IndexSettingsDocument>,
     node: Option<NodeDocument>,
     #[serde(flatten)]
-    metadata: MetadataRawValue,
+    metadata: MetadataValue,
 }
 
 impl ShardStatsDocument {
-    pub fn new(shard: EnrichedShardStats, metadata: MetadataRawValue) -> Self {
+    pub fn new(shard: EnrichedShardStats, metadata: MetadataValue) -> Self {
         ShardStatsDocument {
             shard,
             metadata,
