@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::super::{metadata::MetadataRawValue, nodes::NodeDocument};
+use super::super::super::{metadata::MetadataValue, nodes::NodeDocument};
 use eyre::{OptionExt, Result};
 use serde::Serialize;
 use serde_json::{Value, value::RawValue};
@@ -12,7 +12,7 @@ use tokio::sync::mpsc::Sender;
 pub async fn extract(
     sender: &Sender<ClusterApplierDoc>,
     mut cluster_applier_stats: Value,
-    metadata: &MetadataRawValue,
+    metadata: &MetadataValue,
     node_metadata: Option<&NodeDocument>,
 ) -> Result<()> {
     let recordings = cluster_applier_stats["recordings"]
@@ -46,5 +46,5 @@ pub struct ClusterApplierDoc {
     cluster_applier_stats: Box<RawValue>,
     node: Option<NodeDocument>,
     #[serde(flatten)]
-    metadata: MetadataRawValue,
+    metadata: MetadataValue,
 }

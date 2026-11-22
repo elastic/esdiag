@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::super::{
-    DocumentExporter, ElasticsearchMetadata, Lookups, ProcessorSummary, metadata::MetadataRawValue, nodes::NodeDocument,
+    DocumentExporter, ElasticsearchMetadata, Lookups, ProcessorSummary, metadata::MetadataValue, nodes::NodeDocument,
 };
 use super::{NodeTasks, ParentTask, Task, Tasks};
 use crate::exporter::Exporter;
@@ -59,7 +59,7 @@ impl DocumentExporter<Lookups, ElasticsearchMetadata> for Tasks {
 #[derive(Clone, Serialize)]
 pub struct EnrichedTask {
     #[serde(flatten)]
-    metadata: MetadataRawValue,
+    metadata: MetadataValue,
     node: Option<NodeDocument>,
     task: TaskWithParent,
     #[serde(flatten)]
@@ -67,7 +67,7 @@ pub struct EnrichedTask {
 }
 
 impl EnrichedTask {
-    pub fn new(task: Task, metadata: MetadataRawValue, node: Option<NodeDocument>) -> Self {
+    pub fn new(task: Task, metadata: MetadataValue, node: Option<NodeDocument>) -> Self {
         let parent = task.parent_task_id.as_ref().map(|id| ParentTask::from(id.clone()));
         EnrichedTask {
             metadata,

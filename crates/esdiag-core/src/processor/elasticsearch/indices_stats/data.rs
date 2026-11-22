@@ -98,6 +98,10 @@ impl StreamingDataSource for IndicesStats {
 
         deserializer.deserialize_map(IndicesStatsVisitor { sender })
     }
+
+    fn deserialize_stream_buffered<R: std::io::BufRead>(reader: R, sender: Sender<Result<Self::Item>>) -> Result<()> {
+        crate::processor::diagnostic::json_stream::stream_nested_map(reader, "indices", sender)
+    }
 }
 
 #[skip_serializing_none]
@@ -118,8 +122,6 @@ pub struct IndexStats {
     pub shards: Option<HashMap<u16, Vec<ShardEntry>>>,
 }
 
-#[skip_serializing_none]
-#[derive(Deserialize)]
 pub struct ShardEntry {
     pub routing: ShardRouting,
     pub commit: ShardCommit,
@@ -128,10 +130,129 @@ pub struct ShardEntry {
     pub shard_path: Option<ShardPath>,
     pub search_idle: Option<bool>,
     pub search_idle_time: Option<u64>,
-    #[serde(flatten)]
     pub stats: Stats,
 }
 
+impl<'de> Deserialize<'de> for ShardEntry {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ShardEntryVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for ShardEntryVisitor {
+            type Value = ShardEntry;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("ShardEntry object")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut routing: Option<ShardRouting> = None;
+                let mut commit: Option<ShardCommit> = None;
+                let mut seq_no: Option<SequenceNumber> = None;
+                let mut retention_leases: Option<RetentionLeases> = None;
+                let mut shard_path: Option<ShardPath> = None;
+                let mut search_idle: Option<bool> = None;
+                let mut search_idle_time: Option<u64> = None;
+
+                let mut bulk: Option<Bulk> = None;
+                let mut completion: Option<Completion> = None;
+                let mut dense_vector: Option<VectorCount> = None;
+                let mut docs: Option<Docs> = None;
+                let mut fielddata: Option<Fielddata> = None;
+                let mut flush: Option<Flush> = None;
+                let mut get: Option<Get> = None;
+                let mut indexing: Option<Indexing> = None;
+                let mut merges: Option<Merges> = None;
+                let mut query_cache: Option<QueryCache> = None;
+                let mut recovery: Option<Recovery> = None;
+                let mut refresh: Option<Refresh> = None;
+                let mut request_cache: Option<RequestCache> = None;
+                let mut search: Option<Search> = None;
+                let mut segments: Option<Segments> = None;
+                let mut shard_stats: Option<ShardStats> = None;
+                let mut sparse_vector: Option<VectorCount> = None;
+                let mut store: Option<StoreStats> = None;
+                let mut translog: Option<Translog> = None;
+                let mut warmer: Option<Warmer> = None;
+
+                while let Some(key) = map.next_key::<&str>()? {
+                    match key {
+                        "routing" => routing = Some(map.next_value()?),
+                        "commit" => commit = Some(map.next_value()?),
+                        "seq_no" => seq_no = Some(map.next_value()?),
+                        "retention_leases" => retention_leases = Some(map.next_value()?),
+                        "shard_path" => shard_path = map.next_value()?,
+                        "search_idle" => search_idle = map.next_value()?,
+                        "search_idle_time" => search_idle_time = map.next_value()?,
+                        "bulk" => bulk = map.next_value()?,
+                        "completion" => completion = map.next_value()?,
+                        "dense_vector" => dense_vector = map.next_value()?,
+                        "docs" => docs = map.next_value()?,
+                        "fielddata" => fielddata = map.next_value()?,
+                        "flush" => flush = map.next_value()?,
+                        "get" => get = map.next_value()?,
+                        "indexing" => indexing = map.next_value()?,
+                        "merges" => merges = map.next_value()?,
+                        "query_cache" => query_cache = map.next_value()?,
+                        "recovery" => recovery = map.next_value()?,
+                        "refresh" => refresh = map.next_value()?,
+                        "request_cache" => request_cache = map.next_value()?,
+                        "search" => search = map.next_value()?,
+                        "segments" => segments = map.next_value()?,
+                        "shard_stats" => shard_stats = Some(map.next_value()?),
+                        "sparse_vector" => sparse_vector = map.next_value()?,
+                        "store" => store = map.next_value()?,
+                        "translog" => translog = map.next_value()?,
+                        "warmer" => warmer = map.next_value()?,
+                        _ => {
+                            let _ = map.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+
+                Ok(ShardEntry {
+                    routing: routing.ok_or_else(|| serde::de::Error::missing_field("routing"))?,
+                    commit: commit.ok_or_else(|| serde::de::Error::missing_field("commit"))?,
+                    seq_no: seq_no.ok_or_else(|| serde::de::Error::missing_field("seq_no"))?,
+                    retention_leases: retention_leases
+                        .ok_or_else(|| serde::de::Error::missing_field("retention_leases"))?,
+                    shard_path,
+                    search_idle,
+                    search_idle_time,
+                    stats: Stats {
+                        bulk,
+                        completion,
+                        dense_vector,
+                        docs,
+                        fielddata,
+                        flush,
+                        get,
+                        indexing,
+                        merges,
+                        query_cache,
+                        recovery,
+                        refresh,
+                        request_cache,
+                        search,
+                        segments,
+                        shard_stats: shard_stats.ok_or_else(|| serde::de::Error::missing_field("shard_stats"))?,
+                        sparse_vector,
+                        store,
+                        translog,
+                        warmer,
+                    },
+                })
+            }
+        }
+
+        deserializer.deserialize_map(ShardEntryVisitor)
+    }
+}
 #[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct SequenceNumber {

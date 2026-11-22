@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::super::{metadata::MetadataRawValue, nodes::NodeDocument};
+use super::super::super::{metadata::MetadataValue, nodes::NodeDocument};
 use eyre::{OptionExt, Result};
 use serde::Serialize;
 use serde_json::Value;
@@ -12,7 +12,7 @@ use tokio::sync::mpsc::Sender;
 pub async fn extract(
     sender: &Sender<TransportActionDoc>,
     mut actions: Value,
-    metadata: &MetadataRawValue,
+    metadata: &MetadataValue,
     node_metadata: Option<&NodeDocument>,
 ) -> Result<()> {
     let actions = actions
@@ -43,7 +43,7 @@ pub struct TransportActionDoc {
     node: Option<NodeDocument>,
     transport: TransportActionContainer,
     #[serde(flatten)]
-    metadata: MetadataRawValue,
+    metadata: MetadataValue,
 }
 
 #[derive(Serialize)]

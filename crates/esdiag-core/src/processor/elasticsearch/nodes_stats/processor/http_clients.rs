@@ -2,9 +2,8 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::super::{metadata::MetadataRawValue, nodes::NodeDocument};
+use super::super::super::{metadata::MetadataValue, nodes::NodeDocument};
 use eyre::{OptionExt, Result};
-use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::{Value, value::RawValue};
 use tokio::sync::mpsc::Sender;
@@ -13,31 +12,28 @@ use tokio::sync::mpsc::Sender;
 pub async fn extract(
     sender: &Sender<HttpClientDoc>,
     mut clients: Value,
-    metadata: &MetadataRawValue,
+    metadata: &MetadataValue,
     node_metadata: Option<&NodeDocument>,
 ) -> Result<()> {
     let clients = clients
         .as_array_mut()
         .ok_or_eyre("Error extracting node.http.clients data")?;
 
-    let mut docs = Vec::<HttpClientDoc>::with_capacity(200);
-    docs.par_extend(clients.par_drain(..).filter_map(|client| {
+    for client in clients.drain(..) {
         let client_raw = match serde_json::value::to_raw_value(&client) {
             Ok(raw) => raw,
             Err(err) => {
                 tracing::warn!("Skipping malformed http client stats record: {}", err);
-                return None;
+                continue;
             }
         };
-        Some(HttpClientDoc {
-            node: node_metadata.cloned(),
-            http: HttpClientContainer { client: client_raw },
-            metadata: metadata.clone(),
-        })
-    }));
-
-    for doc in docs {
-        sender.send(doc).await?;
+        sender
+            .send(HttpClientDoc {
+                node: node_metadata.cloned(),
+                http: HttpClientContainer { client: client_raw },
+                metadata: metadata.clone(),
+            })
+            .await?;
     }
     Ok(())
 }
@@ -47,7 +43,7 @@ pub struct HttpClientDoc {
     node: Option<NodeDocument>,
     http: HttpClientContainer,
     #[serde(flatten)]
-    metadata: MetadataRawValue,
+    metadata: MetadataValue,
 }
 
 #[derive(Serialize)]
