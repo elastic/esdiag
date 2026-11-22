@@ -64,6 +64,7 @@ published release notes, maintenance branches, and tagged history.
 - Fixed `esdiag host add` and `esdiag host update` asking for the keystore password twice when a host uses a keystore secret and the keystore is locked. They now ask once.
 - Fixed commands that read saved hosts while another command saves them seeing an empty or partial `hosts.yml`. The file is now replaced atomically, and on Unix it is readable only by its owner.
 - Fixed Windows saves of `hosts.yml` and the keystore briefly removing the file, so a command reading it at the same time could find no saved hosts or no keystore.
+- Fixed absolute Windows paths with a drive letter, such as `C:\diagnostics`, being rejected as URLs or as saved-host template references. They are now read as local files and directories, including as a saved job's local output directory.
 
 ### Security
 

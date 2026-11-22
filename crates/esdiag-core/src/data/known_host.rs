@@ -1538,6 +1538,9 @@ struct TemplateReference {
 }
 
 fn parse_template_reference(reference: &str) -> Result<Option<TemplateReference>> {
+    if super::uri::is_windows_drive_path(reference) {
+        return Ok(None);
+    }
     let Ok(url) = Url::parse(reference) else {
         return Ok(None);
     };
