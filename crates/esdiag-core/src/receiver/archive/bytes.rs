@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    ArchiveOpeningError, IndexedArchive, get_from_archive, normalize_supported_content, resolve_archive_path,
-    with_normalized_json_reader,
+    ArchiveOpeningError, ArchivePool, IndexedArchive, PooledArchive, get_from_archive, normalize_supported_content,
+    resolve_archive_path, with_normalized_json_reader,
 };
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
@@ -20,22 +20,23 @@ use std::{
     sync::Arc,
     sync::OnceLock,
 };
-use tokio::sync::RwLock;
 use zip::ZipArchive;
 
-type ArchiveCursor = IndexedArchive<BufReader<Cursor<Bytes>>>;
+type ArchiveCursor = BufReader<Cursor<Bytes>>;
 #[derive(Clone)]
 pub struct ArchiveBytesReceiver {
     bytes: Bytes,
+    pool: Arc<ArchivePool<ArchiveCursor>>,
     subdir: Option<PathBuf>,
     source_product: Arc<OnceLock<&'static str>>,
     scrubbed: bool,
 }
 
 impl ArchiveBytesReceiver {
-    fn open_archive(&self) -> Result<ArchiveCursor> {
-        let archive = ZipArchive::new(BufReader::new(Cursor::new(self.bytes.clone())))?;
-        Ok(IndexedArchive::new(archive))
+    fn open_archive(&self) -> Result<PooledArchive<ArchiveCursor>> {
+        ArchivePool::checkout(&self.pool, || {
+            Ok(ZipArchive::new(BufReader::new(Cursor::new(self.bytes.clone())))?)
+        })
     }
 }
 
@@ -76,9 +77,8 @@ impl Receive for ArchiveBytesReceiver {
         T::Item: DeserializeOwned + Send + 'static,
     {
         let ctx = self.source_context()?;
-        let archive = Arc::new(RwLock::new(self.open_archive()?));
-        super::get_stream_from_archive::<BufReader<Cursor<Bytes>>, T>(archive, self.subdir.clone(), ctx, self.scrubbed)
-            .await
+        let archive = self.open_archive()?;
+        super::get_stream_from_archive::<ArchiveCursor, T>(archive, self.subdir.clone(), ctx, self.scrubbed).await
     }
 }
 
@@ -152,9 +152,11 @@ impl TryFrom<Bytes> for ArchiveBytesReceiver {
 
     fn try_from(bytes: Bytes) -> Result<Self> {
         tracing::debug!("Using in-memory archive");
-        ZipArchive::new(BufReader::new(Cursor::new(bytes.clone())))?;
+        let initial = IndexedArchive::new(ZipArchive::new(BufReader::new(Cursor::new(bytes.clone())))?);
+        let pool = Arc::new(ArchivePool::new(initial));
         Ok(Self {
             bytes,
+            pool,
             subdir: None,
             source_product: Arc::new(OnceLock::new()),
             scrubbed: false,
@@ -186,6 +188,7 @@ impl ArchiveBytesReceiver {
     pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
         Self {
             bytes: self.bytes.clone(),
+            pool: Arc::clone(&self.pool),
             subdir: Some(PathBuf::from(work_dir)),
             source_product: Arc::new(OnceLock::new()),
             scrubbed: self.scrubbed,
@@ -227,7 +230,7 @@ impl ArchiveBytesReceiver {
     }
 
     pub async fn read_bundle_lines(&self, filename: &str) -> Result<BoxStream<'static, Result<String>>> {
-        let archive = Arc::new(RwLock::new(self.open_archive()?));
+        let archive = self.open_archive()?;
         super::read_lines_from_archive(archive, self.subdir.clone(), filename).await
     }
 

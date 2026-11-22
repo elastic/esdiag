@@ -17,7 +17,7 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::mpsc;
 use zip::ZipArchive;
 
 mod bytes;
@@ -44,7 +44,7 @@ pub(crate) fn slice_has_json(bytes: &[u8]) -> bool {
 }
 
 pub fn get_all_from_archive<R, T>(
-    archive: &mut ZipArchive<R>,
+    archive: &mut IndexedArchive<R>,
     subdir: Option<&PathBuf>,
     ctx: &SourceContext,
     scrubbed: bool,
@@ -81,7 +81,7 @@ where
     Ok(filenames
         .into_iter()
         .map(|(path, filename)| SourceInstance {
-            data: read_archive_source(archive, filename, scrubbed),
+            data: read_archive_source(&mut archive.zip, filename, scrubbed),
             path,
         })
         .collect())
@@ -122,17 +122,18 @@ fn strip_archive_root<'a>(filename: &'a str, root: &str) -> Option<&'a str> {
     Some(relative.trim_start_matches('/'))
 }
 
-/// A ZIP archive with its irregular entry names indexed once at open. ECK
-/// writes entries such as `name//file`; the index maps each one's
-/// normalized path to the stored name, so lookups match what
-/// [`list_archive_dirs`] discovers without scanning the archive per read.
-pub struct IndexedArchive<R> {
-    zip: ZipArchive<R>,
+/// Immutable archive-wide metadata computed once when a receiver opens an archive:
+/// irregular entry-name mappings (`name//file` -> stored name) and the resolved
+/// bundle root directory. Shared across pooled handles via `Arc` so opening or
+/// cloning handles never rescans the archive's entry table.
+#[derive(Clone, Debug)]
+pub(crate) struct ArchiveIndex {
     irregular: HashMap<String, String>,
+    root: Option<PathBuf>,
 }
 
-impl<R: Read + Seek> IndexedArchive<R> {
-    pub fn new(zip: ZipArchive<R>) -> Self {
+impl ArchiveIndex {
+    pub(crate) fn from_zip<R: Read + Seek>(zip: &mut ZipArchive<R>) -> Self {
         let irregular = zip
             .file_names()
             .filter(|name| !name.ends_with(['/', '\\']))
@@ -141,7 +142,29 @@ impl<R: Read + Seek> IndexedArchive<R> {
                 (normalized != name).then(|| (normalized, name.to_string()))
             })
             .collect();
-        Self { zip, irregular }
+        let root = compute_archive_root(zip).ok();
+        Self { irregular, root }
+    }
+}
+
+/// A ZIP archive paired with shared, precomputed archive metadata (`ArchiveIndex`).
+pub struct IndexedArchive<R> {
+    zip: ZipArchive<R>,
+    index: Arc<ArchiveIndex>,
+}
+
+impl<R: Read + Seek> IndexedArchive<R> {
+    pub fn new(mut zip: ZipArchive<R>) -> Self {
+        let index = Arc::new(ArchiveIndex::from_zip(&mut zip));
+        Self { zip, index }
+    }
+
+    pub(crate) fn with_index(zip: ZipArchive<R>, index: Arc<ArchiveIndex>) -> Self {
+        Self { zip, index }
+    }
+
+    pub(crate) fn index(&self) -> &Arc<ArchiveIndex> {
+        &self.index
     }
 }
 
@@ -159,6 +182,80 @@ impl<R> DerefMut for IndexedArchive<R> {
     }
 }
 
+/// Thread-safe pool of reusable `IndexedArchive` handles.
+///
+/// Concurrent readers each check out their own independent handle (no read-time
+/// lock contention). When a read completes, the handle is returned to the pool
+/// so subsequent reads reuse its already-parsed ZIP central directory without
+/// re-opening the file or re-parsing ZIP metadata.
+pub(crate) struct ArchivePool<R> {
+    handles: std::sync::Mutex<Vec<IndexedArchive<R>>>,
+    index: Arc<ArchiveIndex>,
+}
+
+impl<R: Read + Seek> ArchivePool<R> {
+    pub(crate) fn new(initial: IndexedArchive<R>) -> Self {
+        let index = Arc::clone(initial.index());
+        Self {
+            handles: std::sync::Mutex::new(vec![initial]),
+            index,
+        }
+    }
+
+    pub(crate) fn checkout<F>(pool: &Arc<Self>, open_zip: F) -> Result<PooledArchive<R>>
+    where
+        F: FnOnce() -> Result<ZipArchive<R>>,
+    {
+        let handle = {
+            let mut guard = pool.handles.lock().unwrap_or_else(|e| e.into_inner());
+            guard.pop()
+        };
+        let archive = match handle {
+            Some(existing) => existing,
+            None => IndexedArchive::with_index(open_zip()?, Arc::clone(&pool.index)),
+        };
+        Ok(PooledArchive {
+            archive: Some(archive),
+            pool: Some(Arc::clone(pool)),
+        })
+    }
+
+    fn checkin(&self, archive: IndexedArchive<R>) {
+        const MAX_POOLED_HANDLES: usize = 16;
+        let mut guard = self.handles.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.len() < MAX_POOLED_HANDLES {
+            guard.push(archive);
+        }
+    }
+}
+
+/// RAII guard that returns an `IndexedArchive` handle to its `ArchivePool` on drop.
+pub(crate) struct PooledArchive<R: Read + Seek> {
+    archive: Option<IndexedArchive<R>>,
+    pool: Option<Arc<ArchivePool<R>>>,
+}
+
+impl<R: Read + Seek> Deref for PooledArchive<R> {
+    type Target = IndexedArchive<R>;
+
+    fn deref(&self) -> &Self::Target {
+        self.archive.as_ref().expect("PooledArchive checked out")
+    }
+}
+
+impl<R: Read + Seek> DerefMut for PooledArchive<R> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.archive.as_mut().expect("PooledArchive checked out")
+    }
+}
+
+impl<R: Read + Seek> Drop for PooledArchive<R> {
+    fn drop(&mut self) {
+        if let (Some(pool), Some(archive)) = (self.pool.take(), self.archive.take()) {
+            pool.checkin(archive);
+        }
+    }
+}
 #[derive(Clone, Copy)]
 enum ArchiveOpeningError {
     Zip,
@@ -223,7 +320,7 @@ where
 }
 
 pub async fn get_stream_from_archive<R, T>(
-    archive: Arc<RwLock<IndexedArchive<R>>>,
+    mut archive: PooledArchive<R>,
     subdir: Option<PathBuf>,
     ctx: SourceContext,
     scrubbed: bool,
@@ -237,7 +334,6 @@ where
 
     let tx_err = tx.clone();
     let handle = tokio::task::spawn_blocking(move || {
-        let mut archive_guard = archive.blocking_write();
         let source_path = match T::resolve_source_file_path(&ctx) {
             Ok(s) => s,
             Err(e) => {
@@ -245,7 +341,7 @@ where
                 return;
             }
         };
-        let filename = match resolve_archive_path(subdir.as_ref(), &mut *archive_guard, &source_path) {
+        let filename = match resolve_archive_path(subdir.as_ref(), &mut archive, &source_path) {
             Ok(f) => f,
             Err(e) => {
                 let _ = tx.blocking_send(Err(eyre::eyre!(e)));
@@ -254,7 +350,7 @@ where
         };
 
         tracing::debug!("Streaming from archive: {}", filename);
-        let stream_result = match archive_guard.by_name(&filename) {
+        let stream_result = match archive.by_name(&filename) {
             Ok(file) => {
                 let reader = BufReader::with_capacity(STREAM_BUF_CAPACITY, file);
                 with_normalized_json_reader(&filename, reader, scrubbed, |reader| {
@@ -292,7 +388,7 @@ const MAX_BUNDLE_ROOT_DEPTH: usize = 1;
 /// file such as `spaces/default/kibana_alerts.json`. Prefer the directory of
 /// a manifest within `MAX_BUNDLE_ROOT_DEPTH`; deeper manifests belong to
 /// included diagnostics.
-fn archive_root<A: Read + Seek>(archive: &mut ZipArchive<A>) -> Result<PathBuf> {
+fn compute_archive_root<A: Read + Seek>(archive: &mut ZipArchive<A>) -> Result<PathBuf> {
     let manifest_root = archive
         .file_names()
         .filter_map(|name| {
@@ -310,31 +406,30 @@ fn archive_root<A: Read + Seek>(archive: &mut ZipArchive<A>) -> Result<PathBuf> 
     Ok(root)
 }
 
-/// Stream the lines of one archive entry. The archive stays locked while the
-/// stream is being read, so consumers must drain it before issuing other reads
-/// on the same receiver.
+fn archive_root<A: Read + Seek>(archive: &mut IndexedArchive<A>) -> Result<PathBuf> {
+    if let Some(root) = &archive.index.root {
+        return Ok(root.clone());
+    }
+    compute_archive_root(&mut archive.zip)
+}
+
+/// Stream the lines of one archive entry using an exclusive pooled handle.
 pub async fn read_lines_from_archive<R>(
-    archive: Arc<RwLock<IndexedArchive<R>>>,
+    mut archive: PooledArchive<R>,
     subdir: Option<PathBuf>,
     filename: &str,
 ) -> Result<BoxStream<'static, Result<String>>>
 where
     R: Read + Seek + Send + Sync + 'static,
 {
-    let path = {
-        let mut guard = archive.write().await;
-        resolve_archive_path(subdir.as_ref(), &mut *guard, filename)?
-    };
+    let path = resolve_archive_path(subdir.as_ref(), &mut archive, filename)?;
     tracing::debug!("Streaming lines from archive: {}", path);
     let (tx, rx) = mpsc::channel(256);
     let producer_tx = tx.clone();
-    let handle = tokio::task::spawn_blocking(move || {
-        let mut guard = archive.blocking_write();
-        match guard.by_name(&path) {
-            Ok(file) => crate::receiver::send_bundle_lines(BufReader::new(file), &producer_tx),
-            Err(err) => {
-                let _ = producer_tx.blocking_send(Err(eyre::eyre!(err)));
-            }
+    let handle = tokio::task::spawn_blocking(move || match archive.by_name(&path) {
+        Ok(file) => crate::receiver::send_bundle_lines(BufReader::new(file), &producer_tx),
+        Err(err) => {
+            let _ = producer_tx.blocking_send(Err(eyre::eyre!(err)));
         }
     });
     Ok(crate::receiver::bundle_line_stream(rx, handle, tx))
@@ -466,7 +561,7 @@ pub fn resolve_archive_path<A: Read + Seek>(
     if archive.index_for_name(&normalized).is_some() {
         return Ok(normalized);
     }
-    match archive.irregular.get(&normalized) {
+    match archive.index.irregular.get(&normalized) {
         Some(name) => Ok(name.clone()),
         None => Err(MissingSource::ArchiveEntry { path }.into()),
     }
@@ -750,5 +845,44 @@ mod tests {
     fn capped_prealloc_capacity_caps_before_casting_to_usize() {
         assert_eq!(capped_prealloc_capacity(42), 42);
         assert_eq!(capped_prealloc_capacity(u64::MAX), MAX_SLICE_READ_BYTES as usize);
+    }
+
+    #[test]
+    fn archive_pool_reuses_handles_and_shares_index() {
+        let archive_data = create_test_archive_with_double_slash();
+        let initial = IndexedArchive::new(ZipArchive::new(Cursor::new(archive_data.clone())).unwrap());
+        let pool = Arc::new(ArchivePool::new(initial));
+        let mut open_calls = 0usize;
+
+        // Sequential checkouts reuse the initial pooled handle without calling open_zip.
+        {
+            let mut first = ArchivePool::checkout(&pool, || {
+                open_calls += 1;
+                Ok(ZipArchive::new(Cursor::new(archive_data.clone()))?)
+            })
+            .unwrap();
+            assert_eq!(open_calls, 0);
+            assert_eq!(
+                resolve_archive_path(None, &mut first, "namespace/elasticsearch/cluster-one/version.json").unwrap(),
+                "namespace/elasticsearch/cluster-one//version.json"
+            );
+        }
+        {
+            let _second = ArchivePool::checkout(&pool, || {
+                open_calls += 1;
+                Ok(ZipArchive::new(Cursor::new(archive_data.clone()))?)
+            })
+            .unwrap();
+            assert_eq!(open_calls, 0);
+
+            // Concurrent checkout opens one additional handle sharing the same Arc<ArchiveIndex>.
+            let concurrent = ArchivePool::checkout(&pool, || {
+                open_calls += 1;
+                Ok(ZipArchive::new(Cursor::new(archive_data.clone()))?)
+            })
+            .unwrap();
+            assert_eq!(open_calls, 1);
+            assert!(Arc::ptr_eq(_second.index(), concurrent.index()));
+        }
     }
 }

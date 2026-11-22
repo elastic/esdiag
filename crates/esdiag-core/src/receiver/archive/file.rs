@@ -3,8 +3,8 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{
-    ArchiveOpeningError, IndexedArchive, get_from_archive, normalize_supported_content, resolve_archive_path,
-    with_normalized_json_reader,
+    ArchiveOpeningError, ArchivePool, IndexedArchive, PooledArchive, get_from_archive, normalize_supported_content,
+    resolve_archive_path, with_normalized_json_reader,
 };
 use crate::{
     processor::{DataSource, SourceContext, StreamingDataSource},
@@ -21,12 +21,12 @@ use std::{
     sync::OnceLock,
     time::SystemTime,
 };
-use tokio::sync::RwLock;
 use zip::ZipArchive;
 
 #[derive(Clone)]
 pub struct ArchiveFileReceiver {
     path: PathBuf,
+    pool: Arc<ArchivePool<File>>,
     filename: String,
     subdir: Option<PathBuf>,
     modified_date: SystemTime,
@@ -35,10 +35,11 @@ pub struct ArchiveFileReceiver {
 }
 
 impl ArchiveFileReceiver {
-    fn open_archive(&self) -> Result<IndexedArchive<File>> {
-        let file = File::open(&self.path)?;
-        let archive = ZipArchive::new(file)?;
-        Ok(IndexedArchive::new(archive))
+    fn open_archive(&self) -> Result<PooledArchive<File>> {
+        ArchivePool::checkout(&self.pool, || {
+            let file = File::open(&self.path)?;
+            Ok(ZipArchive::new(file)?)
+        })
     }
 }
 
@@ -52,9 +53,11 @@ impl TryFrom<PathBuf> for ArchiveFileReceiver {
                 tracing::debug!("File is valid: {}", path.display());
                 let file = File::open(&path)?;
                 let modified_date = file.metadata()?.modified()?;
-                ZipArchive::new(file)?;
+                let initial = IndexedArchive::new(ZipArchive::new(file)?);
+                let pool = Arc::new(ArchivePool::new(initial));
                 Ok(Self {
                     path,
+                    pool,
                     modified_date,
                     filename,
                     subdir: None,
@@ -119,7 +122,7 @@ impl Receive for ArchiveFileReceiver {
         T::Item: DeserializeOwned + Send + 'static,
     {
         let ctx = self.source_context()?;
-        let archive = Arc::new(RwLock::new(self.open_archive()?));
+        let archive = self.open_archive()?;
         super::get_stream_from_archive::<File, T>(archive, self.subdir.clone(), ctx, self.scrubbed).await
     }
 }
@@ -217,6 +220,7 @@ impl ArchiveFileReceiver {
     pub(crate) fn clone_for_subdir(&self, work_dir: &str) -> Self {
         Self {
             path: self.path.clone(),
+            pool: Arc::clone(&self.pool),
             filename: self.filename.clone(),
             subdir: Some(PathBuf::from(work_dir)),
             modified_date: self.modified_date,
@@ -257,7 +261,7 @@ impl ArchiveFileReceiver {
     }
 
     pub async fn read_bundle_lines(&self, filename: &str) -> Result<BoxStream<'static, Result<String>>> {
-        let archive = Arc::new(RwLock::new(self.open_archive()?));
+        let archive = self.open_archive()?;
         super::read_lines_from_archive(archive, self.subdir.clone(), filename).await
     }
 
