@@ -33,7 +33,7 @@ Prerequisites, in stack order: `extract-gui-crate` ([#467](https://github.com/el
 
 - Target products: Elasticsearch, Kibana, Logstash, and ECK diagnostics processed through the existing receivers and exporters. Processing output is unchanged.
 - Surfaces: Web server (`esdiag serve`) gains an HTTP API endpoint, plus server policy and startup options. No Web UI page changes. CLI gains the `--mcp-allowed-hosts` option on `serve`.
-- Code: `crates/esdiag-gui/src/server/` (router, policy, MCP service, synchronous web processing on the shared entry point), `crates/esdiag-core/src/mcp/` (service-mode policy), `crates/esdiag-core/src/operations/process.rs` (`process_prepared`), `crates/esdiag-core/src/job/context.rs` (execution-scoped task tracking), `crates/esdiag-core/src/exporter/elasticsearch.rs` (tracked, cancellable batch tasks), `crates/esdiag-core/src/receiver/upload_service.rs` (async download), root `src/main.rs` (`serve` option).
+- Code: `crates/esdiag-gui/src/server/` (router, policy, MCP service, synchronous web processing on the shared entry point), `crates/esdiag-core/src/mcp/` (service-mode policy), `crates/esdiag-core/src/operations/process.rs` (`process_prepared`), `crates/esdiag-core/src/job/context.rs` (execution-scoped task tracking), `crates/esdiag-core/src/exporter/elasticsearch.rs` (tracked, cancellable batch tasks), `crates/esdiag-core/src/receiver/` (async download and `Receiver::prepare`), root `src/main.rs` (`serve` option).
 - Dependencies: `rmcp` with `transport-streamable-http-server` in `esdiag-gui`.
 - Features: root `mcp` additionally forwards to `esdiag-gui?/mcp`.
 - Docs: `serve` and web feature docs, the MCP usage page from `add-mcp-stdio`, and `CHANGELOG.md`.
