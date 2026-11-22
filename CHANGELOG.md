@@ -58,6 +58,7 @@ published release notes, maintenance branches, and tagged history.
 - Fixed ECK (`eck-diagnostics`) and Kubernetes Platform bundles failing with "Failed to parse version.json" because they were processed as Elasticsearch diagnostics. They are processed as platform bundles again, and their included Elasticsearch diagnostics are processed as children.
 - Fixed `esdiag setup` failing on Elasticsearch Serverless Kibana projects with "Failed to search Kibana space 'default' for ESDiag assets (400 Bad Request)". The check that keeps ESDiag assets in one Kibana space now works on Serverless.
 - Fixed Kibana 9 collection failing for internal APIs, connectors, alerting rules, Fleet and security packages, and agent upgrade status, and stopped reporting missing endpoint exception lists as collection failures.
+- Fixed `esdiag host add` and `esdiag host update` asking for the keystore password twice when a host uses a keystore secret and the keystore is locked. They now ask once.
 
 ### Security
 
