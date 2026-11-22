@@ -27,6 +27,8 @@ pub mod exporter;
 pub mod job;
 /// Flow-neutral first-run onboarding operations
 pub mod onboarding;
+/// Typed command operations shared by the CLI and other front ends
+pub mod operations;
 /// Data transformation and processing logic
 pub mod processor;
 /// Receive data from various sources
