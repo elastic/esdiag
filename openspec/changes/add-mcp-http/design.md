@@ -94,6 +94,8 @@ Cancellation over stateless HTTP is the client closing the stream, or server shu
 
 Tests cover a client disconnect and a server shutdown during two phases, each against a local mock server: during a stalled download, and during a bulk export whose second sub-batch request stalls. In each case the call reports no success, the mock receives no request after cancellation besides the one in flight, and the owner's slot is free only after the in-flight request ends.
 
+`StreamableHttpService` calls its service factory for every request, and `EsdiagMcp::new` creates a fresh `config_writes` lock. A factory that called `new` would give each concurrent request its own lock, so two `host_add` calls could each read `hosts.yml` and the later write would drop the earlier host. `/mcp` therefore builds one `EsdiagMcp` at server startup and the factory returns clones of it. `EsdiagMcp` derives `Clone`; a clone shares the `Arc` for `config_writes` and for the `McpHost`, and copies only the tool router. Every request in the process then serializes configuration writes through the same lock, as stdio does. Separate processes, such as `esdiag mcp` and `esdiag serve` running at once, still do not share it, the same as two CLI commands today.
+
 Alternative considered: stateful sessions (`LocalSessionManager`). Rejected: sessions are removed in protocol `2026-07-28`, they need affinity behind a load balancer, and no tool needs per-session state.
 
 ### Allowed hosts

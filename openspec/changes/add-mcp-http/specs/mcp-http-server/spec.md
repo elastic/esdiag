@@ -54,7 +54,12 @@ The endpoint SHALL serve each request without server-held MCP session state, so 
 - **THEN** the response is an event stream containing at least one progress notification followed by the result
 
 ### Requirement: User Mode Tool Policy
-In `user` mode, the endpoint SHALL offer the same tools, parameters, results, failures, and annotations as `esdiag mcp` for the same build.
+In `user` mode, the endpoint SHALL offer the same tools, parameters, results, failures, and annotations as `esdiag mcp` for the same build. Tool calls that change hosts, saved jobs, or the output context SHALL run one at a time across all concurrent `/mcp` requests to the same server process, as they do within one `esdiag mcp` session.
+
+#### Scenario: Concurrent host additions both persist
+- **GIVEN** the endpoint is enabled in `user` mode
+- **WHEN** two clients call `host_add` concurrently for different host names
+- **THEN** both hosts are saved in `hosts.yml`
 
 #### Scenario: Same catalog as stdio
 - **GIVEN** a binary built with default features
