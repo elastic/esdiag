@@ -50,7 +50,7 @@ sequenceDiagram
   T->>T: parse upload URL and token (no local state)
   T->>G: McpHost::admit(owner)
   G-->>T: AdmissionGuard or cap error
-  T->>T: run process_upload with the startup exporter
+  T->>T: run process_prepared with the startup exporter
   T-->>C: SSE progress..., result
 ```
 
@@ -66,7 +66,7 @@ Service policy lists only `process`, with a separate parameter struct: `url` and
 
 - `url` goes through `UploadLink::parse`, a new upload-only parser in `esdiag-core` that never calls `Uri::try_from`, `HostReference`, or the filesystem. It accepts only an absolute `https` URL whose host is `upload.elastic.co`, with no userinfo, query, or fragment, and a non-empty path. Anything else, including saved-host names, archive paths, and directories, fails with `invalid_input` before any I/O. Bare upload identifiers are not accepted, because no verified mapping from an identifier to a download URL exists.
 - `token` is the per-upload download token, the same value the web `service_link` form takes. It is the one credential a tool parameter may carry, and only in service mode, where no keystore or terminal exists to supply it. The parser sets it as the URL's `token:` userinfo and builds `Uri::ServiceLink` directly. The token is never echoed in results or failures, logged, persisted, or accepted inside `url`. The `user`-mode catalog keeps rejecting download tokens, as in `add-mcp-stdio`.
-- The tool calls a new core entry point, `operations::process::process_upload(link, exporter, identifiers, context)`. It takes the validated `ServiceLink`, the host exporter bound into the caller's `ExecutionContext`, the request's `Identifiers`, and the context that carries the MCP progress observer and request ownership. It resolves no local defaults. `esdiag-gui`'s `execute_synchronous_processing` moves onto the same entry point, so the web `service_link` route and service-mode MCP share one path.
+- The tool calls a new core entry point, `operations::process::process_prepared(input, exporter, identifiers, context) -> ExecutionOutcome`. It takes an already-built `Input`, the host exporter to bind into the caller's `ExecutionContext`, the request's `Identifiers`, and the context that carries the MCP progress observer and request ownership. It resolves no local defaults and does not inspect the input kind. Service-mode MCP passes the `Input` built from the validated `ServiceLink`. `esdiag-gui`'s `execute_synchronous_processing` becomes a thin wrapper over it, so both of its callers keep working unchanged: the `service_link` route and the API-key collection route, which passes `Input::CollectBinding`. Each keeps building its own HTTP result, including parent and included-diagnostic results, from the returned `ExecutionOutcome`.
 
 Alternatives considered:
 
@@ -86,10 +86,11 @@ The authentication layer only rejects; it does not carry identity. Tools resolve
 Cancellation over stateless HTTP is the client closing the stream, or server shutdown cancelling the token. rmcp drops the handler future, which the stdio design already treats as cancellation. Dropping the future only stops work that runs inside it or is aborted with it:
 
 - The Upload Service download becomes an async `reqwest` request awaited inside the operation future, replacing `block_in_place` with a blocking client. Dropping the future aborts the request. The web `service_link` route uses the same downloader.
-- Export consumers already run under `AbortOnDropHandle` (`add-mcp-stdio`), so queued bulk requests stop when the future drops.
-- The `AdmissionGuard` is owned by the operation future, not by the transport or handler wrapper. Its slot is released when that future is dropped, which is after the download request and export consumers are aborted. A cancelled call cannot free its slot while its download keeps running.
+- Export work is not all inside the future. Document consumers run under `AbortOnDropHandle` (`add-mcp-stdio`), but `ElasticsearchExporter::batch_tx` spawns a detached task per batch, and that task runs every sub-batch of `batch_send` once its permit is acquired. Aborting the consumer neither reaches those tasks nor waits for anything to end, because an abort is only a request.
+- Each execution therefore gets an execution-scoped `TaskTracker` and `CancellationToken` (from `tokio-util`) carried by its `ExecutionContext`. The exporter spawns batch tasks through the tracker instead of bare `tokio::spawn`, and `batch_send` checks the token before each sub-batch, so a cancelled export sends no further sub-batches. A request already on the wire runs to completion or its timeout.
+- The `AdmissionGuard` is owned by the operation future, not by the transport or handler wrapper. `Drop` cannot wait, so dropping the guard does not release the slot directly. It cancels the token, closes the tracker, and spawns a task that awaits `TaskTracker::wait()` and only then releases the slot. A cancelled call cannot free its slot while its download or any export task is still running. A call that completes normally releases the slot after the tracker is empty too, so both paths share one release point.
 
-Tests cover a client disconnect and a server shutdown during a stalled download from a local mock server: the download connection closes, the call reports no success, and the owner's slot is free afterwards.
+Tests cover a client disconnect and a server shutdown during two phases, each against a local mock server: during a stalled download, and during a bulk export whose second sub-batch request stalls. In each case the call reports no success, the mock receives no request after cancellation besides the one in flight, and the owner's slot is free only after the in-flight request ends.
 
 Alternative considered: stateful sessions (`LocalSessionManager`). Rejected: sessions are removed in protocol `2026-07-28`, they need affinity behind a load balancer, and no tool needs per-session state.
 

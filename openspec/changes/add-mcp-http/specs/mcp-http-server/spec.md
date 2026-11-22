@@ -36,6 +36,13 @@ The endpoint SHALL serve each request without server-held MCP session state, so 
 - **AND** the call is not reported as successful
 - **AND** the owner's next `process` call is admitted
 
+#### Scenario: Client disconnects during an export
+- **GIVEN** the server runs in `service` mode with a per-owner cap of 1
+- **AND** an owner's `process` call is exporting a diagnostic in several bulk requests, and one request is in flight
+- **WHEN** the client closes the response stream
+- **THEN** the server sends no further bulk request for that call
+- **AND** the owner's next `process` call is rejected until the in-flight request ends, and admitted afterwards
+
 #### Scenario: Requests served without a session
 - **GIVEN** the endpoint is enabled
 - **WHEN** a client sends `tools/list` without an MCP session identifier
