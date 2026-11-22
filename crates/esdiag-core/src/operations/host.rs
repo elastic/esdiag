@@ -55,9 +55,9 @@ pub async fn host_add(input: HostAddInput) -> Result<CommandOutcome> {
     if KnownHost::get_known(&name).is_some() {
         return Err(eyre!("Host '{name}' already exists"));
     }
-    let (secret_auth, keystore_password) = resolve_add_host_secret_auth(&name, &mut update, keystore_password)?
-        .map(|resolved| (resolved.auth, resolved.keystore_password))
-        .unzip();
+    let mut lookup = resolve_add_host_secret_auth(&name, &mut update, keystore_password)?;
+    let unasked_source = lookup.unasked_source(keystore_password);
+    let secret_auth = lookup.auth.take();
     let host = if url_template {
         build_host_from_definition(app, &target, true, &update, secret_auth)?
     } else if let Some(host) = KnownHost::resolve_template_reference(&target)? {
@@ -65,7 +65,15 @@ pub async fn host_add(input: HostAddInput) -> Result<CommandOutcome> {
     } else {
         build_host_from_definition(app, &target, false, &update, secret_auth)?
     };
-    save_host(&name, host.clone(), "added", !host.is_template(), keystore_password).await?;
+    save_host(
+        &name,
+        host.clone(),
+        "added",
+        !host.is_template(),
+        lookup.keystore_password,
+        unasked_source,
+    )
+    .await?;
     Ok(CommandOutcome::Completed(CliOutcome::HostAdded {
         host: host_result(name, &host),
     }))
@@ -84,11 +92,18 @@ pub async fn host_update(input: HostUpdateInput) -> Result<CommandOutcome> {
         ));
     }
     let existing = KnownHost::get_known(&name).ok_or_else(|| eyre!("Host '{name}' not found"))?;
-    let (secret_auth, keystore_password) = resolve_host_secret_auth(update.secret.as_deref(), keystore_password)?
-        .map(|resolved| (resolved.auth, resolved.keystore_password))
-        .unzip();
-    let host = existing.merge_cli_update(&update, secret_auth)?;
-    save_host(&name, host.clone(), "updated", !host.is_template(), keystore_password).await?;
+    let mut lookup = resolve_host_secret_auth(update.secret.as_deref(), keystore_password)?;
+    let unasked_source = lookup.unasked_source(keystore_password);
+    let host = existing.merge_cli_update(&update, lookup.auth.take())?;
+    save_host(
+        &name,
+        host.clone(),
+        "updated",
+        !host.is_template(),
+        lookup.keystore_password,
+        unasked_source,
+    )
+    .await?;
     Ok(CommandOutcome::Completed(CliOutcome::HostUpdated {
         host: host_result(name, &host),
     }))
@@ -195,15 +210,24 @@ fn build_host_from_definition(
     }
 }
 
-/// Connection validation reads the host's secret again, so a password resolved
-/// while building the host is scoped over it.
+/// Connection validation reads the host's secret again, so the password is
+/// scoped over it: the one already obtained while building the host, otherwise
+/// one asked of `unasked_source` when validation will read an inherited or
+/// template secret. `unasked_source` is `None` once the source has been asked.
 async fn save_host(
     name: &str,
     host: KnownHost,
     action: &str,
     validate_connection: bool,
-    keystore_password: Option<Secret<String>>,
+    resolved_password: Option<Secret<String>>,
+    unasked_source: Option<KeystorePasswordSource>,
 ) -> Result<String> {
+    let keystore_password = match (resolved_password, unasked_source) {
+        (Some(password), _) => Some(password),
+        // On failure, validation reports the missing password itself.
+        (None, Some(source)) if validate_connection && host.requires_keystore_secret() => source().ok(),
+        (None, _) => None,
+    };
     let save = validate_and_save_host(name, host, action, validate_connection);
     match keystore_password {
         Some(keystore_password) => with_scoped_keystore_password(keystore_password, save).await,
@@ -247,64 +271,78 @@ fn cleanup_settings_after_host_delete(name: &str) -> Result<()> {
     settings.save()
 }
 
-struct ResolvedSecret {
-    auth: SecretAuth,
-    keystore_password: Secret<String>,
+/// What a secret lookup found, plus the password it obtained, which is kept
+/// even when no secret matched so validation never asks the source twice.
+#[derive(Default)]
+struct SecretLookup {
+    auth: Option<SecretAuth>,
+    keystore_password: Option<Secret<String>>,
+    source_asked: bool,
+}
+
+impl SecretLookup {
+    /// The source to ask during validation, unless the lookup already asked it.
+    fn unasked_source(&self, source: KeystorePasswordSource) -> Option<KeystorePasswordSource> {
+        (!self.source_asked).then_some(source)
+    }
 }
 
 fn resolve_host_secret_auth(
     secret_id: Option<&str>,
     keystore_password: KeystorePasswordSource,
-) -> Result<Option<ResolvedSecret>> {
+) -> Result<SecretLookup> {
     let Some(secret_id) = secret_id else {
-        return Ok(None);
+        return Ok(SecretLookup::default());
     };
 
     let keystore_password = keystore_password()?;
     let auth = resolve_secret_auth(secret_id, keystore_password.expose_secret())?
         .ok_or_else(|| eyre!("Secret '{secret_id}' was not found in keystore"))?;
-    Ok(Some(ResolvedSecret {
-        auth,
-        keystore_password,
-    }))
+    Ok(SecretLookup {
+        auth: Some(auth),
+        keystore_password: Some(keystore_password),
+        source_asked: true,
+    })
 }
 
 fn resolve_add_host_secret_auth(
     host_name: &str,
     update: &mut KnownHostCliUpdate,
     keystore_password: KeystorePasswordSource,
-) -> Result<Option<ResolvedSecret>> {
+) -> Result<SecretLookup> {
     if update.secret.as_deref().is_some() {
         return resolve_host_secret_auth(update.secret.as_deref(), keystore_password);
     }
     if update.apikey.is_some() || update.username.is_some() || update.password.is_some() {
-        return Ok(None);
+        return Ok(SecretLookup::default());
     }
-    let secret_auth = resolve_same_name_host_secret_auth(host_name, keystore_password)?;
-    if secret_auth.is_some() {
+    let lookup = resolve_same_name_host_secret_auth(host_name, keystore_password)?;
+    if lookup.auth.is_some() {
         tracing::debug!("Using host name {host_name} as secret_id");
         update.secret = Some(host_name.to_string());
     }
-    Ok(secret_auth)
+    Ok(lookup)
 }
 
 fn resolve_same_name_host_secret_auth(
     host_name: &str,
     keystore_password: KeystorePasswordSource,
-) -> Result<Option<ResolvedSecret>> {
+) -> Result<SecretLookup> {
     if !keystore_exists()? {
-        return Ok(None);
+        return Ok(SecretLookup::default());
     }
     // The same-name secret is an optional default; without a password the host is saved without it.
     let Ok(keystore_password) = keystore_password() else {
-        return Ok(None);
+        return Ok(SecretLookup {
+            source_asked: true,
+            ..SecretLookup::default()
+        });
     };
-    Ok(
-        resolve_secret_auth(host_name, keystore_password.expose_secret())?.map(|auth| ResolvedSecret {
-            auth,
-            keystore_password,
-        }),
-    )
+    Ok(SecretLookup {
+        auth: resolve_secret_auth(host_name, keystore_password.expose_secret())?,
+        keystore_password: Some(keystore_password),
+        source_asked: true,
+    })
 }
 
 fn host_connection_uses_receiver(uri: &Uri) -> bool {
@@ -388,10 +426,7 @@ mod tests {
         upsert_secret_auth("api-secret", SecretAuth::apikey("secret-key"), "pw").expect("save api secret");
 
         let resolved = resolve_host_secret_auth(Some("api-secret"), get_keystore_password).expect("resolve auth");
-        assert!(matches!(
-            resolved.map(|resolved| resolved.auth),
-            Some(SecretAuth::ApiKey { .. })
-        ));
+        assert!(matches!(resolved.auth, Some(SecretAuth::ApiKey { .. })));
     }
 
     #[test]
@@ -401,10 +436,7 @@ mod tests {
             .expect("save basic secret");
 
         let resolved = resolve_host_secret_auth(Some("basic-secret"), get_keystore_password).expect("resolve auth");
-        assert!(matches!(
-            resolved.map(|resolved| resolved.auth),
-            Some(SecretAuth::Basic { .. })
-        ));
+        assert!(matches!(resolved.auth, Some(SecretAuth::Basic { .. })));
     }
 
     #[test]
@@ -413,10 +445,7 @@ mod tests {
         upsert_secret_auth("host-fallback", SecretAuth::apikey("secret-key"), "pw").expect("save fallback secret");
 
         let resolved = resolve_host_secret_auth(Some("host-fallback"), get_keystore_password).expect("resolve auth");
-        assert!(matches!(
-            resolved.map(|resolved| resolved.auth),
-            Some(SecretAuth::ApiKey { .. })
-        ));
+        assert!(matches!(resolved.auth, Some(SecretAuth::ApiKey { .. })));
     }
 
     #[test]
@@ -428,10 +457,7 @@ mod tests {
         let resolved =
             resolve_add_host_secret_auth("prod-es", &mut update, get_keystore_password).expect("resolve auth");
 
-        assert!(matches!(
-            resolved.map(|resolved| resolved.auth),
-            Some(SecretAuth::ApiKey { .. })
-        ));
+        assert!(matches!(resolved.auth, Some(SecretAuth::ApiKey { .. })));
         assert_eq!(update.secret.as_deref(), Some("prod-es"));
     }
 
@@ -447,7 +473,7 @@ mod tests {
         let resolved =
             resolve_add_host_secret_auth("prod-es", &mut update, get_keystore_password).expect("resolve auth");
 
-        assert!(resolved.is_none());
+        assert!(resolved.auth.is_none());
         assert!(update.secret.as_deref().is_none());
     }
 
@@ -459,7 +485,7 @@ mod tests {
         let resolved =
             resolve_add_host_secret_auth("prod-es", &mut update, get_keystore_password).expect("resolve auth");
 
-        assert!(resolved.is_none());
+        assert!(resolved.auth.is_none());
         assert!(update.secret.as_deref().is_none());
     }
 
@@ -501,5 +527,58 @@ mod tests {
         })
         .await
         .expect("update to another secret");
+
+        host_update(HostUpdateInput {
+            name: "explicit".to_string(),
+            update: KnownHostCliUpdate {
+                accept_invalid_certs: Some(true),
+                ..Default::default()
+            },
+            keystore_password: source,
+        })
+        .await
+        .expect("update that keeps the saved secret");
+    }
+
+    #[tokio::test]
+    async fn template_host_add_asks_the_password_source_once() {
+        static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        fn counting_source() -> Result<Secret<String>> {
+            CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(Secret::new("pw".to_string()))
+        }
+
+        let _env = TestEnv::new();
+        upsert_secret_auth("tmpl-secret", SecretAuth::apikey("tmpl-key"), "pw").expect("save secret");
+        let mock = ElasticsearchMock::new()
+            .path_prefix("/deployments/dep1")
+            .require_authorization("ApiKey tmpl-key");
+        let url = mock.serve().await;
+        host_add(HostAddInput {
+            name: "tmpl".to_string(),
+            app: Some(Application::Elasticsearch),
+            target: format!("{url}/deployments/{{id}}/"),
+            url_template: true,
+            update: KnownHostCliUpdate {
+                secret: Some("tmpl-secret".to_string()),
+                ..Default::default()
+            },
+            keystore_password: counting_source,
+        })
+        .await
+        .expect("save template host");
+
+        CALLS.store(0, std::sync::atomic::Ordering::SeqCst);
+        host_add(HostAddInput {
+            name: "dep-host".to_string(),
+            app: None,
+            target: "tmpl://dep1".to_string(),
+            url_template: false,
+            update: KnownHostCliUpdate::default(),
+            keystore_password: counting_source,
+        })
+        .await
+        .expect("add a concrete host from the template");
+        assert_eq!(CALLS.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }
