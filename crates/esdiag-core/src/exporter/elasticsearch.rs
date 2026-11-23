@@ -1071,31 +1071,38 @@ mod tests {
         let mut test_env = crate::TestEnv::new();
         test_env.set_path("ESDIAG_HOME", test_env.tmp.path().to_path_buf());
         std::fs::create_dir_all(test_env.tmp.path().join("last_run")).unwrap();
-        let (url, mock) = mock_bulk_server(vec![BulkReply::Items(vec![
+        let first = BulkReply::Items(vec![
             created_item("a"),
             throttled_item(),
             json!({"_index":".ds-test-esdiag-2026.11.21-000001","status":400,"error":{"type":"document_parsing_exception","reason":"failed to parse field [x]"}}),
             throttled_item(),
-        ])])
-        .await;
+        ]);
+        // The resend of documents 2 and 4 is throttled again, for the second of them only.
+        let second = BulkReply::Items(vec![created_item("b"), throttled_item()]);
+        let (url, mock) = mock_bulk_server(vec![first, second]).await;
         let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
 
         let docs = vec![json!({"n": 1}), json!({"n": 2}), json!({"n": 3}), json!({"n": 4})];
         let br = exporter.batch_send("test-esdiag".to_string(), docs).await.unwrap();
 
-        // The two throttled documents are created by the resend; the parsing error stays permanent.
+        // The throttled documents are created by the resends; the parsing error stays permanent.
         assert_eq!(br.docs, 3);
         assert_eq!(br.errors, 1);
-        assert_eq!(br.retries, 1);
+        assert_eq!(br.retries, 2);
         assert_eq!(br.batch_count, 1);
         assert_eq!(br.status_code, 200);
         assert_eq!(br.rejected_indices.get("test-esdiag"), Some(&1));
         let requests = mock.bulk_requests();
-        assert_eq!(requests.len(), 2, "expected the first request and one resend");
+        assert_eq!(requests.len(), 3, "expected the first request and two resends");
         assert_eq!(
             requests[1].documents,
             vec![json!({"n": 2}), json!({"n": 4})],
             "resend only the throttled documents, in order"
+        );
+        assert_eq!(
+            requests[2].documents,
+            vec![json!({"n": 4})],
+            "positions are those of the previous resend, not of the batch"
         );
     }
 
