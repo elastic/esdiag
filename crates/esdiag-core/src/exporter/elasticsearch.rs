@@ -170,7 +170,13 @@ impl ElasticsearchExporter {
         .map_err(|e| e.into())
     }
 
-    async fn send_value_batch(&self, index: String, values: Vec<Arc<Value>>) -> Result<BatchResponse> {
+    /// Sends one sub-batch. The error next to the response is a fatal failure of a resend: the documents
+    /// answered for before it still count, but nothing more should be sent.
+    async fn send_value_batch(
+        &self,
+        index: String,
+        values: Vec<Arc<Value>>,
+    ) -> Result<(BatchResponse, Option<eyre::Report>)> {
         let config = RetryConfig::from_env();
         let mut retries: u16 = 0;
         // The documents still to send: the whole batch, then only those Elasticsearch throttled per item.
@@ -205,7 +211,7 @@ impl ElasticsearchExporter {
                     if throttled.is_empty() {
                         let mut response = answered.expect("a response was just recorded");
                         response.retries = retries;
-                        return Ok(response);
+                        return Ok((response, None));
                     }
                     let sleep_ms = backoff_ms(attempt, &config);
                     tracing::warn!(
@@ -247,7 +253,7 @@ impl ElasticsearchExporter {
                         None => BatchResponse::failed(pending.len() as u32, 429),
                     };
                     response.retries = retries;
-                    return Ok(response);
+                    return Ok((response, None));
                 }
                 Err(ExporterError::Fatal { status, error }) => {
                     return finish_after_failure(&index, answered, pending.len(), status, error, retries);
@@ -375,13 +381,24 @@ impl Export for ElasticsearchExporter {
             let batch_doc_count = batches[batch_index].len() as u32;
             let batch = std::mem::take(&mut batches[batch_index]);
             match self.send_value_batch(index.clone(), batch).await {
-                Ok(response) => summary.merge(response),
+                Ok((response, None)) => summary.merge(response),
+                Ok((response, Some(err))) => {
+                    summary.merge(response);
+                    let unsent_docs = doc_count(&batches[batch_index + 1..]);
+                    if unsent_docs > 0 {
+                        tracing::warn!(
+                            "{index} - stopping after a failed resend; recording {unsent_docs} unsent docs as failed: {err}"
+                        );
+                        summary.merge(BatchResponse::failed(
+                            unsent_docs,
+                            BatchResponse::HTTP_REQUEST_NOT_COMPLETED,
+                        ));
+                    }
+                    return Ok(summary);
+                }
                 Err(err) if summary.batch_count == 0 => return Err(err),
                 Err(err) => {
-                    let unsent_docs = batches
-                        .iter()
-                        .skip(batch_index + 1)
-                        .fold(0u32, |count, batch| count.saturating_add(batch.len() as u32));
+                    let unsent_docs = doc_count(&batches[batch_index + 1..]);
                     let failed_docs = batch_doc_count.saturating_add(unsent_docs);
                     tracing::warn!(
                         "{index} - bulk sub-batch failed after partial success; recording {failed_docs} failed docs: {err}"
@@ -567,6 +584,12 @@ fn rejected_data_stream(index: &str) -> &str {
     stream
 }
 
+fn doc_count(batches: &[Vec<Arc<Value>>]) -> u32 {
+    batches
+        .iter()
+        .fold(0, |count, batch| count.saturating_add(batch.len() as u32))
+}
+
 /// A bulk request that failed outright. Before any document was answered for, the batch fails as before.
 /// When a resend of throttled documents fails, the documents already created still count, and only the
 /// unsent ones are recorded as failed, with the status the cluster answered, if it did.
@@ -577,7 +600,7 @@ fn finish_after_failure(
     status: Option<u16>,
     error: eyre::Report,
     retries: u16,
-) -> Result<BatchResponse> {
+) -> Result<(BatchResponse, Option<eyre::Report>)> {
     let Some(mut response) = answered else {
         return Err(error);
     };
@@ -586,7 +609,7 @@ fn finish_after_failure(
     response.merge_resend(BatchResponse::failed(unsent as u32, status_code));
     response.status_code = status_code;
     response.retries = retries;
-    Ok(response)
+    Ok((response, Some(error)))
 }
 
 /// Reads a bulk response. With `retry_throttled`, items Elasticsearch rejected with `429` (its write queue
@@ -1138,6 +1161,30 @@ mod tests {
             "the cluster's status, not the no-response sentinel"
         );
         assert_eq!(mock.bulk_requests().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_failed_resend_stops_the_remaining_sub_batches() {
+        let _lock = ENV_LOCK.lock().await;
+        let _env = RetryEnvGuard::set("5");
+        let _bulk = BulkBytesEnvGuard::set("104857600");
+        let sub_batch = crate::env::ESDIAG_ES_BULK_SIZE;
+        let mut items = vec![created_item("a"); sub_batch - 1];
+        items.push(throttled_item());
+        let (url, mock) = mock_bulk_server(vec![BulkReply::Items(items), BulkReply::Status(401)]).await;
+        let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
+
+        // Two sub-batches: the second one, of 3 documents, is never sent.
+        let docs = (0..sub_batch + 3).map(|n| json!({"n": n})).collect();
+        let br = exporter.batch_send("test-esdiag".to_string(), docs).await.unwrap();
+
+        assert_eq!(br.docs, sub_batch as u32 - 1);
+        assert_eq!(br.errors, 1 + 3);
+        assert_eq!(
+            mock.bulk_requests().len(),
+            2,
+            "no sub-batch is sent after the failed resend"
+        );
     }
 
     #[tokio::test]
