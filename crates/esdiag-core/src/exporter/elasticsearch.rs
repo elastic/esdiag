@@ -23,14 +23,36 @@ use url::Url;
 #[derive(Debug)]
 enum ExporterError {
     RateLimited,
-    Fatal(eyre::Report),
+    /// A failure that is not retried, with the HTTP status when the cluster rejected the request.
+    Fatal {
+        status: Option<u16>,
+        error: eyre::Report,
+    },
+}
+
+impl ExporterError {
+    /// The cluster answered the request with an error status.
+    fn rejected(status: u16, error: eyre::Report) -> Self {
+        Self::Fatal {
+            status: Some(status),
+            error,
+        }
+    }
+
+    /// The request or its handling failed without an error status from the cluster.
+    fn incomplete(error: impl Into<eyre::Report>) -> Self {
+        Self::Fatal {
+            status: None,
+            error: error.into(),
+        }
+    }
 }
 
 impl std::fmt::Display for ExporterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ExporterError::RateLimited => write!(f, "http 429 too many requests"),
-            ExporterError::Fatal(e) => write!(f, "{e}"),
+            ExporterError::Fatal { error, .. } => write!(f, "{error}"),
         }
     }
 }
@@ -171,7 +193,7 @@ impl ElasticsearchExporter {
             .map_err(|_| eyre!("Timed out sending bulk request to {} for index {}", self.url, index));
             let response = match response {
                 Ok(response) => response,
-                Err(e) => return finish_after_failure(&index, answered, pending.len(), e, retries),
+                Err(e) => return finish_after_failure(&index, answered, pending.len(), None, e, retries),
             };
 
             match parse_response(index.clone(), response, retries, can_retry).await {
@@ -227,8 +249,8 @@ impl ElasticsearchExporter {
                     response.retries = retries;
                     return Ok(response);
                 }
-                Err(ExporterError::Fatal(e)) => {
-                    return finish_after_failure(&index, answered, pending.len(), e, retries);
+                Err(ExporterError::Fatal { status, error }) => {
+                    return finish_after_failure(&index, answered, pending.len(), status, error, retries);
                 }
             }
         }
@@ -547,11 +569,12 @@ fn rejected_data_stream(index: &str) -> &str {
 
 /// A bulk request that failed outright. Before any document was answered for, the batch fails as before.
 /// When a resend of throttled documents fails, the documents already created still count, and only the
-/// unsent ones are recorded as failed.
+/// unsent ones are recorded as failed, with the status the cluster answered, if it did.
 fn finish_after_failure(
     index: &str,
     answered: Option<BatchResponse>,
     unsent: usize,
+    status: Option<u16>,
     error: eyre::Report,
     retries: u16,
 ) -> Result<BatchResponse> {
@@ -559,11 +582,9 @@ fn finish_after_failure(
         return Err(error);
     };
     tracing::warn!("{index} - resending {unsent} throttled docs failed; recording them as failed: {error}");
-    response.merge_resend(BatchResponse::failed(
-        unsent as u32,
-        BatchResponse::HTTP_REQUEST_NOT_COMPLETED,
-    ));
-    response.status_code = BatchResponse::HTTP_REQUEST_NOT_COMPLETED;
+    let status_code = status.unwrap_or(BatchResponse::HTTP_REQUEST_NOT_COMPLETED);
+    response.merge_resend(BatchResponse::failed(unsent as u32, status_code));
+    response.status_code = status_code;
     response.retries = retries;
     Ok(response)
 }
@@ -576,37 +597,51 @@ async fn parse_response(
     retries: u16,
     retry_throttled: bool,
 ) -> Result<(BatchResponse, Vec<usize>), ExporterError> {
-    let response = response.map_err(|e| ExporterError::Fatal(e.into()))?;
+    let response = response.map_err(ExporterError::incomplete)?;
     tracing::trace!("{:?}", &response);
     let status_code = response.status_code().as_u16();
     match status_code {
         200 => {}
         400 => {
-            return Err(ExporterError::Fatal(eyre!("{} - http 400 bad request", index)));
+            return Err(ExporterError::rejected(
+                status_code,
+                eyre!("{} - http 400 bad request", index),
+            ));
         }
         401 => {
-            return Err(ExporterError::Fatal(eyre!("{} - http 401 unauthorized", index)));
+            return Err(ExporterError::rejected(
+                status_code,
+                eyre!("{} - http 401 unauthorized", index),
+            ));
         }
         403 => {
-            return Err(ExporterError::Fatal(eyre!("{} - http 403 forbidden", index)));
+            return Err(ExporterError::rejected(
+                status_code,
+                eyre!("{} - http 403 forbidden", index),
+            ));
         }
         404 => {
-            return Err(ExporterError::Fatal(eyre!("{} - http 404 not found", index)));
+            return Err(ExporterError::rejected(
+                status_code,
+                eyre!("{} - http 404 not found", index),
+            ));
         }
         413 => {
-            return Err(ExporterError::Fatal(eyre!("{} - http 413 request too large", index)));
+            return Err(ExporterError::rejected(
+                status_code,
+                eyre!("{} - http 413 request too large", index),
+            ));
         }
         429 => return Err(ExporterError::RateLimited),
         500..=599 => {
-            return Err(ExporterError::Fatal(eyre!(
-                "{} - server errors: http {}",
-                index,
-                status_code
-            )));
+            return Err(ExporterError::rejected(
+                status_code,
+                eyre!("{} - server errors: http {}", index, status_code),
+            ));
         }
         _ => tracing::warn!("unexpected http response: {}", status_code),
     }
-    let body: Value = response.json().await.map_err(|e| ExporterError::Fatal(e.into()))?;
+    let body: Value = response.json().await.map_err(ExporterError::incomplete)?;
     let items: Vec<Value> = body.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
     let item_count = items.len();
 
@@ -634,7 +669,7 @@ async fn parse_response(
                 "body": body,
             }),
         )
-        .map_err(ExporterError::Fatal)?;
+        .map_err(ExporterError::incomplete)?;
     }
 
     match error_count {
@@ -652,7 +687,7 @@ async fn parse_response(
                 "errors": error_items
             }),
         )
-        .map_err(ExporterError::Fatal)?;
+        .map_err(ExporterError::incomplete)?;
     }
 
     let mut batch_response = BatchResponse::new(doc_count as u32);
@@ -1097,7 +1132,53 @@ mod tests {
 
         assert_eq!(br.docs, 1);
         assert_eq!(br.errors, 1);
+        assert_eq!(br.retries, 1);
+        assert_eq!(
+            br.status_code, 400,
+            "the cluster's status, not the no-response sentinel"
+        );
+        assert_eq!(mock.bulk_requests().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_resend_without_a_usable_response_is_not_completed() {
+        let _lock = ENV_LOCK.lock().await;
+        let _env = RetryEnvGuard::set("5");
+        let (url, mock) = mock_bulk_server(vec![
+            BulkReply::Items(vec![created_item("a"), throttled_item()]),
+            BulkReply::Proxy(200, "<html>not Elasticsearch</html>"),
+        ])
+        .await;
+        let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
+
+        let br = exporter
+            .batch_send("test-esdiag".to_string(), vec![json!({"n": 1}), json!({"n": 2})])
+            .await
+            .expect("a failed resend still reports the created document");
+
+        assert_eq!(br.docs, 1);
+        assert_eq!(br.errors, 1);
         assert_eq!(br.status_code, BatchResponse::HTTP_REQUEST_NOT_COMPLETED);
+        assert_eq!(mock.bulk_requests().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_resend_rejected_with_request_429_keeps_the_documents_already_created() {
+        let _lock = ENV_LOCK.lock().await;
+        let _env = RetryEnvGuard::set("1");
+        let (url, mock) = mock_bulk_server(vec![
+            BulkReply::Items(vec![created_item("a"), throttled_item()]),
+            BulkReply::Status(429),
+        ])
+        .await;
+        let exporter = ElasticsearchExporter::try_new(url, Auth::None).unwrap();
+
+        let br = exporter
+            .batch_send("test-esdiag".to_string(), vec![json!({"n": 1}), json!({"n": 2})])
+            .await
+            .unwrap();
+
+        assert_eq!((br.docs, br.errors, br.status_code), (1, 1, 429));
         assert_eq!(mock.bulk_requests().len(), 2);
     }
 

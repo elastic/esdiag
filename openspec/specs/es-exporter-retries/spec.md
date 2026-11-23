@@ -45,6 +45,7 @@ The Elasticsearch exporter SHALL retry a failed bulk batch when the output clust
 - **WHEN** the resend fails with a fatal error or times out
 - **THEN** the documents already created still count as created
 - **AND** only the documents of the failed resend are counted as errors
+- **AND** `BatchResponse.status_code` is the HTTP status the cluster answered, or the not-completed sentinel when there was no usable response
 
 ### Requirement: Retry Configuration via Environment Variables
 The retry behaviour of the Elasticsearch exporter SHALL be configurable via environment variables at process startup. All variables MUST have sensible defaults so that no configuration is required for standard operation.
