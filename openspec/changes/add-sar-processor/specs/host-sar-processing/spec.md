@@ -92,7 +92,7 @@ The system SHALL export every SAR document to one data stream, `metrics-host.sar
 | `sar.metricset` | Key fields |
 |---|---|
 | `cpu` | `sar.cpu.id`. Merges every per-CPU section for that CPU |
-| `io` | `sar.io.device` |
+| `io` | `sar.io.device`, plus the derived `sar.io.device_class` |
 | `network` | `sar.network.interface`. Merges the traffic and error sections |
 | `filesystem` | `sar.filesystem.name`, plus `sar.filesystem.mountpoint` when reported |
 | `interrupt` | `sar.interrupt.id`, plus `sar.interrupt.cpu` when per-CPU |
@@ -132,6 +132,28 @@ Per-CPU fields SHALL use the same names in `summary` (`all`) and `cpu` documents
 - **GIVEN** a `DEV` section reporting 3 devices across 144 sample timestamps
 - **WHEN** the file is processed
 - **THEN** 432 `io` documents MUST be exported, each with one `sar.io.device` value
+
+### Requirement: Block device class
+Every `io` document SHALL carry a keyword `sar.io.device_class` naming the device's driver family, so that one set of charts can be filtered to SCSI disks, device-mapper volumes, and so on. `sar` names devices by kernel name (`sda`, `dm-0`) when run with `-p`, and by major and minor number (`dev8-0`, `dev253-0`) otherwise; both SHALL classify the same way.
+
+| Class | Kernel names | Major numbers |
+|---|---|---|
+| `sd` | `sd[a-z]+`, with or without a partition number | 8, 65–71, 128–135 |
+| `dm` | `dm-N` | 253 |
+| `nvme` | `nvmeNnN`, with or without `pN` | 259 |
+| `md` | `mdN` | 9 |
+| `vd` | `vd[a-z]+` | none |
+| `xvd` | `xvd[a-z]+` | 202 |
+| `sr` | `srN` | 11 |
+| `loop` | `loopN` | 7 |
+| `other` | anything else | anything else |
+
+Major 253 is dynamically assigned, so `dm` for `dev253-N` is a heuristic that holds for common distributions.
+
+#### Scenario: Kernel and numeric names classify alike
+- **GIVEN** `DEV` rows for `sda`, `sdb1`, `dm-3`, `dev8-16`, `dev253-2`, `dev11-0`, `nvme0n1p2`, and `ram0`
+- **WHEN** the file is processed
+- **THEN** their `sar.io.device_class` values MUST be `sd`, `sd`, `dm`, `sd`, `dm`, `sr`, `nvme`, and `other`
 
 #### Scenario: Interface traffic and errors merge
 - **GIVEN** a `sar.txt` with both the `IFACE` traffic section (`rxpck/s`) and the `IFACE` error section (`rxerr/s`) for interface `eth0` at the same timestamp

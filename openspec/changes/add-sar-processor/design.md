@@ -51,7 +51,7 @@ netstat:
 - A `SyscallSource` struct with `filename`, `tags`, `processable`, `processing_weight`, `option`, and `processors`. Unknown fields are rejected, so a typo fails at load. The future collection change adds a per-OS `commands` map to these entries additively, mirroring `diags.yml` `linuxOS`/`macOS`/`winOS`. Keys and processing behavior do not change.
 - Embedded with `include_str!`, like the REST registries. No `--sources`-style override in this change.
 - `ss` and `netstat` are collect-only entries: SAR resolves their paths from the catalog, so no processor hard-codes `syscalls/…` strings.
-- `SYSCALL_DISPATCH: &[SyscallEntry]` per application. In this change only Elasticsearch has one, with a single `sar` entry. `validate_syscall_registry(application)` mirrors `validate_processable_registry`: each processable entry listing that application has exactly one dispatch entry, and vice versa. It runs in the same `OnceLock` validation as `ES_DISPATCH`.
+- `SYSCALL_DISPATCH: &[SyscallEntry]` per application. In this change only Elasticsearch has one, with a single `sar` entry. `validate_syscall_registry(application)` mirrors `validate_processable_registry`: each processable entry listing that application has exactly one dispatch entry, and vice versa. It runs once, next to the `ES_DISPATCH` validation, before processing starts.
 - `ElasticsearchDiagnostic::process` runs the syscall dispatch alongside `ES_DISPATCH` in the same concurrent set, weighted by `processing_weight`.
 
 - *Rejected: a `sources.yml` entry.* `sources.yml` is the REST collection definition reconciled with `elastic-rest.yml` (ADR-0006), and the `source-reconciliation` spec forbids merging `diags.yml` commands into it. A bundle-only OS file with no `versions` also breaks `validate_es_dispatch_registry`.
@@ -97,7 +97,7 @@ Blank detection reads the stream up to the first non-blank line and hands the pr
 | `host.rs` | `HostIdentity` and `NodeCorrelation` (Decision 5) |
 | `docs.rs` | One document type, `SarDoc { metadata, host, metricset, key: EntityKey, fields: SarFields }`, with `Metricset` and `EntityKey` enums. `EntityKey::None` is used for `summary` |
 
-No new `Receiver`, `Processor`, or `Exporter` traits. The parser is a plain `Iterator`-style API: `SarParser::push_line(&str) -> Option<SarRecord>`. It is unit-testable from string fixtures without a receiver or exporter.
+No new `Receiver`, `Processor`, or `Exporter` traits. The parser is a plain push API: `SarParser::push_line(&str, &mut Vec<SarRecord>)`, since one interrupt-matrix row yields a record per cell. It is unit-testable from string fixtures without a receiver or exporter.
 
 ### 3. Parser state machine (runtime enum, not typestate)
 
@@ -117,8 +117,8 @@ stateDiagram-v2
     Between --> Between: "Average:" / non-timestamp rows
 ```
 
-- Entering `InSection` resets `RolloverClock { date: header.report_date, last: None }`. This is the per-section reset that prevents the +1-day drift. One exception: a `resume` marker, set by a `LINUX RESTART` line and cleared on the next header, makes the repeated header of the same section keep the clock. A blank line sits between the restart and the repeated header, so the re-entry goes through `Between`.
-- A header line is recognized when its first non-timestamp tokens are all non-numeric and contain a distinctive column for some `Section`. That check rules out data rows. CPU vs softnet and the two `IFACE` sections are told apart by distinctive columns (spec: Section recognition).
+- Entering `InSection` for a different section than the last one resets `RolloverClock { date: header.report_date, last: None }`. This is the per-section reset that prevents the +1-day drift. Re-entering the same section keeps the clock: `sar` repeats a section's header after a blank line every screenful, and after a `LINUX RESTART` line, so a repeated header after midnight keeps its date. Header and restart times advance the clock like rows.
+- A header line is recognized when its non-timestamp tokens are all non-numeric and contain a distinctive column for some `Section`. That check rules out data rows. Inside a section, an all-text line that matches no section is a row of unavailable cells (`N/A`), not a new header. CPU vs softnet and the two `IFACE` sections are told apart by distinctive columns (spec: Section recognition).
 - `LINUX RESTART` lines are matched before row parsing and emit nothing. Because of `resume`, a reboot after midnight keeps its date.
 - In per-CPU sections (utilization, softnet, `MHz`, `wghMHz`), the `all` row is routed to the `summary` document and numbered rows to `cpu` documents.
 - Entering `Skipping` records the header's column list once per distinct header. `finish()` returns these lists, and Decision 7 turns each into a warning event.
@@ -221,7 +221,7 @@ A generated name that would hit a dynamic template in `esdiag@mappings.json` get
 | `sar.metricset` | Key fields |
 |---|---|
 | `cpu` | `sar.cpu.id` (numbered rows; `all` goes to `summary`) |
-| `io` | `sar.io.device` |
+| `io` | `sar.io.device`, plus the derived `sar.io.device_class` |
 | `network` | `sar.network.interface` |
 | `filesystem` | `sar.filesystem.name` (`FILESYSTEM`), `sar.filesystem.mountpoint` (`MOUNTPOINT`, when present) |
 | `interrupt` | `sar.interrupt.id`, `sar.interrupt.cpu` when per-CPU |
@@ -231,6 +231,10 @@ A generated name that would hit a dynamic template in `esdiag@mappings.json` get
 | `fc_host` | `sar.fc_host.name` = `FCHOST` |
 
 All metricsets share one mapping, so every field name must have one meaning and one type across the whole stream. Section prefixes guarantee this: aggregate block I/O is `sar.block` and per-device I/O is `sar.io`, and ETCP `retrans/s` (`sar.etcp.retrans_per_sec`) and NFS `retrans/s` (`sar.nfs.retrans_per_sec`) stay distinct. Per-CPU fields deliberately share names between `summary` (`all`) and `cpu` documents, which is safe only because every consumer filters on `sar.metricset`. A catalog unit test asserts that no generated field name maps to two different value types.
+
+**Device class**: `sar` names block devices by kernel name only under `-p`; plain `sar -A` prints `devMAJOR-MINOR`. Filtering by name pattern therefore fails on half of real bundles. The parser derives `sar.io.device_class` from the kernel-name prefix, or from the major number for `devM-N` names, so dashboards filter one set of charts with one control. Major 253 is dynamic; it maps to `dm`, which holds on common distributions.
+- *Rejected: filter dashboards by device-name patterns (`sd*`, `dm-*`).* Matches nothing for `devM-N` names.
+- *Rejected: separate dashboard sections per device class.* Duplicates every chart; a control filters one set.
 
 **Value types**: rates and `.pct` values serialize as JSON floats. Integer-valued text in `.bytes` and count columns (`totsck`, `runq_sz`, `file_nr`, …) serializes as a JSON integer, so dynamic mapping makes it `long`. Non-numeric cells in metric columns (for example `N/A`) are omitted, not zeroed.
 
@@ -250,7 +254,18 @@ All metricsets share one mapping, so every field name must have one meaning and 
 
 ### 10. Kibana assets
 
-The single data view and the dashboard are authored in Kibana against processed output from the existing local stack launcher. They are exported into `assets/kibana/esdiag/objects/{index-pattern,dashboard,lens}/`, following existing object conventions. Every panel carries a `sar.metricset` filter. The dashboard title is "Host Activity (SAR)", distinct from the existing node-scoped "Hosts Overview" and the ECK "Kubernetes Hosts".
+One data view, "Host Activity (SAR)", and four dashboards modeled on kSar: **Host Activity: Compute**, **Storage**, **Network**, and **System**. They are verified against processed output on the existing local stack and stored in `assets/kibana/esdiag/objects/{index-pattern,dashboard,links}/`, following existing object conventions.
+
+- **Sections**: each kSar graph is one collapsible section; Storage, a single kSar graph, gets one section per kSar plot. Kibana sections do not nest, and collapsed sections don't query until opened, which keeps large dashboards cheap.
+- **One metric per chart**: kSar plots several columns per chart; Kibana breakdowns already spend the color dimension on entities (devices, interfaces, CPUs, hosts), so each chart plots one metric.
+- **Host first**: SAR is host-scoped and Kibana cannot require a control selection, so entity charts break down by entity only and expect a `host.name` filter. Host-wide System charts break down by `host.name` to compare several SAR inputs.
+- **Per-CPU grid**: Lens XY has no small multiples, so the CPU dashboard holds 128 fixed Lens panels, one per CPU ID, four wide, in sections of 32; only `CPUs 0-31` starts expanded. Panels for absent CPUs show no data.
+  - *Rejected: one faceted Vega-Lite panel.* Exact per-host count, but hand-written Vega unlike every other shipped panel.
+- **All CPUs**: averages and 95th percentiles across cores per time bucket, from `cpu` documents. Averages of components are additive, so they stack; percentiles are not, so the p95 chart is unstacked.
+- **Navigation**: one shared "Hosts Overviews" links object, placed by reference on all four dashboards and on Hosts Overview to the right of the Elasticsearch overview links, keeps the current time range. On Hosts Overview it replaces the Nodes Overviews links, and Hosts Overview moves from the Nodes Overviews links to the end of the Elasticsearch overview links.
+- **Mappings**: every field a panel or control uses is explicitly mapped in `metrics-host.sar.json`; Lens reports an unmapped field as a panel error, not an empty chart, and a bundle may lack any section.
+
+The titles are distinct from the node-scoped "Hosts Overview" and the ECK "Kubernetes Hosts".
 
 ## Risks / Trade-offs
 
@@ -263,7 +278,7 @@ The single data view and the dashboard are authored in Kibana against processed 
 - [Web form: once a user changes any advanced checkbox, the form sends the full checked list, so a still-checked `syscalls.sar` counts as explicitly requested and a missing `sar.txt` then warns] → Accepted. The warning is non-fatal and accurately reflects a list the user submitted. Sending only the user's changes would need form state the web panel doesn't keep today.
 - [`requested` adds a field to `ProcessSelection`, which saved jobs persist] → Additive with `#[serde(default)]`, so existing saved jobs load unchanged. Older ESDiag versions ignore the unknown field.
 - [Sections absent from the sample bundle (pressure stall, interrupts, power and sensors, filesystems, TTY, Fibre Channel, IPv4/IPv6 protocols) have column layouts taken from sysstat documentation, not observed output] → Fixtures are built per section from the sysstat column definitions. Generic naming still ingests columns that differ, and an unrecognized header becomes a report warning rather than a misparse.
-- [Sample-bundle privacy] → Tests use synthetic fixtures with `example.com` hosts and documentation-range IPs. No customer bundle names, hostnames, or paths go into the repository.
+- [Sample-bundle privacy] → Tests use synthetic fixtures with `example.com` hosts and 10.x.x.x IPv4 addresses. No customer bundle names, hostnames, or paths go into the repository.
 
 ## Migration Plan
 

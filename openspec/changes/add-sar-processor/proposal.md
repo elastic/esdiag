@@ -23,7 +23,8 @@ Elasticsearch `support-diagnostics` bundles that run system calls include `sysca
 - Host-to-node correlation that can attach zero, one, or many Elasticsearch nodes to a host. Evidence, in priority order: listening sockets in `syscalls/ss.txt` (fallback `syscalls/netstat.txt`) matched against node publish addresses; the ECK `k8s_node_name` node attribute; the hostname; the manifest's collection host input.
 - Per-sample `@timestamp` from the SAR row (assumed UTC, recorded on the document), while `diagnostic.collection_date` stays the bundle collection time. This adds a timestamp-override constructor to the Elasticsearch metadata envelope.
 - Tolerant parsing: header-driven columns with sysstat version aliases, ANSI/control-byte stripping, `Average:` and `LINUX RESTART` lines skipped, per-section midnight rollover, and day/month disambiguation against the collection date.
-- Kibana: one data view and a new **Host Activity (SAR)** dashboard.
+- A derived `sar.io.device_class` (`sd`, `dm`, `nvme`, …) on block-device documents, from kernel names or major numbers, for filtering.
+- Kibana: one data view and four cross-linked **Host Activity** dashboards modeled on kSar (Compute, Storage, Network, System), with one collapsible section per kSar graph and a links panel also added to Hosts Overview.
 - Docs: update the `CONTEXT.md` "Infrastructure data" definition (host system calls can come from allocator or Kubernetes-node collections) and `CHANGELOG.md`.
 
 Out of scope:
@@ -40,7 +41,7 @@ Out of scope:
 - `host-sar-processing`: Parsing `syscalls/sar.txt` and exporting host-scoped SAR metrics to the `metrics-host.sar-esdiag` data stream. Covers sections, units, timestamps, host-to-node correlation, and how SAR parse results map onto the syscall failure policy.
 
 ### Modified Capabilities
-- `kibana-dashboards`: Adds a Host Activity (SAR) dashboard requirement over the new host data streams.
+- `kibana-dashboards`: Adds the Host Activity Compute, Storage, Network, and System dashboards over the new host data stream.
 
 ## Impact
 
@@ -51,6 +52,6 @@ Out of scope:
   - `assets/syscalls/sources.yml`.
   - `assets/elasticsearch/component_templates/esdiag@host.json`.
   - `assets/elasticsearch/index_templates/metrics-host.sar.json`.
-  - Kibana data view and dashboard under `assets/kibana/esdiag/objects/`.
+  - Kibana data view, four dashboards, and a links object under `assets/kibana/esdiag/objects/`, plus a links panel on Hosts Overview in place of its Nodes Overviews links. Hosts Overview moves from the Nodes Overviews links to the end of the Elasticsearch overview links.
 - **Dependencies**: none new. Timestamp parsing uses the existing date crate.
 - **Volume**: 144 samples per day, times one `summary` document plus one document per CPU, device, interface, filesystem, and sensor. The sample bundle (4 CPUs, 19 devices, 2 interfaces) yields about 3.7k documents. A 64-core host with per-interrupt data can reach hundreds of thousands, which is still bounded by samples × entities.
