@@ -1538,6 +1538,9 @@ struct TemplateReference {
 }
 
 fn parse_template_reference(reference: &str) -> Result<Option<TemplateReference>> {
+    if super::uri::is_windows_drive_path(reference) {
+        return Ok(None);
+    }
     let Ok(url) = Url::parse(reference) else {
         return Ok(None);
     };
@@ -2477,6 +2480,21 @@ mod tests {
         assert_eq!(
             resolved.concrete_url().map(|url| url.as_str()),
             Some("https://cloud.elastic.co/api/v1/deployments/cluster-1/elasticsearch/_main/proxy/")
+        );
+    }
+
+    #[test]
+    fn one_letter_template_reference_is_not_a_drive_path() {
+        let reference = parse_template_reference("c://cluster-1/elasticsearch")
+            .expect("valid reference")
+            .expect("template reference");
+
+        assert_eq!(reference.template_name, "c");
+        assert_eq!(reference.id, "cluster-1");
+        assert!(
+            parse_template_reference(r"C:\diagnostics\output")
+                .expect("path")
+                .is_none()
         );
     }
 
