@@ -25,6 +25,10 @@ published release notes, maintenance branches, and tagged history.
 - Added processing for Kibana diagnostic bundles, including status, settings, security, Fleet, alerting, spaces, monitoring, synthetics, and detection-engine data.
 - Added Kibana Host Health and Kibana Task Manager dashboards for processed Kibana diagnostics.
 - Added one document per Kibana Task Manager task type in `metrics-kibana.task_manager.task_type-esdiag`.
+- Added processing of `syscalls/sar.txt` in Elasticsearch bundles into the host-scoped `metrics-host.sar-esdiag` stream, covering every SAR section with per-CPU, device, interface, and filesystem documents, correlated to the Elasticsearch nodes on the host, including co-located ECE and ECK nodes.
+- Added `syscalls.<key>` processing options for host command output. `standard` and `support` diagnostics process `syscalls/sar.txt` when present; an explicitly requested but missing or unparseable file is reported as a warning.
+- Added the Host Activity Compute, Storage, Network, and System dashboards, modeled on kSar, and their data view. Each opens with the Elasticsearch links beside a shared Hosts Overviews links panel that connects them, and Hosts Overview shows the Hosts Overviews links in place of the Nodes links.
+- Added `sar.io.device_class`, which classifies block devices the same way whether `sar` names them by kernel name or by device number.
 
 ### Changed
 
@@ -52,6 +56,7 @@ published release notes, maintenance branches, and tagged history.
 - Preserved HTTP-client identifiers unchanged during scrub normalization.
 - Rejected unterminated JSON strings during scrubbed diagnostic reads instead of silently supplying a missing closing quote.
 - Improved diagnostic archive processing performance and memory efficiency by opening independent ZIP handles per read, using `from_slice` with a 256 MB cap for non-streaming JSON entries, framing streaming JSON entries into a reusable buffer, switching deflate decompression to `zlib-rs`, pre-serializing exporter batches outside writer locks, caching flattened Elasticsearch metadata values, and eliminating `serde` `Content` buffering and rayon spin-contention on hot paths (#324).
+- Moved the Hosts dashboard link from the Nodes overview links to the end of the Elasticsearch overview links, after Search.
 
 ### Fixed
 

@@ -1,0 +1,2804 @@
+{
+  "attributes": {
+    "controlGroupInput": {
+      "chainingSystem": "HIERARCHICAL",
+      "controlStyle": "oneLine",
+      "ignoreParentSettingsJSON": {
+        "ignoreFilters": false,
+        "ignoreQuery": false,
+        "ignoreTimerange": false,
+        "ignoreValidations": false
+      },
+      "panelsJSON": {
+        "c0": {
+          "explicitInput": {
+            "dataViewId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+            "exclude": null,
+            "existsSelected": null,
+            "fieldName": "diagnostic.id",
+            "hideActionBar": null,
+            "hideExclude": null,
+            "hideExists": null,
+            "hideSort": null,
+            "placeholder": null,
+            "runPastTimeout": null,
+            "searchTechnique": "prefix",
+            "selectedOptions": [],
+            "singleSelect": null,
+            "sort": {
+              "by": "_count",
+              "direction": "desc"
+            },
+            "title": "diagnostic.id"
+          },
+          "grow": true,
+          "order": 0,
+          "type": "optionsListControl",
+          "width": "medium"
+        },
+        "c1": {
+          "explicitInput": {
+            "dataViewId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+            "exclude": null,
+            "existsSelected": null,
+            "fieldName": "host.name",
+            "hideActionBar": null,
+            "hideExclude": null,
+            "hideExists": null,
+            "hideSort": null,
+            "placeholder": null,
+            "runPastTimeout": null,
+            "searchTechnique": "prefix",
+            "selectedOptions": [],
+            "singleSelect": null,
+            "sort": {
+              "by": "_count",
+              "direction": "desc"
+            },
+            "title": "host.name"
+          },
+          "grow": true,
+          "order": 1,
+          "type": "optionsListControl",
+          "width": "medium"
+        },
+        "c2": {
+          "explicitInput": {
+            "dataViewId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+            "exclude": null,
+            "existsSelected": null,
+            "fieldName": "elasticsearch.node.name",
+            "hideActionBar": null,
+            "hideExclude": null,
+            "hideExists": null,
+            "hideSort": null,
+            "placeholder": null,
+            "runPastTimeout": null,
+            "searchTechnique": "prefix",
+            "selectedOptions": [],
+            "singleSelect": null,
+            "sort": {
+              "by": "_count",
+              "direction": "desc"
+            },
+            "title": "elasticsearch.node.name"
+          },
+          "grow": true,
+          "order": 2,
+          "type": "optionsListControl",
+          "width": "medium"
+        },
+        "c3": {
+          "explicitInput": {
+            "dataViewId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+            "exclude": null,
+            "existsSelected": null,
+            "fieldName": "sar.network.interface",
+            "hideActionBar": null,
+            "hideExclude": null,
+            "hideExists": null,
+            "hideSort": null,
+            "placeholder": null,
+            "runPastTimeout": null,
+            "searchTechnique": "prefix",
+            "selectedOptions": [],
+            "singleSelect": null,
+            "sort": {
+              "by": "_count",
+              "direction": "desc"
+            },
+            "title": "sar.network.interface"
+          },
+          "grow": true,
+          "order": 3,
+          "type": "optionsListControl",
+          "width": "medium"
+        }
+      },
+      "showApplySelections": false
+    },
+    "description": "Network interfaces from sar.txt, modeled on kSar. Filter to one host.name first.",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": {
+        "filter": [],
+        "query": {
+          "language": "kuery",
+          "query": ""
+        }
+      }
+    },
+    "optionsJSON": {
+      "hidePanelTitles": false,
+      "syncColors": false,
+      "syncCursor": true,
+      "syncTooltips": false,
+      "useMargins": true
+    },
+    "panelsJSON": [
+      {
+        "embeddableConfig": {},
+        "gridData": {
+          "h": 3,
+          "i": "elasticsearch-links",
+          "w": 22,
+          "x": 0,
+          "y": 0
+        },
+        "panelIndex": "elasticsearch-links",
+        "type": "links"
+      },
+      {
+        "embeddableConfig": {},
+        "gridData": {
+          "h": 3,
+          "i": "host-activity-links",
+          "w": 26,
+          "x": 22,
+          "y": 0
+        },
+        "panelIndex": "host-activity-links",
+        "type": "links"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s0preceived-packets-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s0preceived-packets-per-second-layer": {
+                      "columnOrder": [
+                        "s0preceived-packets-per-second-by",
+                        "s0preceived-packets-per-second-x",
+                        "s0preceived-packets-per-second-m0"
+                      ],
+                      "columns": {
+                        "s0preceived-packets-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s0preceived-packets-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s0preceived-packets-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Received packets per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.rx.packets_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s0preceived-packets-per-second-m0"
+                    ],
+                    "layerId": "s0preceived-packets-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s0preceived-packets-per-second-x",
+                    "splitAccessor": "s0preceived-packets-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Received packets per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s0preceived-packets-per-second",
+          "sectionId": "host-activity-network-s0",
+          "w": 24,
+          "x": 0,
+          "y": 0
+        },
+        "panelIndex": "s0preceived-packets-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s0ptransmitted-packets-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s0ptransmitted-packets-per-second-layer": {
+                      "columnOrder": [
+                        "s0ptransmitted-packets-per-second-by",
+                        "s0ptransmitted-packets-per-second-x",
+                        "s0ptransmitted-packets-per-second-m0"
+                      ],
+                      "columns": {
+                        "s0ptransmitted-packets-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s0ptransmitted-packets-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s0ptransmitted-packets-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Transmitted packets per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.tx.packets_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s0ptransmitted-packets-per-second-m0"
+                    ],
+                    "layerId": "s0ptransmitted-packets-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s0ptransmitted-packets-per-second-x",
+                    "splitAccessor": "s0ptransmitted-packets-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Transmitted packets per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s0ptransmitted-packets-per-second",
+          "sectionId": "host-activity-network-s0",
+          "w": 24,
+          "x": 24,
+          "y": 0
+        },
+        "panelIndex": "s0ptransmitted-packets-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s0preceived-bytes-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s0preceived-bytes-per-second-layer": {
+                      "columnOrder": [
+                        "s0preceived-bytes-per-second-by",
+                        "s0preceived-bytes-per-second-x",
+                        "s0preceived-bytes-per-second-m0"
+                      ],
+                      "columns": {
+                        "s0preceived-bytes-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s0preceived-bytes-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s0preceived-bytes-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Received bytes per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.rx.bytes_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s0preceived-bytes-per-second-m0"
+                    ],
+                    "layerId": "s0preceived-bytes-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s0preceived-bytes-per-second-x",
+                    "splitAccessor": "s0preceived-bytes-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Received bytes per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s0preceived-bytes-per-second",
+          "sectionId": "host-activity-network-s0",
+          "w": 24,
+          "x": 0,
+          "y": 15
+        },
+        "panelIndex": "s0preceived-bytes-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s0ptransmitted-bytes-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s0ptransmitted-bytes-per-second-layer": {
+                      "columnOrder": [
+                        "s0ptransmitted-bytes-per-second-by",
+                        "s0ptransmitted-bytes-per-second-x",
+                        "s0ptransmitted-bytes-per-second-m0"
+                      ],
+                      "columns": {
+                        "s0ptransmitted-bytes-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s0ptransmitted-bytes-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s0ptransmitted-bytes-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Transmitted bytes per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.tx.bytes_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s0ptransmitted-bytes-per-second-m0"
+                    ],
+                    "layerId": "s0ptransmitted-bytes-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s0ptransmitted-bytes-per-second-x",
+                    "splitAccessor": "s0ptransmitted-bytes-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Transmitted bytes per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s0ptransmitted-bytes-per-second",
+          "sectionId": "host-activity-network-s0",
+          "w": 24,
+          "x": 24,
+          "y": 15
+        },
+        "panelIndex": "s0ptransmitted-bytes-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s0preceived-compressed-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s0preceived-compressed-per-second-layer": {
+                      "columnOrder": [
+                        "s0preceived-compressed-per-second-by",
+                        "s0preceived-compressed-per-second-x",
+                        "s0preceived-compressed-per-second-m0"
+                      ],
+                      "columns": {
+                        "s0preceived-compressed-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s0preceived-compressed-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s0preceived-compressed-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Received compressed per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.rx.compressed_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s0preceived-compressed-per-second-m0"
+                    ],
+                    "layerId": "s0preceived-compressed-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s0preceived-compressed-per-second-x",
+                    "splitAccessor": "s0preceived-compressed-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Received compressed per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s0preceived-compressed-per-second",
+          "sectionId": "host-activity-network-s0",
+          "w": 24,
+          "x": 0,
+          "y": 30
+        },
+        "panelIndex": "s0preceived-compressed-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s0ptransmitted-compressed-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s0ptransmitted-compressed-per-second-layer": {
+                      "columnOrder": [
+                        "s0ptransmitted-compressed-per-second-by",
+                        "s0ptransmitted-compressed-per-second-x",
+                        "s0ptransmitted-compressed-per-second-m0"
+                      ],
+                      "columns": {
+                        "s0ptransmitted-compressed-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s0ptransmitted-compressed-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s0ptransmitted-compressed-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Transmitted compressed per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.tx.compressed_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s0ptransmitted-compressed-per-second-m0"
+                    ],
+                    "layerId": "s0ptransmitted-compressed-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s0ptransmitted-compressed-per-second-x",
+                    "splitAccessor": "s0ptransmitted-compressed-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Transmitted compressed per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s0ptransmitted-compressed-per-second",
+          "sectionId": "host-activity-network-s0",
+          "w": 24,
+          "x": 24,
+          "y": 30
+        },
+        "panelIndex": "s0ptransmitted-compressed-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s0preceived-multicast-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s0preceived-multicast-per-second-layer": {
+                      "columnOrder": [
+                        "s0preceived-multicast-per-second-by",
+                        "s0preceived-multicast-per-second-x",
+                        "s0preceived-multicast-per-second-m0"
+                      ],
+                      "columns": {
+                        "s0preceived-multicast-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s0preceived-multicast-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s0preceived-multicast-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Received multicast per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.rx.multicast_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s0preceived-multicast-per-second-m0"
+                    ],
+                    "layerId": "s0preceived-multicast-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s0preceived-multicast-per-second-x",
+                    "splitAccessor": "s0preceived-multicast-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Received multicast per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s0preceived-multicast-per-second",
+          "sectionId": "host-activity-network-s0",
+          "w": 24,
+          "x": 0,
+          "y": 45
+        },
+        "panelIndex": "s0preceived-multicast-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s0pinterface-utilization-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s0pinterface-utilization-layer": {
+                      "columnOrder": [
+                        "s0pinterface-utilization-by",
+                        "s0pinterface-utilization-x",
+                        "s0pinterface-utilization-m0"
+                      ],
+                      "columns": {
+                        "s0pinterface-utilization-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s0pinterface-utilization-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s0pinterface-utilization-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Interface utilization",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "percent",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.ifutil.pct"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s0pinterface-utilization-m0"
+                    ],
+                    "layerId": "s0pinterface-utilization-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s0pinterface-utilization-x",
+                    "splitAccessor": "s0pinterface-utilization-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Interface utilization"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s0pinterface-utilization",
+          "sectionId": "host-activity-network-s0",
+          "w": 24,
+          "x": 24,
+          "y": 45
+        },
+        "panelIndex": "s0pinterface-utilization",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s1preceive-errors-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s1preceive-errors-per-second-layer": {
+                      "columnOrder": [
+                        "s1preceive-errors-per-second-by",
+                        "s1preceive-errors-per-second-x",
+                        "s1preceive-errors-per-second-m0"
+                      ],
+                      "columns": {
+                        "s1preceive-errors-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s1preceive-errors-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s1preceive-errors-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Receive errors per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.rx.errors_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s1preceive-errors-per-second-m0"
+                    ],
+                    "layerId": "s1preceive-errors-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s1preceive-errors-per-second-x",
+                    "splitAccessor": "s1preceive-errors-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Receive errors per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s1preceive-errors-per-second",
+          "sectionId": "host-activity-network-s1",
+          "w": 24,
+          "x": 0,
+          "y": 0
+        },
+        "panelIndex": "s1preceive-errors-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s1ptransmit-errors-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s1ptransmit-errors-per-second-layer": {
+                      "columnOrder": [
+                        "s1ptransmit-errors-per-second-by",
+                        "s1ptransmit-errors-per-second-x",
+                        "s1ptransmit-errors-per-second-m0"
+                      ],
+                      "columns": {
+                        "s1ptransmit-errors-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s1ptransmit-errors-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s1ptransmit-errors-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Transmit errors per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.tx.errors_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s1ptransmit-errors-per-second-m0"
+                    ],
+                    "layerId": "s1ptransmit-errors-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s1ptransmit-errors-per-second-x",
+                    "splitAccessor": "s1ptransmit-errors-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Transmit errors per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s1ptransmit-errors-per-second",
+          "sectionId": "host-activity-network-s1",
+          "w": 24,
+          "x": 24,
+          "y": 0
+        },
+        "panelIndex": "s1ptransmit-errors-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s1preceive-drops-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s1preceive-drops-per-second-layer": {
+                      "columnOrder": [
+                        "s1preceive-drops-per-second-by",
+                        "s1preceive-drops-per-second-x",
+                        "s1preceive-drops-per-second-m0"
+                      ],
+                      "columns": {
+                        "s1preceive-drops-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s1preceive-drops-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s1preceive-drops-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Receive drops per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.rx.drops_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s1preceive-drops-per-second-m0"
+                    ],
+                    "layerId": "s1preceive-drops-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s1preceive-drops-per-second-x",
+                    "splitAccessor": "s1preceive-drops-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Receive drops per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s1preceive-drops-per-second",
+          "sectionId": "host-activity-network-s1",
+          "w": 24,
+          "x": 0,
+          "y": 15
+        },
+        "panelIndex": "s1preceive-drops-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s1ptransmit-drops-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s1ptransmit-drops-per-second-layer": {
+                      "columnOrder": [
+                        "s1ptransmit-drops-per-second-by",
+                        "s1ptransmit-drops-per-second-x",
+                        "s1ptransmit-drops-per-second-m0"
+                      ],
+                      "columns": {
+                        "s1ptransmit-drops-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s1ptransmit-drops-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s1ptransmit-drops-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Transmit drops per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.tx.drops_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s1ptransmit-drops-per-second-m0"
+                    ],
+                    "layerId": "s1ptransmit-drops-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s1ptransmit-drops-per-second-x",
+                    "splitAccessor": "s1ptransmit-drops-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Transmit drops per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s1ptransmit-drops-per-second",
+          "sectionId": "host-activity-network-s1",
+          "w": 24,
+          "x": 24,
+          "y": 15
+        },
+        "panelIndex": "s1ptransmit-drops-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s1preceive-frame-errors-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s1preceive-frame-errors-per-second-layer": {
+                      "columnOrder": [
+                        "s1preceive-frame-errors-per-second-by",
+                        "s1preceive-frame-errors-per-second-x",
+                        "s1preceive-frame-errors-per-second-m0"
+                      ],
+                      "columns": {
+                        "s1preceive-frame-errors-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s1preceive-frame-errors-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s1preceive-frame-errors-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Receive frame errors per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.rx.frame_errors_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s1preceive-frame-errors-per-second-m0"
+                    ],
+                    "layerId": "s1preceive-frame-errors-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s1preceive-frame-errors-per-second-x",
+                    "splitAccessor": "s1preceive-frame-errors-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Receive frame errors per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s1preceive-frame-errors-per-second",
+          "sectionId": "host-activity-network-s1",
+          "w": 24,
+          "x": 0,
+          "y": 30
+        },
+        "panelIndex": "s1preceive-frame-errors-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s1preceive-fifo-errors-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s1preceive-fifo-errors-per-second-layer": {
+                      "columnOrder": [
+                        "s1preceive-fifo-errors-per-second-by",
+                        "s1preceive-fifo-errors-per-second-x",
+                        "s1preceive-fifo-errors-per-second-m0"
+                      ],
+                      "columns": {
+                        "s1preceive-fifo-errors-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s1preceive-fifo-errors-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s1preceive-fifo-errors-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Receive FIFO errors per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.rx.fifo_errors_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s1preceive-fifo-errors-per-second-m0"
+                    ],
+                    "layerId": "s1preceive-fifo-errors-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s1preceive-fifo-errors-per-second-x",
+                    "splitAccessor": "s1preceive-fifo-errors-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Receive FIFO errors per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s1preceive-fifo-errors-per-second",
+          "sectionId": "host-activity-network-s1",
+          "w": 24,
+          "x": 24,
+          "y": 30
+        },
+        "panelIndex": "s1preceive-fifo-errors-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s1ptransmit-carrier-errors-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s1ptransmit-carrier-errors-per-second-layer": {
+                      "columnOrder": [
+                        "s1ptransmit-carrier-errors-per-second-by",
+                        "s1ptransmit-carrier-errors-per-second-x",
+                        "s1ptransmit-carrier-errors-per-second-m0"
+                      ],
+                      "columns": {
+                        "s1ptransmit-carrier-errors-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s1ptransmit-carrier-errors-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s1ptransmit-carrier-errors-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Transmit carrier errors per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.tx.carrier_errors_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s1ptransmit-carrier-errors-per-second-m0"
+                    ],
+                    "layerId": "s1ptransmit-carrier-errors-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s1ptransmit-carrier-errors-per-second-x",
+                    "splitAccessor": "s1ptransmit-carrier-errors-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Transmit carrier errors per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s1ptransmit-carrier-errors-per-second",
+          "sectionId": "host-activity-network-s1",
+          "w": 24,
+          "x": 0,
+          "y": 45
+        },
+        "panelIndex": "s1ptransmit-carrier-errors-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s1ptransmit-fifo-errors-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s1ptransmit-fifo-errors-per-second-layer": {
+                      "columnOrder": [
+                        "s1ptransmit-fifo-errors-per-second-by",
+                        "s1ptransmit-fifo-errors-per-second-x",
+                        "s1ptransmit-fifo-errors-per-second-m0"
+                      ],
+                      "columns": {
+                        "s1ptransmit-fifo-errors-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s1ptransmit-fifo-errors-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s1ptransmit-fifo-errors-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Transmit FIFO errors per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.tx.fifo_errors_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s1ptransmit-fifo-errors-per-second-m0"
+                    ],
+                    "layerId": "s1ptransmit-fifo-errors-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s1ptransmit-fifo-errors-per-second-x",
+                    "splitAccessor": "s1ptransmit-fifo-errors-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Transmit FIFO errors per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s1ptransmit-fifo-errors-per-second",
+          "sectionId": "host-activity-network-s1",
+          "w": 24,
+          "x": 24,
+          "y": 45
+        },
+        "panelIndex": "s1ptransmit-fifo-errors-per-second",
+        "type": "lens"
+      },
+      {
+        "embeddableConfig": {
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s1pcollisions-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s1pcollisions-per-second-layer": {
+                      "columnOrder": [
+                        "s1pcollisions-per-second-by",
+                        "s1pcollisions-per-second-x",
+                        "s1pcollisions-per-second-m0"
+                      ],
+                      "columns": {
+                        "s1pcollisions-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        },
+                        "s1pcollisions-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 20 values of sar.network.interface",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 20
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.network.interface"
+                        },
+                        "s1pcollisions-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Collisions per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.network.collisions_per_sec"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"network\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s1pcollisions-per-second-m0"
+                    ],
+                    "layerId": "s1pcollisions-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "xAccessor": "s1pcollisions-per-second-x",
+                    "splitAccessor": "s1pcollisions-per-second-by"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "type": "lens",
+            "visualizationType": "lnsXY"
+          },
+          "enhancements": {},
+          "title": "Collisions per second"
+        },
+        "gridData": {
+          "h": 15,
+          "i": "s1pcollisions-per-second",
+          "sectionId": "host-activity-network-s1",
+          "w": 24,
+          "x": 0,
+          "y": 60
+        },
+        "panelIndex": "s1pcollisions-per-second",
+        "type": "lens"
+      }
+    ],
+    "sections": [
+      {
+        "collapsed": false,
+        "gridData": {
+          "i": "host-activity-network-s0",
+          "y": 3
+        },
+        "title": "Interfaces traffic"
+      },
+      {
+        "collapsed": false,
+        "gridData": {
+          "i": "host-activity-network-s1",
+          "y": 4
+        },
+        "title": "Interfaces errors"
+      }
+    ],
+    "timeRestore": false,
+    "title": "Host Activity: Network",
+    "version": 2
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "host-activity-network",
+  "references": [
+    {
+      "id": "d277872a-9c33-4d95-84f0-6dba30dcbdf1",
+      "name": "elasticsearch-links:savedObjectRef",
+      "type": "links"
+    },
+    {
+      "id": "494ccfe4-71e4-45fe-ac56-3969d6247dd1",
+      "name": "host-activity-links:savedObjectRef",
+      "type": "links"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s0preceived-packets-per-second:indexpattern-datasource-layer-s0preceived-packets-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s0ptransmitted-packets-per-second:indexpattern-datasource-layer-s0ptransmitted-packets-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s0preceived-bytes-per-second:indexpattern-datasource-layer-s0preceived-bytes-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s0ptransmitted-bytes-per-second:indexpattern-datasource-layer-s0ptransmitted-bytes-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s0preceived-compressed-per-second:indexpattern-datasource-layer-s0preceived-compressed-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s0ptransmitted-compressed-per-second:indexpattern-datasource-layer-s0ptransmitted-compressed-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s0preceived-multicast-per-second:indexpattern-datasource-layer-s0preceived-multicast-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s0pinterface-utilization:indexpattern-datasource-layer-s0pinterface-utilization-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s1preceive-errors-per-second:indexpattern-datasource-layer-s1preceive-errors-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s1ptransmit-errors-per-second:indexpattern-datasource-layer-s1ptransmit-errors-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s1preceive-drops-per-second:indexpattern-datasource-layer-s1preceive-drops-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s1ptransmit-drops-per-second:indexpattern-datasource-layer-s1ptransmit-drops-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s1preceive-frame-errors-per-second:indexpattern-datasource-layer-s1preceive-frame-errors-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s1preceive-fifo-errors-per-second:indexpattern-datasource-layer-s1preceive-fifo-errors-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s1ptransmit-carrier-errors-per-second:indexpattern-datasource-layer-s1ptransmit-carrier-errors-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s1ptransmit-fifo-errors-per-second:indexpattern-datasource-layer-s1ptransmit-fifo-errors-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s1pcollisions-per-second:indexpattern-datasource-layer-s1pcollisions-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "controlGroup_c0:optionsListDataView",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "controlGroup_c1:optionsListDataView",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "controlGroup_c2:optionsListDataView",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "controlGroup_c3:optionsListDataView",
+      "type": "index-pattern"
+    },
+    {
+      "id": "11ffb732-bed1-4aa4-8867-189e74792cdd",
+      "name": "tag-ref-11ffb732-bed1-4aa4-8867-189e74792cdd",
+      "type": "tag"
+    },
+    {
+      "id": "b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "name": "tag-ref-b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "type": "tag"
+    },
+    {
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "type": "tag"
+    }
+  ],
+  "type": "dashboard",
+  "typeMigrationVersion": "10.3.0"
+}

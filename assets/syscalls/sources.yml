@@ -1,0 +1,33 @@
+# ESDiag syscall source catalog.
+#
+# Each top-level key is the `support-diagnostics` `diags.yml` command key whose
+# output a diagnostic bundle stores under `syscalls/`. The catalog is ESDiag-owned
+# and separate from the REST `sources.yml` registries: entries carry no REST
+# `versions`, and the runtime never reads `diags.yml`.
+#
+#   * filename - bundle-relative output file. Required.
+#   * tags - comma-separated diagnostic types (`minimal`, `light`, `standard`,
+#     `support`) that process this source by default. Optional.
+#   * processable - a syscall processor is registered for this source. Optional,
+#     defaults to false (collect-only, for example an input to another processor).
+#   * processing_weight - ESDiag CPU/time to transform this source, 1-5. Optional.
+#   * option - exposed as the user-facing processing option `syscalls.<key>`.
+#     Optional, defaults to false. Syscall options are never required.
+#   * processors - applications whose processors implement this source. Optional.
+#
+# Per-OS collection commands are added to these entries by the syscall
+# collection capability; keys and processing behavior stay the same.
+
+netstat:
+  filename: "syscalls/netstat.txt"
+
+sar:
+  filename: "syscalls/sar.txt"
+  tags: standard,support
+  processable: true
+  processing_weight: 3
+  option: true
+  processors: [elasticsearch]
+
+ss:
+  filename: "syscalls/ss.txt"

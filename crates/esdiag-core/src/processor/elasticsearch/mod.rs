@@ -32,6 +32,8 @@ mod nodes;
 mod nodes_stats;
 /// The `_pending_tasks` API
 mod pending_tasks;
+/// Host activity history from `syscalls/sar.txt`
+mod sar;
 /// The `_searchable_snapshots_cache/stats` API
 mod searchable_snapshots_cache_stats;
 /// The `_searchable_snapshots/stats` API
@@ -61,9 +63,13 @@ use super::{
     api::{ProcessSelection, ProcessingConcurrencyPolicy, is_streamable, processing_weight},
     diagnostic::{
         DiagnosticReportBuilder, Lookup,
-        data_source::{ProcessableClaim, validate_processable_registry},
+        data_source::{ProcessableClaim, get_sources, validate_processable_registry},
     },
     elasticsearch::health_report::HealthReport,
+    syscall::{
+        SyscallInput, SyscallLines, SyscallMode, catalog::option_key, open_syscall, syscall_source,
+        validate_syscall_registry,
+    },
 };
 use crate::{
     data::{self, Application},
@@ -73,7 +79,10 @@ use crate::{
 use eyre::{Result, eyre};
 use futures::{future::BoxFuture, stream::FuturesUnordered};
 use serde::{Serialize, de::DeserializeOwned};
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::HashSet,
+    sync::{Arc, LazyLock},
+};
 use {
     alias::{Alias, AliasList},
     cluster_settings::{ClusterSettings, ClusterSettingsDefaults},
@@ -83,7 +92,7 @@ use {
     indices_settings::{IndexSettings, IndicesSettings},
     indices_stats::IndicesStats,
     mapping_stats::{MappingStats, MappingSummary},
-    nodes::NodeDocument,
+    nodes::{NodeDocument, NodeEndpoint},
     nodes_stats::NodesStats,
     pending_tasks::PendingTasks,
     searchable_snapshots_cache_stats::{SearchableSnapshotsCacheStats, SharedCacheStats},
@@ -98,6 +107,10 @@ pub struct ElasticsearchDiagnostic {
     lookups: Lookups,
     metadata: ElasticsearchMetadata,
     selected_processors: Option<HashSet<String>>,
+    /// Keys the user listed explicitly, which decide syscall warning policy.
+    requested_processors: Vec<String>,
+    /// The collection target host from the manifest's input flags.
+    manifest_host: Option<String>,
     #[serde(skip)]
     exporter: Arc<Exporter>,
     #[serde(skip)]
@@ -236,6 +249,56 @@ const ES_DISPATCH: &[EsDispatchEntry] = &[
         process: buffered!(Tasks),
     },
 ];
+
+/// Runs one syscall source's processor over its non-empty lines.
+type SyscallProcessFn = fn(Arc<ElasticsearchDiagnostic>, SyscallLines) -> BoxFuture<'static, ProcessorSummary>;
+
+/// Binds a syscall catalog key to its processor. Missing-file handling is
+/// shared by every entry, so processors only ever see a non-empty file.
+struct SyscallDispatchEntry {
+    key: &'static str,
+    process: SyscallProcessFn,
+}
+
+const SYSCALL_DISPATCH: &[SyscallDispatchEntry] = &[SyscallDispatchEntry {
+    key: sar::KEY,
+    process: sar::process,
+}];
+
+/// Fail fast if the syscall dispatch table and the syscall catalog disagree,
+/// or a syscall option collides with a REST source key. Runs once.
+fn validate_es_syscall_registry() -> Result<()> {
+    static VALIDATED: LazyLock<std::result::Result<(), String>> = LazyLock::new(|| {
+        let dispatched: Vec<&str> = SYSCALL_DISPATCH.iter().map(|entry| entry.key).collect();
+        let rest_keys: Vec<&str> = get_sources()
+            .get("elasticsearch")
+            .map(|sources| sources.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        validate_syscall_registry("elasticsearch", &dispatched, &rest_keys).map_err(|err| err.to_string())
+    });
+    VALIDATED.clone().map_err(|err| eyre!(err))
+}
+
+/// Open a selected syscall source and run its processor, applying the shared
+/// missing-file policy.
+fn run_syscall(
+    diagnostic: Arc<ElasticsearchDiagnostic>,
+    entry: &'static SyscallDispatchEntry,
+    summary_tx: mpsc::Sender<ProcessorSummary>,
+) -> BoxFuture<'static, Result<()>> {
+    Box::pin(async move {
+        let source = syscall_source(entry.key).ok_or_else(|| eyre!("syscall '{}' is not cataloged", entry.key))?;
+        let mode = SyscallMode::for_option(&option_key(entry.key), &diagnostic.requested_processors);
+        let summary = match open_syscall(&diagnostic.receiver, entry.key, source, mode).await {
+            SyscallInput::Lines(lines) => (entry.process)(diagnostic.clone(), lines).await,
+            SyscallInput::Missing(summary) | SyscallInput::Unreadable(summary) => summary,
+        };
+        summary_tx.send(summary).await.map_err(|err| {
+            tracing::error!("Failed to send summary: {}", err);
+            eyre!(err)
+        })
+    })
+}
 
 /// Fail fast if the dispatch table and the collection registry disagree
 /// (ADR-0005 key alignment): every table key must be a registry entry marked
@@ -443,6 +506,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             }
         };
         tracing::debug!("ElasticsearchDiagnostic::try_new resolved display name");
+        let manifest_host = manifest.flags.as_deref().and_then(sar::manifest_target_host);
         let metadata = ElasticsearchMetadata::try_new(manifest, cluster.with_display_name(display_name))?;
         tracing::debug!("ElasticsearchDiagnostic::try_new built metadata");
 
@@ -453,11 +517,14 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
             .build()?;
         tracing::debug!("ElasticsearchDiagnostic::try_new built report");
 
+        let nodes = receiver.get::<Nodes>().await;
+        let node_endpoints = nodes.as_ref().map(NodeEndpoint::from_nodes).unwrap_or_default();
         let lookups = Lookups {
             alias: lookup_from_result(receiver.get::<AliasList>().await, "AliasList"),
             data_stream: lookup_from_result(receiver.get::<DataStreams>().await, "DataStreams"),
             index_settings: lookup_from_result(receiver.get::<IndicesSettings>().await, "IndicesSettings"),
-            node: lookup_from_result(receiver.get::<Nodes>().await, "Nodes"),
+            node: lookup_from_result(nodes, "Nodes"),
+            node_endpoints,
             ilm_explain: lookup_from_result(receiver.get::<IlmExplain>().await, "IlmExplain"),
             shared_cache: lookup_from_result(
                 receiver.get::<SearchableSnapshotsCacheStats>().await,
@@ -488,7 +555,12 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
                 lookups,
                 metadata,
                 receiver,
+                requested_processors: process_selection
+                    .as_ref()
+                    .map(|selection| selection.requested.clone())
+                    .unwrap_or_default(),
                 selected_processors: process_selection.map(|selection| selection.selected.into_iter().collect()),
+                manifest_host,
             }),
             report,
         ))
@@ -505,6 +577,7 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         }
 
         validate_es_dispatch_registry()?;
+        validate_es_syscall_registry()?;
 
         let diag = Arc::new(self);
         // Processing weight governs processing concurrency (ADR-0017): the
@@ -525,16 +598,31 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
                 continue;
             }
             let weight = processing_weight("elasticsearch", entry.key);
+            let task = (entry.process)(diag.clone(), summary_tx.clone());
             if policy.is_concurrent(weight) {
-                concurrent.push((entry.process)(diag.clone(), summary_tx.clone()));
+                concurrent.push(task);
             } else {
-                sequential.push(entry);
+                sequential.push(task);
+            }
+        }
+        // Syscall sources run wherever a bundle carries them, whatever the
+        // platform (ADR-0021).
+        for entry in SYSCALL_DISPATCH {
+            if !diag.should_process(&option_key(entry.key)) {
+                continue;
+            }
+            let weight = syscall_source(entry.key).map_or(1, |source| source.processing_weight());
+            let task = run_syscall(diag.clone(), entry, summary_tx.clone());
+            if policy.is_concurrent(weight) {
+                concurrent.push(task);
+            } else {
+                sequential.push(task);
             }
         }
 
         let sequential_task = async {
-            for entry in sequential {
-                (entry.process)(diag.clone(), summary_tx.clone()).await?;
+            for task in sequential {
+                task.await?;
             }
             Ok::<(), eyre::Error>(())
         };
@@ -570,17 +658,24 @@ pub struct Lookups {
     pub index_settings: Lookup<IndexSettings>,
     pub mapping_stats: Lookup<MappingSummary>,
     pub node: Lookup<NodeDocument>,
+    /// Node addresses, for correlating host-scoped syscall data with nodes.
+    pub node_endpoints: Vec<NodeEndpoint>,
     pub shared_cache: Lookup<SharedCacheStats>,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{missing_source_error, validate_es_dispatch_registry};
+    use super::{missing_source_error, validate_es_dispatch_registry, validate_es_syscall_registry};
     use crate::receiver::MissingSource;
 
     #[test]
     fn dispatch_table_and_registry_agree() {
         validate_es_dispatch_registry().expect("Elasticsearch dispatch table matches the collection registry");
+    }
+
+    #[test]
+    fn syscall_dispatch_table_and_catalog_agree() {
+        validate_es_syscall_registry().expect("Elasticsearch syscall dispatch matches the syscall catalog");
     }
 
     #[test]

@@ -1,4 +1,5 @@
 use crate::processor::diagnostic::data_source::{get_product_sources, get_source, get_source_keys_with_tag};
+use crate::processor::syscall;
 use eyre::{Result, eyre};
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
@@ -189,6 +190,10 @@ pub struct ProcessSelection {
     pub product: String,
     pub diagnostic_type: String,
     pub selected: Vec<String>,
+    /// The canonical keys the user listed explicitly, before defaults and
+    /// dependencies were resolved. Empty when the selection came from defaults.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requested: Vec<String>,
 }
 
 /// A processing option derived from the registry: an entry carrying a
@@ -296,6 +301,13 @@ impl ApiResolver {
         if defs.is_empty() {
             return Err(eyre!("Unsupported processing product: {}", product));
         }
+        defs.extend(
+            syscall::catalog::product_options(product).map(|(key, _)| ProcessingOptionDef {
+                key: syscall::catalog::option_key(key),
+                required: false,
+                dependencies: Vec::new(),
+            }),
+        );
         defs.sort_by(|a, b| b.required.cmp(&a.required).then(a.key.cmp(&b.key)));
         Ok(defs)
     }
@@ -363,6 +375,24 @@ impl ApiResolver {
         Ok(resolved.into_iter().collect())
     }
 
+    /// Build a selection from the user's explicit choice, recording which
+    /// canonical keys were requested so processors can tell an explicit request
+    /// from a diagnostic-type default.
+    pub fn process_selection(product: &str, diagnostic_type: &str, requested: &[String]) -> Result<ProcessSelection> {
+        let selected = Self::resolve_processing_selection(product, diagnostic_type, requested)?;
+        let requested: IndexSet<String> = requested
+            .iter()
+            .map(|key| legacy_key_map(product, key.trim()).to_string())
+            .filter(|key| !key.is_empty())
+            .collect();
+        Ok(ProcessSelection {
+            product: product.to_string(),
+            diagnostic_type: diagnostic_type.to_string(),
+            selected,
+            requested: requested.into_iter().collect(),
+        })
+    }
+
     pub fn resolve_processing_selection_with_collect_filters(
         product: &str,
         diagnostic_type: &str,
@@ -372,11 +402,14 @@ impl ApiResolver {
         let collected = Self::resolve_collected_keys(product, diagnostic_type, include, exclude)?;
         let defs = Self::processing_defs(product)?;
         let processing_keys: HashSet<&str> = defs.iter().map(|def| def.key.as_str()).collect();
-        let selected: Vec<String> = collected
+        let mut selected: Vec<String> = collected
             .iter()
             .filter(|key| processing_keys.contains(key.as_str()))
             .cloned()
             .collect();
+        if let Ok(diag_type) = std::str::FromStr::from_str(diagnostic_type) {
+            selected.extend(Self::default_syscall_options(product, &diag_type));
+        }
 
         let resolved = Self::resolve_processing_selection(product, diagnostic_type, &selected)?;
         Self::validate_resolved_processing_selection(&collected, &resolved)?;
@@ -397,8 +430,11 @@ impl ApiResolver {
 
     fn validate_resolved_processing_selection(collected: &[String], resolved: &[String]) -> Result<()> {
         let collected_keys: HashSet<&str> = collected.iter().map(String::as_str).collect();
+        // Syscall output is not a REST collection key; a missing syscall file
+        // is handled by the syscall runner at process time.
         let missing: Vec<String> = resolved
             .iter()
+            .filter(|key| !syscall::catalog::is_option_key(key))
             .filter(|key| !collected_keys.contains(key.as_str()))
             .cloned()
             .collect();
@@ -457,10 +493,20 @@ impl ApiResolver {
             _ => return Err(eyre!("Unsupported processing product: {}", product)),
         };
         let defs = Self::processing_defs(product)?;
-        Ok(resolved
+        let mut selected: Vec<String> = resolved
             .into_iter()
             .filter(|key| defs.iter().any(|def| def.key == *key))
-            .collect())
+            .collect();
+        selected.extend(Self::default_syscall_options(product, diag_type));
+        Ok(selected)
+    }
+
+    /// Syscall processing options whose catalog tags include the diagnostic type.
+    fn default_syscall_options(product: &str, diag_type: &DiagnosticType) -> Vec<String> {
+        syscall::catalog::product_options(product)
+            .filter(|(_, source)| source.has_tag(diag_type.tag()))
+            .map(|(key, _)| syscall::catalog::option_key(key))
+            .collect()
     }
 
     fn resolve_processing_deps(
@@ -919,6 +965,97 @@ mod tests {
         assert!(options.iter().any(|option| option.key == "searchable_snapshots_stats"));
         // Processing options derive from the registry, not a hardcoded list
         assert!(options.iter().any(|option| option.key == "cluster_pending_tasks"));
+    }
+
+    #[test]
+    fn syscall_options_follow_diagnostic_type_tags() {
+        for diag_type in ["standard", "support", "custom"] {
+            let selected = ApiResolver::resolve_processing_selection("elasticsearch", diag_type, &[]).unwrap();
+            assert!(
+                selected.contains(&"syscalls.sar".to_string()),
+                "{diag_type} includes SAR"
+            );
+        }
+        for diag_type in ["minimal", "light"] {
+            let selected = ApiResolver::resolve_processing_selection("elasticsearch", diag_type, &[]).unwrap();
+            assert!(!selected.contains(&"syscalls.sar".to_string()), "{diag_type} omits SAR");
+        }
+    }
+
+    #[test]
+    fn syscall_options_are_optional_and_per_application() {
+        let catalog = ApiResolver::processing_catalog().expect("processing catalog");
+        let sar = catalog["elasticsearch"]["standard"]
+            .iter()
+            .find(|option| option.key == "syscalls.sar")
+            .expect("Elasticsearch lists syscalls.sar");
+        assert!(!sar.required && sar.selected);
+        for product in ["kibana", "logstash"] {
+            assert!(
+                catalog[product]["standard"]
+                    .iter()
+                    .all(|option| option.key != "syscalls.sar"),
+                "{product} does not process SAR"
+            );
+        }
+
+        let selected =
+            ApiResolver::resolve_processing_selection("elasticsearch", "standard", &["nodes".to_string()]).unwrap();
+        assert!(
+            !selected.contains(&"syscalls.sar".to_string()),
+            "an explicit list can omit SAR"
+        );
+    }
+
+    #[test]
+    fn explicit_selection_records_requested_keys() {
+        let selection = ApiResolver::process_selection(
+            "elasticsearch",
+            "minimal",
+            &["syscalls.sar".to_string(), "pending_tasks".to_string()],
+        )
+        .unwrap();
+
+        assert!(selection.selected.contains(&"syscalls.sar".to_string()));
+        assert_eq!(selection.requested, ["syscalls.sar", "cluster_pending_tasks"]);
+        assert!(
+            !selection.requested.contains(&"version".to_string()),
+            "required keys are not requests"
+        );
+
+        let defaults = ApiResolver::process_selection("elasticsearch", "standard", &[]).unwrap();
+        assert!(defaults.selected.contains(&"syscalls.sar".to_string()));
+        assert!(defaults.requested.is_empty());
+    }
+
+    #[test]
+    fn collect_jobs_accept_syscall_selections() {
+        ApiResolver::validate_processing_selection_with_collect_filters(
+            "elasticsearch",
+            "standard",
+            None,
+            None,
+            &["syscalls.sar".to_string()],
+        )
+        .expect("syscall options are not REST collection keys");
+
+        let selected =
+            ApiResolver::resolve_processing_selection_with_collect_filters("elasticsearch", "standard", None, None)
+                .unwrap();
+        assert!(selected.contains(&"syscalls.sar".to_string()));
+    }
+
+    #[test]
+    fn stored_selection_without_requested_deserializes() {
+        let selection: ProcessSelection = serde_json::from_str(
+            r#"{"product":"elasticsearch","diagnostic_type":"standard","selected":["nodes","syscalls.sar"]}"#,
+        )
+        .expect("legacy selection");
+        assert!(selection.requested.is_empty());
+        assert!(
+            !serde_json::to_string(&selection).unwrap().contains("requested"),
+            "empty requested stays off the wire"
+        );
     }
 
     #[test]

@@ -172,10 +172,13 @@ orchestration-defined metadata.
 _Avoid_: product (see below), service
 
 **Infrastructure data**:
-Host/OS-level data whose kind is *determined by the platform*, not an independent
-axis: `SelfManaged` yields Linux system calls (opt-in, and available under no other
-platform), `ECK` yields Kubernetes node, pod, container, and volume state, and
-managed cloud (`ElasticCloudHosted`, `ECE`) yields none.
+Host/OS-level data that is not an independent axis. Host system call output is
+processed from any bundle that contains a `syscalls/` folder — including
+ECE-allocator and Kubernetes-node collections — when its source is selected (see
+**Syscall source catalog**). `ECK` additionally yields Kubernetes node, pod,
+container, and volume state. SAR metrics are *host*-scoped: one host may run several
+Elasticsearch nodes, so they land in `metrics-host.sar-esdiag` rather than a node
+stream. See ADR-0021.
 _Avoid_: system data, local data, host layer (it is not a product layer)
 
 **Product** (legacy):
@@ -264,6 +267,16 @@ Intended to be the single source of truth from which the collect list, the proce
 dispatch, and the diagnostic-type sets are all derived; that migration is currently
 only half-complete (Support/Light derive from it, Minimal/Standard are hardcoded).
 _Avoid_: sources file, API list
+
+**Syscall source catalog**:
+The ESDiag-owned registry of host command output (`assets/syscalls/sources.yml`),
+keyed by `support-diagnostics` `diags.yml` command keys. It is separate from the REST
+collection definitions: entries carry a bundle filename instead of versioned request
+paths. Processable entries become the processing options `syscalls.<key>`, are
+selected per source (never required), and join diagnostic types through their tags.
+A default-selected source that is absent is skipped silently; an explicitly
+requested one that is absent, or one that fails to parse, is a warning.
+_Avoid_: diags.yml (the upstream input, never read at runtime)
 
 **Bundle**:
 An archive or directory of collected diagnostic output — the artifact produced by

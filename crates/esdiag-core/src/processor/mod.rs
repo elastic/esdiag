@@ -17,6 +17,8 @@ mod kibana;
 mod kubernetes_platform;
 /// Processors for Logstash diagnostics
 mod logstash;
+/// Syscall source catalog and shared syscall processing runner
+pub mod syscall;
 
 pub(crate) use collector::{CollectOptions, collect_bundle};
 pub use collector::{CollectionResult, default_collect_archive_name};
@@ -784,5 +786,136 @@ mod tests {
 
         assert!(second_job > first_job);
         assert_ne!(first_job, second_job);
+    }
+
+    const SAR_TEXT: &str = "Linux 6.1.0 (node-01.example.com) \t2026-08-05 \t_x86_64_\t(2 CPU)\n\n12:00:01 AM CPU %usr %idle\n12:10:10 AM all 6.10 90.00\n12:10:10 AM 0 5.00 91.00\n";
+
+    struct SyscallRun {
+        report: DiagnosticReport,
+        output: tempfile::TempDir,
+    }
+
+    impl SyscallRun {
+        fn sar_events(&self) -> Vec<(EventSeverity, String)> {
+            self.report
+                .events()
+                .iter()
+                .filter(|event| event.source == "syscalls.sar")
+                .map(|event| (event.severity, event.reason.clone()))
+                .collect()
+        }
+
+        fn sar_docs(&self) -> usize {
+            std::fs::read_to_string(self.output.path().join("metrics-host.sar-esdiag.ndjson"))
+                .map(|docs| docs.lines().filter(|line| !line.trim().is_empty()).count())
+                .unwrap_or(0)
+        }
+    }
+
+    async fn process_es_bundle(files: &[(&str, &[u8])], requested: Option<&[&str]>) -> SyscallRun {
+        let root = tempfile::tempdir().expect("bundle dir");
+        extract_archive("elasticsearch-api-diagnostics-9.3.3.zip", root.path());
+        for (path, contents) in files {
+            let path = root.path().join(path);
+            std::fs::create_dir_all(path.parent().expect("parent")).expect("create parent");
+            std::fs::write(path, contents).expect("write bundle file");
+        }
+        let selection = requested.map(|keys| {
+            let keys: Vec<String> = keys.iter().map(|key| key.to_string()).collect();
+            api::ApiResolver::process_selection("elasticsearch", "standard", &keys).expect("selection")
+        });
+
+        let receiver = Arc::new(Receiver::try_from(Uri::Directory(root.path().to_path_buf())).expect("receiver"));
+        let output = tempfile::tempdir().expect("output dir");
+        let exporter = Arc::new(Exporter::try_from(Uri::Directory(output.path().to_path_buf())).expect("exporter"));
+        let completed = Processor::try_new(receiver, exporter, Identifiers::default(), selection)
+            .await
+            .expect("ready processor")
+            .start()
+            .await
+            .map_err(|failed| failed.state.error)
+            .expect("processing processor")
+            .process()
+            .await
+            .map_err(|failed| failed.state.error)
+            .expect("completed processor");
+        SyscallRun {
+            report: completed.state.report,
+            output,
+        }
+    }
+
+    fn warnings(events: &[(EventSeverity, String)]) -> Vec<&str> {
+        events
+            .iter()
+            .filter(|(severity, _)| *severity == EventSeverity::Warning)
+            .map(|(_, reason)| reason.as_str())
+            .collect()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn bundle_without_syscalls_records_no_sar_event() {
+        let run = process_es_bundle(&[], None).await;
+        assert!(run.sar_events().is_empty());
+        assert_eq!(run.sar_docs(), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn binary_sysstat_files_alone_are_silently_missing() {
+        let run = process_es_bundle(&[("syscalls/sa05", b"\x96\xd5\x71\x21\x00\x00binary")], None).await;
+        assert!(run.sar_events().is_empty());
+        assert_eq!(run.sar_docs(), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn explicitly_requested_missing_sar_warns_without_failing() {
+        let run = process_es_bundle(
+            &[("syscalls/ss.txt", b"Netid State\n")],
+            Some(&["nodes", "syscalls.sar"]),
+        )
+        .await;
+        let events = run.sar_events();
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert!(warnings(&events)[0].contains("syscalls/sar.txt"));
+        assert!(run.report.diagnostic.docs.created > 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn selection_omitting_sar_leaves_the_file_unread() {
+        let run = process_es_bundle(&[("syscalls/sar.txt", SAR_TEXT.as_bytes())], Some(&["nodes"])).await;
+        assert!(run.sar_events().is_empty());
+        assert_eq!(run.sar_docs(), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn default_selection_processes_sar_with_a_success_verdict() {
+        let run = process_es_bundle(&[("syscalls/sar.txt", SAR_TEXT.as_bytes())], None).await;
+        assert_eq!(run.sar_docs(), 2);
+        let events = run.sar_events();
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(events[0].0, EventSeverity::Success);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn sar_without_a_report_header_warns_in_every_mode() {
+        let files: &[(&str, &[u8])] = &[("syscalls/sar.txt", b"bash: sar: command not found\n")];
+        for requested in [None, Some(&["nodes", "syscalls.sar"][..])] {
+            let run = process_es_bundle(files, requested).await;
+            let events = run.sar_events();
+            assert_eq!(events.len(), 1, "{events:?}");
+            assert!(warnings(&events)[0].contains("command not found"), "{events:?}");
+            assert_eq!(run.sar_docs(), 0);
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn unknown_sar_sections_warn_beside_a_success_verdict() {
+        let text = format!("{SAR_TEXT}\n12:00:01 AM widgets/s gadgets/s\n12:10:10 AM 1.00 2.00\n");
+        let run = process_es_bundle(&[("syscalls/sar.txt", text.as_bytes())], None).await;
+        let events = run.sar_events();
+        assert_eq!(events.len(), 2, "{events:?}");
+        assert!(events.iter().any(|(severity, _)| *severity == EventSeverity::Success));
+        assert!(warnings(&events)[0].contains("widgets/s gadgets/s"));
+        assert_eq!(run.sar_docs(), 2);
     }
 }

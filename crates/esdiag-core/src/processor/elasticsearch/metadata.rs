@@ -43,8 +43,14 @@ struct DiagnosticDocMetadata<'a> {
 
 impl ElasticsearchMetadata {
     pub fn for_data_stream(&self, data_stream: &str) -> MetadataValue {
+        self.for_data_stream_at(data_stream, self.timestamp)
+    }
+
+    /// The envelope for a document whose `@timestamp` is its own sample time,
+    /// not the collection date; `diagnostic.collection_date` is unchanged.
+    pub fn for_data_stream_at(&self, data_stream: &str, timestamp: u64) -> MetadataValue {
         let temp = MetadataDocTemp {
-            timestamp: self.timestamp,
+            timestamp,
             cluster: &self.cluster,
             diagnostic: DiagnosticDocMetadata {
                 metadata: &self.diagnostic,
@@ -121,5 +127,63 @@ impl MetadataValue {
 impl Metadata for MetadataValue {
     fn as_meta_doc(&self) -> serde_json::Value {
         self.as_meta_doc()
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use serde_json::json;
+
+    pub(crate) fn test_metadata(collection_date: &str) -> ElasticsearchMetadata {
+        let manifest = DiagnosticManifest::new(
+            collection_date.to_string(),
+            None,
+            None,
+            None,
+            None,
+            Some(Application::Elasticsearch),
+            None,
+            None,
+            Some("8.19.0".to_string()),
+        );
+        let cluster: Cluster = serde_json::from_value(json!({
+            "name": "node-01",
+            "cluster_name": "example",
+            "cluster_uuid": "cluster-uuid",
+            "tagline": "You Know, for Search",
+            "version": {
+                "number": "8.19.0",
+                "build_type": "tar",
+                "build_hash": "hash",
+                "build_date": "2026-01-01T00:00:00Z",
+                "build_snapshot": false,
+                "lucene_version": "9.12.0",
+                "minimum_wire_compatibility_version": "7.17.0",
+                "minimum_index_compatibility_version": "7.0.0"
+            }
+        }))
+        .expect("cluster");
+        ElasticsearchMetadata::try_new(manifest, cluster.with_display_name(None)).expect("metadata")
+    }
+
+    #[test]
+    fn sample_envelope_overrides_timestamp_only() {
+        let metadata = test_metadata("2026-08-05T07:47:15.000Z");
+        let collected = metadata.timestamp;
+        let sample = 1_785_888_610_000;
+
+        let envelope = metadata
+            .for_data_stream_at("metrics-host.sar-esdiag", sample)
+            .as_meta_doc();
+
+        assert_eq!(envelope["@timestamp"], sample);
+        assert_eq!(envelope["diagnostic"]["collection_date"], collected);
+        assert_ne!(collected, sample);
+        assert_eq!(envelope["data_stream"]["dataset"], "host.sar");
+        assert_eq!(
+            metadata.for_data_stream("metrics-host.sar-esdiag").as_meta_doc()["@timestamp"],
+            collected
+        );
     }
 }

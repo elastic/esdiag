@@ -45,12 +45,12 @@
         "embeddableConfig": {},
         "gridData": {
           "h": 3,
-          "i": "62aa0781-be9d-45a3-9eb3-e155329b154c",
+          "i": "a794093e-426a-4cff-94bb-574d9ff69d5d",
           "w": 26,
           "x": 22,
           "y": 0
         },
-        "panelIndex": "62aa0781-be9d-45a3-9eb3-e155329b154c",
+        "panelIndex": "a794093e-426a-4cff-94bb-574d9ff69d5d",
         "type": "links"
       },
       {
@@ -1796,11 +1796,6 @@
       "type": "links"
     },
     {
-      "id": "e38aefc8-2e13-4bc6-b56f-b104670c4d28",
-      "name": "62aa0781-be9d-45a3-9eb3-e155329b154c:savedObjectRef",
-      "type": "links"
-    },
-    {
       "id": "4594ff0f-437e-46b6-9483-f8a025ffd1d4",
       "name": "4678ff0b-8d13-4b0b-bbdb-752984fad0c8:savedObjectRef",
       "type": "lens"
@@ -1874,6 +1869,11 @@
       "id": "4319ebc4-df81-4b18-b8bd-6aaa55a1fd13",
       "name": "4d25f92e-6b92-457e-996f-0dbe84872709:indexpattern-datasource-layer-72091751-199d-41a0-88fb-49b5d215dbcf",
       "type": "index-pattern"
+    },
+    {
+      "id": "494ccfe4-71e4-45fe-ac56-3969d6247dd1",
+      "name": "a794093e-426a-4cff-94bb-574d9ff69d5d:savedObjectRef",
+      "type": "links"
     }
   ],
   "type": "dashboard",

@@ -62,6 +62,18 @@
         },
         "order": 4,
         "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_e8be6184-c539-4d9e-9101-e324caf19bd5_dashboard",
+        "id": "e8be6184-c539-4d9e-9101-e324caf19bd5",
+        "label": "Hosts",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 5,
+        "type": "dashboardLink"
       }
     ],
     "title": "Elasticsearch"
@@ -92,6 +104,11 @@
     {
       "id": "search-summary",
       "name": "link_3f35e2ba-32a3-4976-b98e-358eb98c0ce0_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "hosts-overview",
+      "name": "link_e8be6184-c539-4d9e-9101-e324caf19bd5_dashboard",
       "type": "dashboard"
     },
     {

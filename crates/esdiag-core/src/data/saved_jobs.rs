@@ -374,6 +374,7 @@ fn canonicalize_legacy_selection(selection: Option<LegacyJobProcessSelection>) -
         product: selection.product,
         diagnostic_type: selection.diagnostic_type,
         selected,
+        requested: Vec::new(),
     })
 }
 
@@ -625,16 +626,7 @@ fn explicit_process_selection(signals: &JobSignals) -> Result<Option<ProcessSele
         return Ok(None);
     }
 
-    let selected = ApiResolver::resolve_processing_selection(
-        &signals.process.product,
-        &signals.process.diagnostic_type,
-        &selected,
-    )?;
-    Ok(Some(ProcessSelection {
-        product: signals.process.product.clone(),
-        diagnostic_type: signals.process.diagnostic_type.clone(),
-        selected,
-    }))
+    ApiResolver::process_selection(&signals.process.product, &signals.process.diagnostic_type, &selected).map(Some)
 }
 
 impl JobBuilder<NeedsCollect> {

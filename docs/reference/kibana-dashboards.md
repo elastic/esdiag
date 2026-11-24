@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: Kibana dashboards
-description: Packaged dashboards, data views, and data streams for processed Kibana diagnostics.
+description: Packaged dashboards, data views, and data streams for processed Kibana diagnostics and host SAR metrics.
 tags: [kibana, dashboards, data-streams]
 ---
 
@@ -64,3 +64,104 @@ in `metrics-kibana.task_manager-esdiag` omits those per-task-type maps.
 Kibana diagnostics processed before these dashboards existed have no task
 type documents or concurrent connection counts. Reprocess them to fill those
 panels.
+
+## Host Activity (SAR)
+
+Data view: `Host Activity (SAR)` (`metrics-host.sar-esdiag`). Four dashboards,
+modeled on [kSar](https://github.com/vlsi/ksar), chart this stream. They are
+tagged `Elasticsearch`, `ESDiag`, and `Beta`. Each opens with the
+`Elasticsearch` links panel on the left and the shared `Hosts Overviews` links
+panel, which connects the four dashboards, on the right. Hosts Overview, linked
+last from the `Elasticsearch` links, carries the same pair.
+
+ESDiag fills this stream from `syscalls/sar.txt` in Elasticsearch bundles. Unlike
+the Kibana dashboards above, SAR covers a time window, so the panels plot trends.
+The metrics describe a *host*, and a host may run several Elasticsearch nodes,
+for example on an ECE allocator or a Kubernetes node. Series therefore break
+down by `host.name`, never `node.name`.
+
+Every document has one `sar.metricset`:
+
+| `sar.metricset` | One document per | Entity field |
+|---|---|---|
+| `summary` | sample: host-wide CPU, memory, swap, paging, load, sockets, kernel tables, TCP, and NFS | none |
+| `cpu` | sample and CPU | `sar.cpu.id` |
+| `io` | sample and block device | `sar.io.device` |
+| `network` | sample and interface | `sar.network.interface` |
+| `filesystem` | sample and filesystem | `sar.filesystem.name` |
+| `interrupt`, `tty`, `fan`, `temp`, `in`, `usb`, `fc_host` | sample and entity | `sar.<metricset>.*` |
+
+Filter on `sar.metricset` before aggregating. The `summary` documents hold the
+host-wide `all` CPU row, and the `cpu` documents hold one row per core, both
+under `sar.cpu.*`. Without the filter, an average mixes them. Every panel
+on the dashboards applies this filter.
+
+Each dashboard groups its charts into collapsible sections that follow kSar's
+graphs, with one metric per chart:
+
+- **Host Activity: Compute** opens with two charts across all cores: the average of
+  each used component (`usr`, `nice`, `sys`, `iowait`, `steal`, `irq`, `soft`,
+  `guest`, `gnice`), stacked, and the 95th percentile of busy
+  (`1 - sar.cpu.idle.pct`) and of each component. A four-wide grid follows with
+  one stacked chart per CPU, 0 through 127, in sections of 32; only the first
+  is expanded. Collapsed sections chart frequency and softnet rates by
+  `sar.cpu.id`, and interrupts by host and by `sar.interrupt.id`. Per-interrupt
+  rates come from `sar -I` rows or, when sar printed one column per interrupt
+  and CPU, from those per-CPU values summed across CPUs.
+- **Host Activity: Storage** opens with the host-wide `sar -b` totals: total
+  transfers per second beside tiles for the block device count, average and
+  peak transfers per second, max queue depth (`aqu_sz`), max await, and peak
+  utilization, then read, write, and discard transfers and blocks per second.
+  Utilization and Bandwidth sections chart utilization, transfers, queue size,
+  await, read, write, and discard bandwidth, and request size by
+  `sar.io.device`. A collapsed section charts filesystem space and inode use
+  by `sar.filesystem.name`.
+- **Host Activity: Network** charts traffic and error rates by
+  `sar.network.interface`.
+- **Host Activity: System** charts load, processes, memory, swap, paging, huge
+  pages, kernel tables, sockets, TCP, and NFS client and server activity, by
+  `host.name`, so several hosts or diagnostics can be compared.
+
+The Compute, Storage, and Network charts aggregate every host in the selection, so
+filter to one `host.name` first. Kibana cannot require that filter.
+
+Every dashboard has controls for `host.name` and `elasticsearch.node.name`.
+Compute, Network, and System add `diagnostic.id`; Compute adds `sar.cpu.id`;
+Storage adds `sar.io.device_class`; Network adds `sar.network.interface`. A panel whose section is missing from `sar.txt` shows
+no data.
+
+`sar` names block devices either by kernel name (`sda`, `dm-3`) or by number
+(`dev8-0`, `dev253-3`), depending on its options. `sar.io.device_class` gives
+both forms one class, so the Device Class control selects the same devices
+either way:
+
+| `sar.io.device_class` | Kernel names | Device major numbers |
+|---|---|---|
+| `sd` | `sda`, `sdb1` | 8, 65–71, 128–135 |
+| `dm` | `dm-0` | 253 |
+| `nvme` | `nvme0n1`, `nvme0n1p2` | 259 |
+| `md` | `md0` | 9 |
+| `vd` | `vda` | none |
+| `xvd` | `xvda` | 202 |
+| `sr` | `sr0` | 11 |
+| `loop` | `loop0` | 7 |
+| `other` | anything else | anything else |
+
+Major 253 is assigned dynamically, so the `dm` class for `devM-N` names is a
+best guess. Filesystem inode counts are `sar.filesystem.ifree.count` and
+`sar.filesystem.iused.count`, beside the `sar.filesystem.iused.pct` ratio.
+
+`sar` prints local wall-clock times without a timezone, so ESDiag stores them as
+UTC and sets `sar.timezone` to `assumed_utc`. If the host ran in another
+timezone, the samples are shifted by that offset.
+
+`elasticsearch.node.id` and `elasticsearch.node.name` list the bundle's nodes
+that run on the host. `elasticsearch.node.match` records how ESDiag found them:
+
+| Value | Evidence |
+|---|---|
+| `listen_socket` | A TCP listening socket in `syscalls/ss.txt` or `syscalls/netstat.txt` matches a node's transport or HTTP publish address. Co-located nodes on one IP are told apart by port. |
+| `k8s_node_name` | The SAR hostname, or its short name, equals a node's `k8s_node_name` attribute (ECK). `kubernetes.node.name` is set too. |
+| `hostname` | The SAR hostname equals a node's host, name, or HTTP publish host, or matches one of them unambiguously by short name. |
+| `manifest_host` | The bundle manifest's collection target equals a node's host, IP, or HTTP publish host. |
+| `none` | No evidence. `elasticsearch.node.id` and `elasticsearch.node.name` are omitted. |

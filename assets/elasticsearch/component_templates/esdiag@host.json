@@ -1,0 +1,74 @@
+{
+  "_meta": {
+    "description": "ESDiag host identity and co-located Elasticsearch node mappings"
+  },
+  "template": {
+    "mappings": {
+      "properties": {
+        "host": {
+          "properties": {
+            "architecture": {
+              "type": "keyword"
+            },
+            "cpu": {
+              "properties": {
+                "count": {
+                  "type": "long"
+                }
+              }
+            },
+            "ip": {
+              "type": "ip"
+            },
+            "name": {
+              "type": "keyword"
+            },
+            "os": {
+              "properties": {
+                "kernel": {
+                  "type": "keyword"
+                }
+              }
+            }
+          }
+        },
+        "elasticsearch": {
+          "properties": {
+            "node": {
+              "properties": {
+                "id": {
+                  "type": "keyword"
+                },
+                "match": {
+                  "type": "keyword"
+                },
+                "name": {
+                  "type": "keyword"
+                }
+              }
+            }
+          }
+        },
+        "kubernetes": {
+          "properties": {
+            "node": {
+              "properties": {
+                "name": {
+                  "type": "keyword"
+                }
+              }
+            }
+          }
+        },
+        "sar": {
+          "properties": {
+            "timezone": {
+              "type": "keyword"
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 1
+}

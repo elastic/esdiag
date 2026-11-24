@@ -57,18 +57,6 @@
         },
         "order": 4,
         "type": "dashboardLink"
-      },
-      {
-        "destinationRefName": "link_e8be6184-c539-4d9e-9101-e324caf19bd5_dashboard",
-        "id": "e8be6184-c539-4d9e-9101-e324caf19bd5",
-        "label": "Hosts",
-        "options": {
-          "openInNewTab": false,
-          "useCurrentDateRange": true,
-          "useCurrentFilters": false
-        },
-        "order": 5,
-        "type": "dashboardLink"
       }
     ],
     "title": "Nodes Overviews"
@@ -99,11 +87,6 @@
     {
       "id": "node-tasks-overview",
       "name": "link_7c7ac7ea-073b-49c8-9141-125f00980c8a_dashboard",
-      "type": "dashboard"
-    },
-    {
-      "id": "hosts-overview",
-      "name": "link_e8be6184-c539-4d9e-9101-e324caf19bd5_dashboard",
       "type": "dashboard"
     }
   ],
