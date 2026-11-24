@@ -10,6 +10,8 @@ pub mod data_stream_name;
 pub mod diagnostic_manifest;
 /// Diagnostic metada doc
 pub mod doc;
+/// Streaming JSON entry framer feeding `serde_json::from_slice`
+pub mod json_stream;
 /// Diagnostic lookup tables
 pub mod lookup;
 /// Legacy diagnostic bundle manifest file

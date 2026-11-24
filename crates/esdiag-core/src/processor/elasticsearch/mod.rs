@@ -473,7 +473,6 @@ impl DiagnosticProcessor for ElasticsearchDiagnostic {
         };
         tracing::debug!("ElasticsearchDiagnostic::try_new built lookups");
         let license = receiver.get::<Licenses>().await.map(|licenses| licenses.license).ok();
-
         report.add_license(license);
         report.add_lookup("alias", &lookups.alias);
         report.add_lookup("data_stream", &lookups.data_stream);

@@ -12,6 +12,7 @@ published release notes, maintenance branches, and tagged history.
 
 ### Added
 
+- Added `esdiag mcp`, a local stdio MCP server that offers host, output, keystore status, collect, process, send, job, Agent Builder, and setup commands as tools with structured results, progress notifications, and safety annotations, and registered it in the Claude Code and Codex plugins (#307).
 - Added `esdiag setup completions <shell>` to install bash, zsh, fish, and PowerShell completion scripts for the running binary, or print them with `--print`.
 - Added `esdiag setup env [--env-file <path>]` to install assets into the deployment that `ESDIAG_OUTPUT_*`, `ESDIAG_KIBANA_URL`, and `ESDIAG_KIBANA_SPACE` declare, and `esdiag setup context [name]` to install assets into the services an Elastic CLI `.elasticrc` context defines. Both set up whichever of Elasticsearch and Kibana the source declares (#431).
 - Added `--activate-trial` and `ESDIAG_SETUP_ACTIVATE_TRIAL` to start a 30-day Elasticsearch trial license during setup, a trial checkbox to the web onboarding output setup, and `--activate-trial=true|false` to `esdiag local` and `esdiag-local` (#431).
@@ -37,8 +38,10 @@ published release notes, maintenance branches, and tagged history.
 - **Breaking:** ESDiag's Kibana assets now require Elasticsearch and Kibana 9.5 or later. The bundled saved searches use the Kibana 9.5 format, which Kibana 9.4 cannot import.
 - Setup failures without an HTTP response now report the `setup_failed` outcome category.
 - CLI commands that need a saved secret from a locked keystore, such as `esdiag collect`, now prompt for the keystore password on an interactive terminal and continue instead of failing. Non-interactive runs still fail.
+- A command that cannot read a saved secret because the keystore is locked now always reports the `keystore_failed` category, including saved jobs and setup commands, with a message to run `esdiag keystore unlock` or set `ESDIAG_KEYSTORE_PASSWORD`. A job that fails this way after saving or sending its archive still reports its completed stages and that a retry is not safe.
 - Updated workspace dependency requirements and the lockfile for the 0.18 development cycle, and regenerated third-party notices.
 - Split the library into the `esdiag-core` and `esdiag-gui` crates, published to crates.io alongside `esdiag` at the same version. They have no supported public API; `cargo install esdiag` is unchanged. Log lines now name `esdiag_core` or `esdiag_gui` modules instead of `esdiag`.
+- Log lines from `collect`, `process`, `send`, `output`, `host`, `job`, `keystore`, `agent ask`, and `setup` now name `esdiag_core::operations` modules instead of `esdiag`. When `esdiag host remove` deletes the host but cannot update settings, it now reports a `WARN` log line instead of printing `Warning:` to stderr.
 - Standardized raw-bundle transfer terminology on `send`, including `esdiag send` and `collect --send`; `upload` now refers only to the Elastic Upload Service.
 - Kept concurrent upload status streams independent so starting another upload does not stop updates for an earlier one.
 - Enabled raw-response reads for file archives, in-memory archives, and directories through the shared receiver API.
@@ -48,6 +51,7 @@ published release notes, maintenance branches, and tagged history.
 - Limited node-name fallback enrichment to unambiguous matches, preserving exact node-ID precedence.
 - Preserved HTTP-client identifiers unchanged during scrub normalization.
 - Rejected unterminated JSON strings during scrubbed diagnostic reads instead of silently supplying a missing closing quote.
+- Improved diagnostic archive processing performance and memory efficiency by opening independent ZIP handles per read, using `from_slice` with a 256 MB cap for non-streaming JSON entries, framing streaming JSON entries into a reusable buffer, switching deflate decompression to `zlib-rs`, pre-serializing exporter batches outside writer locks, caching flattened Elasticsearch metadata values, and eliminating `serde` `Content` buffering and rayon spin-contention on hot paths (#324).
 
 ### Fixed
 
@@ -58,9 +62,14 @@ published release notes, maintenance branches, and tagged history.
 - Fixed ECK (`eck-diagnostics`) and Kubernetes Platform bundles failing with "Failed to parse version.json" because they were processed as Elasticsearch diagnostics. They are processed as platform bundles again, and their included Elasticsearch diagnostics are processed as children.
 - Fixed `esdiag setup` failing on Elasticsearch Serverless Kibana projects with "Failed to search Kibana space 'default' for ESDiag assets (400 Bad Request)". The check that keeps ESDiag assets in one Kibana space now works on Serverless.
 - Fixed Kibana 9 collection failing for internal APIs, connectors, alerting rules, Fleet and security packages, and agent upgrade status, and stopped reporting missing endpoint exception lists as collection failures.
+- Fixed `esdiag host add` and `esdiag host update` asking for the keystore password twice when a host uses a keystore secret and the keystore is locked. They now ask once.
+- Fixed commands that read saved hosts while another command saves them seeing an empty or partial `hosts.yml`. The file is now replaced atomically, and on Unix it is readable only by its owner.
+- Fixed Windows saves of `hosts.yml` and the keystore briefly removing the file, so a command reading it at the same time could find no saved hosts or no keystore.
+- Fixed absolute Windows paths with a drive letter, such as `C:\diagnostics`, being rejected as URLs or as saved-host template references. They are now read as local files and directories, including as a saved job's local output directory.
 
 ### Security
 
+- Saved host results from `esdiag host list`, `host add`, `host update`, and the web host list no longer show credentials embedded in a host's URL or URL template.
 - Limited upload scrub-checkbox metadata to 64 bytes and rejected oversized or unreadable (invalid UTF-8) values without retaining staged files.
 - Escaped uploaded filenames in HTML responses to prevent markup and script injection.
 - Limited scrub normalization to 128 nested JSON objects or arrays, rejecting deeper input before further traversal-context allocation; raw syntax validation retains its stricter `Value` recursion limit, and disabled normalization and excluded files retain existing consumer limits.

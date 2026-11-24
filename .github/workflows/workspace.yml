@@ -52,6 +52,9 @@ jobs:
           absent esdiag-gui --no-default-features
           absent tauri -p esdiag --no-default-features --features server
           absent tauri -p esdiag
+          absent rmcp -p esdiag --no-default-features
+          absent esdiag-gui -p esdiag --no-default-features --features mcp
+          absent sse-stream -p esdiag --no-default-features --features mcp
 
   package:
     name: Package

@@ -25,8 +25,13 @@ pub mod env;
 pub mod exporter;
 /// Shared job runner for saved diagnostic jobs
 pub mod job;
+/// The MCP tool catalog served by `esdiag mcp`
+#[cfg(feature = "mcp")]
+pub mod mcp;
 /// Flow-neutral first-run onboarding operations
 pub mod onboarding;
+/// Typed command operations shared by the CLI and other front ends
+pub mod operations;
 /// Data transformation and processing logic
 pub mod processor;
 /// Receive data from various sources

@@ -46,6 +46,8 @@ container. See [Install ESDiag](installation.md) for every install method.
 
 - [Use ESDiag from a coding agent](agent-skills.md) to let Claude Code, Codex,
   or OpenCode collect, upload, and analyze diagnostics with your saved hosts.
+- [Use ESDiag as an MCP server](mcp.md) to give an MCP client typed ESDiag
+  tools with structured results and progress.
 - [Connect Agent Builder to a local LLM](local-llm.md) when you want to use an
   OpenAI-compatible model on your network.
 

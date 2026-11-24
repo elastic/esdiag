@@ -20,7 +20,7 @@ use std::{
     env,
     fmt::{Display, Formatter},
     fs::{self, File, OpenOptions},
-    io::{BufReader, BufWriter, Write},
+    io::{BufReader, Write},
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -870,10 +870,22 @@ impl KnownHost {
         self.url_template.is_some()
     }
 
+    /// The URL or URL template without any userinfo it embeds.
     pub fn transport_display(&self) -> String {
         match (&self.url, &self.url_template) {
-            (Some(url), None) => url.to_string(),
-            (None, Some(url_template)) => url_template.clone(),
+            (Some(url), None) => {
+                let mut url = url.clone();
+                let _ = url.set_username("");
+                let _ = url.set_password(None);
+                url.to_string()
+            }
+            (None, Some(url_template)) => {
+                let mut url_template = url_template.clone();
+                if let Some(userinfo) = userinfo_span(&url_template) {
+                    url_template.replace_range(userinfo, "");
+                }
+                url_template
+            }
             _ => String::new(),
         }
     }
@@ -1291,9 +1303,7 @@ impl KnownHost {
             hosts.clone().into_keys().collect::<Vec<String>>().join(", "),
             path
         );
-        let file = File::create(&path)?;
-        let writer = BufWriter::new(file);
-        yaml_serde::to_writer(writer, &hosts)?;
+        super::keystore::write_yaml_atomic(&path, &hosts)?;
         Ok(format!("{}", path.display()))
     }
 
@@ -1449,9 +1459,25 @@ impl Serialize for TestKnownHostsRef<'_> {
 pub fn write_hosts_yml_for_tests(hosts: &BTreeMap<String, KnownHost>) -> Result<String> {
     let path = KnownHost::get_hosts_path();
     let file = File::create(&path)?;
-    let writer = BufWriter::new(file);
+    let writer = std::io::BufWriter::new(file);
     yaml_serde::to_writer(writer, &TestKnownHostsRef(hosts))?;
     Ok(format!("{}", path.display()))
+}
+
+/// Whether a URL or URL template carries userinfo, such as `user:password@`,
+/// in its authority.
+pub fn embeds_url_userinfo(value: &str) -> bool {
+    userinfo_span(value).is_some()
+}
+
+/// The byte range of the userinfo and its trailing `@`. Templates may not
+/// parse as URLs, so the authority is located textually.
+fn userinfo_span(value: &str) -> Option<std::ops::Range<usize>> {
+    let start = value.find("://")? + 3;
+    let rest = &value[start..];
+    let authority = &rest[..rest.find(['/', '?', '#']).unwrap_or(rest.len())];
+    let at = authority.rfind('@')?;
+    Some(start..start + at + 1)
 }
 
 /// Reject host names that a host reference would read as an Elastic CLI
@@ -1512,6 +1538,9 @@ struct TemplateReference {
 }
 
 fn parse_template_reference(reference: &str) -> Result<Option<TemplateReference>> {
+    if super::uri::is_windows_drive_path(reference) {
+        return Ok(None);
+    }
     let Ok(url) = Url::parse(reference) else {
         return Ok(None);
     };
@@ -1902,6 +1931,28 @@ mod tests {
     /// A web ad-hoc input key rides on a host's legacy fields, and `KnownHost`
     /// derives `Debug`, so wrapping those fields is what keeps the key out of a
     /// `{:?}` (ADR-0011).
+    #[test]
+    fn transport_display_omits_url_userinfo() {
+        let concrete = KnownHostBuilder::new(Url::parse("https://elastic:hunter2@example.test:9200/").expect("url"))
+            .build()
+            .expect("concrete host");
+        let template = KnownHostBuilder::new_template("https://elastic:hunter2@{id}.example.test/path@x".to_string())
+            .build()
+            .expect("template host");
+
+        assert_eq!(concrete.transport_display(), "https://example.test:9200/");
+        assert_eq!(template.transport_display(), "https://{id}.example.test/path@x");
+    }
+
+    #[test]
+    fn url_userinfo_is_found_only_in_the_authority() {
+        assert!(embeds_url_userinfo("https://user:pw@example.test"));
+        assert!(embeds_url_userinfo("https://token@{id}.example.test/x"));
+        assert!(!embeds_url_userinfo("https://example.test/path@x?q=a@b"));
+        assert!(!embeds_url_userinfo("prod@template"));
+        assert!(!embeds_url_userinfo("/tmp/archive@1.zip"));
+    }
+
     #[test]
     fn host_debug_redacts_legacy_credentials() {
         let apikey = KnownHostBuilder::new(Url::parse("http://localhost:9200").expect("url"))
@@ -2429,6 +2480,21 @@ mod tests {
         assert_eq!(
             resolved.concrete_url().map(|url| url.as_str()),
             Some("https://cloud.elastic.co/api/v1/deployments/cluster-1/elasticsearch/_main/proxy/")
+        );
+    }
+
+    #[test]
+    fn one_letter_template_reference_is_not_a_drive_path() {
+        let reference = parse_template_reference("c://cluster-1/elasticsearch")
+            .expect("valid reference")
+            .expect("template reference");
+
+        assert_eq!(reference.template_name, "c");
+        assert_eq!(reference.id, "cluster-1");
+        assert!(
+            parse_template_reference(r"C:\diagnostics\output")
+                .expect("path")
+                .is_none()
         );
     }
 

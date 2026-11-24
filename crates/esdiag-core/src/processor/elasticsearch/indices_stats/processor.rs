@@ -2,13 +2,14 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::super::metadata::MetadataRawValue;
+use super::super::metadata::MetadataValue;
 use super::super::{
     Alias, DataStreamDocument, DocumentExporter, ElasticsearchMetadata, Exporter, IlmStats, Lookup, Lookups,
     MappingSummary, NodeDocument, ProcessorSummary, StreamingDocumentExporter,
     indices_settings::{IndexSettings, IndexSettingsDocument, StoreSettings},
 };
 use super::{IndicesStats, data::*};
+use crate::exporter::spawn_consumer;
 use eyre::Report;
 use futures::stream::{BoxStream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -18,8 +19,8 @@ use tokio::sync::mpsc;
 struct IndexProcessingContext<'a> {
     lookups: &'a Lookups,
     metadata: &'a ElasticsearchMetadata,
-    index_metadata: &'a MetadataRawValue,
-    shard_metadata: &'a MetadataRawValue,
+    index_metadata: &'a MetadataValue,
+    shard_metadata: &'a MetadataValue,
     index_tx: &'a mpsc::Sender<IndexStatsDocument>,
     shard_tx: &'a mpsc::Sender<ShardStatsDocument>,
 }
@@ -117,14 +118,14 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
         const BUFFER_SIZE: usize = 5000;
 
         let (index_tx, index_rx) = mpsc::channel::<IndexStatsDocument>(BUFFER_SIZE);
-        let index_processor = tokio::spawn(exporter.clone().document_channel::<IndexStatsDocument>(
+        let index_processor = spawn_consumer(exporter.clone().document_channel::<IndexStatsDocument>(
             index_rx,
             data_stream_name.clone(),
             batch_size,
         ));
 
         let (shard_tx, shard_rx) = mpsc::channel::<ShardStatsDocument>(BUFFER_SIZE);
-        let shard_processor = tokio::spawn(exporter.clone().document_channel::<ShardStatsDocument>(
+        let shard_processor = spawn_consumer(exporter.clone().document_channel::<ShardStatsDocument>(
             shard_rx,
             "metrics-shard-esdiag".to_string(),
             batch_size,
@@ -166,7 +167,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for IndicesStats 
 
 fn extract_shard_documents(
     mut shards: std::collections::HashMap<u16, Vec<ShardEntry>>,
-    shard_metadata: &MetadataRawValue,
+    shard_metadata: &MetadataValue,
     index_name: String,
     index_settings: Option<IndexSettingsDocument>,
     lookup_node: &Lookup<NodeDocument>,
@@ -209,11 +210,11 @@ fn extract_shard_documents(
 pub struct IndexStatsDocument {
     index: EnrichedIndexStatsWithSettings,
     #[serde(flatten)]
-    metadata: MetadataRawValue,
+    metadata: MetadataValue,
 }
 
 impl IndexStatsDocument {
-    fn new(index: EnrichedIndexStatsWithSettings, metadata: MetadataRawValue) -> Self {
+    fn new(index: EnrichedIndexStatsWithSettings, metadata: MetadataValue) -> Self {
         IndexStatsDocument { index, metadata }
     }
 
@@ -478,11 +479,11 @@ pub struct ShardStatsDocument {
     index: Option<IndexSettingsDocument>,
     node: Option<NodeDocument>,
     #[serde(flatten)]
-    metadata: MetadataRawValue,
+    metadata: MetadataValue,
 }
 
 impl ShardStatsDocument {
-    pub fn new(shard: EnrichedShardStats, metadata: MetadataRawValue) -> Self {
+    pub fn new(shard: EnrichedShardStats, metadata: MetadataValue) -> Self {
         ShardStatsDocument {
             shard,
             metadata,

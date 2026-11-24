@@ -52,7 +52,7 @@ impl TryFrom<PathBuf> for FileExporter {
         Ok(Self {
             file: file.try_clone().expect("Failed to clone file"),
             path,
-            writer: Arc::new(RwLock::new(BufWriter::new(file))),
+            writer: Arc::new(RwLock::new(BufWriter::with_capacity(256 * 1024, file))),
             docs_tx: None,
         })
     }
@@ -83,16 +83,18 @@ impl Export for FileExporter {
         // (ADR-0016); write failures travel in `errors`, not the status.
         let mut batch = BatchResponse::new(docs.len() as u32);
         let mut doc_count = 0;
+        let mut buf = Vec::with_capacity(docs.len().saturating_mul(512).min(8 * 1024 * 1024));
+        for doc in docs {
+            serde_json::to_writer(&mut buf, &doc)?;
+            buf.push(b'\n');
+            doc_count += 1;
+        }
         {
             let mut writer = self
                 .writer
                 .write()
                 .map_err(|e| eyre::eyre!("Failed to acquire write lock: {}", e))?;
-            for doc in docs {
-                serde_json::to_writer(&mut *writer, &doc)?;
-                writeln!(&mut writer)?;
-                doc_count += 1;
-            }
+            writer.write_all(&buf)?;
             writer.flush()?;
         }
         #[cfg(target_os = "macos")]

@@ -98,6 +98,10 @@ impl StreamingDataSource for IndicesStats {
 
         deserializer.deserialize_map(IndicesStatsVisitor { sender })
     }
+
+    fn deserialize_stream_buffered<R: std::io::BufRead>(reader: R, sender: Sender<Result<Self::Item>>) -> Result<()> {
+        crate::processor::diagnostic::json_stream::stream_nested_map(reader, "indices", sender)
+    }
 }
 
 #[skip_serializing_none]
@@ -118,8 +122,6 @@ pub struct IndexStats {
     pub shards: Option<HashMap<u16, Vec<ShardEntry>>>,
 }
 
-#[skip_serializing_none]
-#[derive(Deserialize)]
 pub struct ShardEntry {
     pub routing: ShardRouting,
     pub commit: ShardCommit,
@@ -128,10 +130,212 @@ pub struct ShardEntry {
     pub shard_path: Option<ShardPath>,
     pub search_idle: Option<bool>,
     pub search_idle_time: Option<u64>,
-    #[serde(flatten)]
     pub stats: Stats,
 }
 
+impl<'de> Deserialize<'de> for ShardEntry {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        enum Field {
+            Routing,
+            Commit,
+            SeqNo,
+            RetentionLeases,
+            ShardPath,
+            SearchIdle,
+            SearchIdleTime,
+            Bulk,
+            Completion,
+            DenseVector,
+            Docs,
+            Fielddata,
+            Flush,
+            Get,
+            Indexing,
+            Merges,
+            QueryCache,
+            Recovery,
+            Refresh,
+            RequestCache,
+            Search,
+            Segments,
+            ShardStats,
+            SparseVector,
+            Store,
+            Translog,
+            Warmer,
+            Ignore,
+        }
+
+        impl<'de> Deserialize<'de> for Field {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct FieldVisitor;
+
+                impl serde::de::Visitor<'_> for FieldVisitor {
+                    type Value = Field;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                        formatter.write_str("ShardEntry field name")
+                    }
+
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<Field, E> {
+                        Ok(match value {
+                            "routing" => Field::Routing,
+                            "commit" => Field::Commit,
+                            "seq_no" => Field::SeqNo,
+                            "retention_leases" => Field::RetentionLeases,
+                            "shard_path" => Field::ShardPath,
+                            "search_idle" => Field::SearchIdle,
+                            "search_idle_time" => Field::SearchIdleTime,
+                            "bulk" => Field::Bulk,
+                            "completion" => Field::Completion,
+                            "dense_vector" => Field::DenseVector,
+                            "docs" => Field::Docs,
+                            "fielddata" => Field::Fielddata,
+                            "flush" => Field::Flush,
+                            "get" => Field::Get,
+                            "indexing" => Field::Indexing,
+                            "merges" => Field::Merges,
+                            "query_cache" => Field::QueryCache,
+                            "recovery" => Field::Recovery,
+                            "refresh" => Field::Refresh,
+                            "request_cache" => Field::RequestCache,
+                            "search" => Field::Search,
+                            "segments" => Field::Segments,
+                            "shard_stats" => Field::ShardStats,
+                            "sparse_vector" => Field::SparseVector,
+                            "store" => Field::Store,
+                            "translog" => Field::Translog,
+                            "warmer" => Field::Warmer,
+                            _ => Field::Ignore,
+                        })
+                    }
+                }
+
+                deserializer.deserialize_identifier(FieldVisitor)
+            }
+        }
+
+        struct ShardEntryVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for ShardEntryVisitor {
+            type Value = ShardEntry;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("ShardEntry object")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut routing: Option<ShardRouting> = None;
+                let mut commit: Option<ShardCommit> = None;
+                let mut seq_no: Option<SequenceNumber> = None;
+                let mut retention_leases: Option<RetentionLeases> = None;
+                let mut shard_path: Option<ShardPath> = None;
+                let mut search_idle: Option<bool> = None;
+                let mut search_idle_time: Option<u64> = None;
+
+                let mut bulk: Option<Bulk> = None;
+                let mut completion: Option<Completion> = None;
+                let mut dense_vector: Option<VectorCount> = None;
+                let mut docs: Option<Docs> = None;
+                let mut fielddata: Option<Fielddata> = None;
+                let mut flush: Option<Flush> = None;
+                let mut get: Option<Get> = None;
+                let mut indexing: Option<Indexing> = None;
+                let mut merges: Option<Merges> = None;
+                let mut query_cache: Option<QueryCache> = None;
+                let mut recovery: Option<Recovery> = None;
+                let mut refresh: Option<Refresh> = None;
+                let mut request_cache: Option<RequestCache> = None;
+                let mut search: Option<Search> = None;
+                let mut segments: Option<Segments> = None;
+                let mut shard_stats: Option<ShardStats> = None;
+                let mut sparse_vector: Option<VectorCount> = None;
+                let mut store: Option<StoreStats> = None;
+                let mut translog: Option<Translog> = None;
+                let mut warmer: Option<Warmer> = None;
+
+                while let Some(key) = map.next_key::<Field>()? {
+                    match key {
+                        Field::Routing => routing = Some(map.next_value()?),
+                        Field::Commit => commit = Some(map.next_value()?),
+                        Field::SeqNo => seq_no = Some(map.next_value()?),
+                        Field::RetentionLeases => retention_leases = Some(map.next_value()?),
+                        Field::ShardPath => shard_path = map.next_value()?,
+                        Field::SearchIdle => search_idle = map.next_value()?,
+                        Field::SearchIdleTime => search_idle_time = map.next_value()?,
+                        Field::Bulk => bulk = map.next_value()?,
+                        Field::Completion => completion = map.next_value()?,
+                        Field::DenseVector => dense_vector = map.next_value()?,
+                        Field::Docs => docs = map.next_value()?,
+                        Field::Fielddata => fielddata = map.next_value()?,
+                        Field::Flush => flush = map.next_value()?,
+                        Field::Get => get = map.next_value()?,
+                        Field::Indexing => indexing = map.next_value()?,
+                        Field::Merges => merges = map.next_value()?,
+                        Field::QueryCache => query_cache = map.next_value()?,
+                        Field::Recovery => recovery = map.next_value()?,
+                        Field::Refresh => refresh = map.next_value()?,
+                        Field::RequestCache => request_cache = map.next_value()?,
+                        Field::Search => search = map.next_value()?,
+                        Field::Segments => segments = map.next_value()?,
+                        Field::ShardStats => shard_stats = Some(map.next_value()?),
+                        Field::SparseVector => sparse_vector = map.next_value()?,
+                        Field::Store => store = map.next_value()?,
+                        Field::Translog => translog = map.next_value()?,
+                        Field::Warmer => warmer = map.next_value()?,
+                        Field::Ignore => {
+                            let _ = map.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+
+                Ok(ShardEntry {
+                    routing: routing.ok_or_else(|| serde::de::Error::missing_field("routing"))?,
+                    commit: commit.ok_or_else(|| serde::de::Error::missing_field("commit"))?,
+                    seq_no: seq_no.ok_or_else(|| serde::de::Error::missing_field("seq_no"))?,
+                    retention_leases: retention_leases
+                        .ok_or_else(|| serde::de::Error::missing_field("retention_leases"))?,
+                    shard_path,
+                    search_idle,
+                    search_idle_time,
+                    stats: Stats {
+                        bulk,
+                        completion,
+                        dense_vector,
+                        docs,
+                        fielddata,
+                        flush,
+                        get,
+                        indexing,
+                        merges,
+                        query_cache,
+                        recovery,
+                        refresh,
+                        request_cache,
+                        search,
+                        segments,
+                        shard_stats: shard_stats.ok_or_else(|| serde::de::Error::missing_field("shard_stats"))?,
+                        sparse_vector,
+                        store,
+                        translog,
+                        warmer,
+                    },
+                })
+            }
+        }
+
+        deserializer.deserialize_map(ShardEntryVisitor)
+    }
+}
 #[skip_serializing_none]
 #[derive(Deserialize, Serialize)]
 pub struct SequenceNumber {

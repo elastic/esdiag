@@ -9,9 +9,9 @@ mod ingest_pipelines;
 mod transport_actions;
 
 use super::super::super::{Exporter, ProcessorSummary};
-use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, SharedCacheStats, metadata::MetadataRawValue};
+use super::super::{DocumentExporter, ElasticsearchMetadata, Lookups, SharedCacheStats, metadata::MetadataValue};
 use super::NodesStats;
-use crate::processor::StreamingDocumentExporter;
+use crate::{exporter::spawn_consumer, processor::StreamingDocumentExporter};
 use futures::stream::{BoxStream, StreamExt};
 use serde::Serialize;
 use serde_json::Value;
@@ -23,11 +23,11 @@ static INGEST_ROLE: LazyLock<String> = LazyLock::new(|| String::from("ingest"));
 struct NodeProcessingContext<'a> {
     lookups: &'a Lookups,
     metadata: &'a ElasticsearchMetadata,
-    node_stats_metadata: &'a MetadataRawValue,
-    actions_metadata: &'a MetadataRawValue,
-    http_clients_metadata: &'a MetadataRawValue,
-    applier_metadata: &'a MetadataRawValue,
-    adaptive_metadata: &'a MetadataRawValue,
+    node_stats_metadata: &'a MetadataValue,
+    actions_metadata: &'a MetadataValue,
+    http_clients_metadata: &'a MetadataValue,
+    applier_metadata: &'a MetadataValue,
+    adaptive_metadata: &'a MetadataValue,
     nodes_stats_tx: &'a mpsc::Sender<NodeStatsDoc>,
     actions_tx: &'a mpsc::Sender<transport_actions::TransportActionDoc>,
     http_clients_tx: &'a mpsc::Sender<http_clients::HttpClientDoc>,
@@ -212,7 +212,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
 
         let (nodes_stats_tx, nodes_stats_rx) = mpsc::channel::<NodeStatsDoc>(BUFFER_SIZE);
         let node_stats_metadata = metadata.for_data_stream(&data_stream);
-        let nodes_stats_processor = tokio::spawn(exporter.clone().document_channel::<NodeStatsDoc>(
+        let nodes_stats_processor = spawn_consumer(exporter.clone().document_channel::<NodeStatsDoc>(
             nodes_stats_rx,
             "metrics-node-esdiag".to_string(),
             batch_size,
@@ -221,7 +221,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         let (actions_tx, actions_rx) = mpsc::channel::<transport_actions::TransportActionDoc>(BUFFER_SIZE);
         let actions_data_stream = "metrics-node.transport.actions-esdiag".to_string();
         let actions_metadata = metadata.for_data_stream(&actions_data_stream);
-        let actions_processor = tokio::spawn(
+        let actions_processor = spawn_consumer(
             exporter
                 .clone()
                 .document_channel::<transport_actions::TransportActionDoc>(actions_rx, actions_data_stream, batch_size),
@@ -230,7 +230,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         let (http_clients_tx, http_clients_rx) = mpsc::channel::<http_clients::HttpClientDoc>(BUFFER_SIZE);
         let http_clients_data_stream = "metrics-node.http.clients-esdiag".to_string();
         let http_clients_metadata = metadata.for_data_stream(&http_clients_data_stream);
-        let http_clients_processor = tokio::spawn(exporter.clone().document_channel::<http_clients::HttpClientDoc>(
+        let http_clients_processor = spawn_consumer(exporter.clone().document_channel::<http_clients::HttpClientDoc>(
             http_clients_rx,
             http_clients_data_stream,
             batch_size,
@@ -239,7 +239,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         let (applier_tx, applier_rx) = mpsc::channel::<cluster_applier_stats::ClusterApplierDoc>(BUFFER_SIZE);
         let applier_data_stream = "metrics-node.discovery.cluster_applier-esdiag".to_string();
         let applier_metadata = metadata.for_data_stream(&applier_data_stream);
-        let applier_processor = tokio::spawn(
+        let applier_processor = spawn_consumer(
             exporter
                 .clone()
                 .document_channel::<cluster_applier_stats::ClusterApplierDoc>(
@@ -252,7 +252,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
         let (adaptive_tx, adaptive_rx) = mpsc::channel::<adaptive_selections::AdaptiveSelectionDoc>(BUFFER_SIZE);
         let adaptive_data_stream = "metrics-node.discovery.cluster_adaptive-esdiag".to_string();
         let adaptive_metadata = metadata.for_data_stream(&adaptive_data_stream);
-        let adaptive_processor = tokio::spawn(
+        let adaptive_processor = spawn_consumer(
             exporter
                 .clone()
                 .document_channel::<adaptive_selections::AdaptiveSelectionDoc>(
@@ -264,7 +264,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
 
         let (pipelines_tx, pipelines_rx) = mpsc::channel::<ingest_pipelines::IngestPipelineDoc>(BUFFER_SIZE);
         let pipelines_data_stream = "metrics-ingest.pipeline-esdiag".to_string();
-        let pipelines_processor = tokio::spawn(
+        let pipelines_processor = spawn_consumer(
             exporter
                 .clone()
                 .document_channel::<ingest_pipelines::IngestPipelineDoc>(
@@ -276,7 +276,7 @@ impl StreamingDocumentExporter<Lookups, ElasticsearchMetadata> for NodesStats {
 
         let (processors_tx, processors_rx) = mpsc::channel::<ingest_pipelines::IngestDoc>(BUFFER_SIZE);
         let processors_data_stream = "metrics-ingest.processor-esdiag".to_string();
-        let processors_processor = tokio::spawn(exporter.clone().document_channel::<ingest_pipelines::IngestDoc>(
+        let processors_processor = spawn_consumer(exporter.clone().document_channel::<ingest_pipelines::IngestDoc>(
             processors_rx,
             processors_data_stream,
             batch_size,
@@ -353,7 +353,7 @@ struct NodeStatsDoc {
     node: NodeStatsEnvelope,
     shared_cache: Option<SharedCacheStats>,
     #[serde(flatten)]
-    metadata: MetadataRawValue,
+    metadata: MetadataValue,
 }
 
 #[derive(Serialize)]

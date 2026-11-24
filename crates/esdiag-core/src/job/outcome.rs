@@ -4,7 +4,7 @@
 
 use super::context::ExecutionIdentity;
 use crate::{
-    data::{Application, Platform},
+    data::{Application, KeystoreLocked, Platform},
     processor::{CollectionResult, DiagnosticOutcome, DiagnosticReport},
 };
 use std::path::PathBuf;
@@ -113,6 +113,9 @@ pub struct ExecutionOutcome {
     pub children: Vec<ChildExecutionOutcome>,
     pub retained_bundle: Option<PathBuf>,
     pub send: Option<SendResult>,
+    /// The first stage failure caused by a locked keystore. Stage statuses
+    /// keep only messages, so the typed cause is held here.
+    pub locked_keystore: Option<KeystoreLocked>,
 }
 
 impl ExecutionOutcome {
@@ -125,6 +128,16 @@ impl ExecutionOutcome {
             children: Vec::new(),
             retained_bundle: None,
             send: None,
+            locked_keystore: None,
+        }
+    }
+
+    /// The failure reported as `message`, caused by the locked keystore when
+    /// a stage failed for that reason.
+    pub fn failure_error(&mut self, message: String) -> eyre::Report {
+        match self.locked_keystore.take() {
+            Some(locked) => eyre::Report::new(locked).wrap_err(message),
+            None => eyre::Report::msg(message),
         }
     }
 

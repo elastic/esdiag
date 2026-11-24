@@ -124,6 +124,16 @@ pub trait StreamingDataSource: DataSource {
     ) -> std::result::Result<(), D::Error>
     where
         D: Deserializer<'de>;
+
+    /// Stream items directly from a `BufRead` source.
+    ///
+    /// Implementations that frame top-level entries into a reusable buffer and
+    /// parse each entry with `serde_json::from_slice` avoid both `IoRead`
+    /// per-byte overhead and whole-file memory buffering.
+    fn deserialize_stream_buffered<R: std::io::BufRead>(reader: R, sender: Sender<Result<Self::Item>>) -> Result<()> {
+        let mut deserializer = serde_json::Deserializer::from_reader(reader);
+        Self::deserialize_stream(&mut deserializer, sender).map_err(|e| eyre!(e.to_string()))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq)]

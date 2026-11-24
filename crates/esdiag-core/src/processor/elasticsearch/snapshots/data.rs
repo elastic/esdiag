@@ -170,6 +170,10 @@ impl StreamingDataSource for Snapshots {
 
         deserializer.deserialize_map(SnapshotRootVisitor { sender })
     }
+
+    fn deserialize_stream_buffered<R: std::io::BufRead>(reader: R, sender: Sender<Result<Self::Item>>) -> Result<()> {
+        crate::processor::diagnostic::json_stream::stream_nested_array(reader, "snapshots", sender)
+    }
 }
 
 impl DataSource for Repositories {

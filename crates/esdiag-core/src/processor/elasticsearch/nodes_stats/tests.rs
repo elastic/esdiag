@@ -170,3 +170,38 @@ fn test_node_stats_os_enrichment_from_lookup() {
     assert_eq!(node_stats_json["name"], "hot-309-renamed");
     assert_eq!(node_stats_json["host"], "pre-existing-host");
 }
+
+#[test]
+fn test_ingest_processor_deserializes_from_reader_value_and_escaped_keys() {
+    use crate::processor::elasticsearch::nodes_stats::IngestProcessor;
+
+    let current_json = r#"{
+        "\u0074ype": "set",
+        "stats": {"count": 10, "time_in_millis": 5, "current": 0, "failed": 1}
+    }"#;
+    let legacy_json = r#"{
+        "cou\u006et": 4,
+        "time_in_millis": 2,
+        "current": 0,
+        "failed": 0
+    }"#;
+
+    for (raw, expected_type, expected_count) in [(current_json, Some("set"), 10), (legacy_json, None, 4)] {
+        let from_reader: IngestProcessor = serde_json::from_reader(std::io::Cursor::new(raw.as_bytes()))
+            .expect("IngestProcessor should deserialize from reader");
+        assert_eq!(from_reader.r#type.as_deref(), expected_type);
+        assert_eq!(
+            serde_json::to_value(&from_reader.stats).unwrap()["count"],
+            expected_count
+        );
+
+        let value: serde_json::Value = serde_json::from_str(raw).expect("valid json");
+        let from_value: IngestProcessor =
+            serde_json::from_value(value).expect("IngestProcessor should deserialize from owned Value");
+        assert_eq!(from_value.r#type.as_deref(), expected_type);
+        assert_eq!(
+            serde_json::to_value(&from_value.stats).unwrap()["count"],
+            expected_count
+        );
+    }
+}

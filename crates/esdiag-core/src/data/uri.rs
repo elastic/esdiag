@@ -14,6 +14,21 @@ use std::{
 };
 
 use url::Url;
+
+/// Whether `value` starts with a Windows drive letter, such as `C:\diag.zip`,
+/// `C:/diag.zip`, or `C:`. `Url::parse` accepts these with the drive letter as
+/// the scheme, so they must be classified as paths before URL parsing. The
+/// `x://` authority form stays a URL: it is how a template host with a
+/// one-letter name, such as `c://cluster-1`, is referenced.
+pub(crate) fn is_windows_drive_path(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() >= 2
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes.get(2), None | Some(b'\\' | b'/'))
+        && !value[2..].starts_with("//")
+}
+
 /// The different types of supported URIs
 #[derive(Clone, Debug, Default)]
 pub enum Uri {
@@ -167,7 +182,7 @@ impl TryFrom<&str> for Uri {
         }
         tracing::debug!("No known host for {uri}");
 
-        if let Ok(url) = Url::parse(uri) {
+        if let Some(url) = Url::parse(uri).ok().filter(|_| !is_windows_drive_path(uri)) {
             if url.scheme() == "file" {
                 let path = url.to_file_path().map_err(|_| eyre!("Invalid file URI: {uri}"))?;
                 if uri.ends_with('/') {
@@ -275,9 +290,10 @@ impl std::fmt::Display for Uri {
 
 #[cfg(test)]
 mod tests {
-    use super::Uri;
+    use super::{Uri, is_windows_drive_path};
     use crate::data::{Application, Auth};
     use std::path::Path;
+    use url::Url;
 
     const ENV_VARS: &[&str] = &[
         "ESDIAG_OUTPUT_URL",
@@ -321,18 +337,41 @@ mod tests {
 
     #[test]
     fn parses_file_uri_directory_and_file_targets() {
+        let base = std::env::temp_dir().join("esdiag-uri-test-missing");
+        let dir_uri = Url::from_directory_path(base.join("output")).expect("directory URI");
+        let file_uri = Url::from_file_path(base.join("output").join("report.ndjson")).expect("file URI");
+        let bare_uri = Url::from_file_path(base.join("REPORT")).expect("file URI");
+
         assert!(matches!(
-            Uri::try_from("file:///tmp/output/"),
-            Ok(Uri::Directory(path)) if path == Path::new("/tmp/output")
+            Uri::try_from(dir_uri.as_str()),
+            Ok(Uri::Directory(path)) if path == base.join("output")
         ));
         assert!(matches!(
-            Uri::try_from("file:///tmp/output/report.ndjson"),
-            Ok(Uri::File(path)) if path == Path::new("/tmp/output/report.ndjson")
+            Uri::try_from(file_uri.as_str()),
+            Ok(Uri::File(path)) if path == base.join("output").join("report.ndjson")
         ));
         assert!(matches!(
-            Uri::try_from("file:///tmp/REPORT"),
-            Ok(Uri::File(path)) if path == Path::new("/tmp/REPORT")
+            Uri::try_from(bare_uri.as_str()),
+            Ok(Uri::File(path)) if path == base.join("REPORT")
         ));
+    }
+
+    #[test]
+    fn windows_drive_paths_are_paths_not_urls() {
+        let _env = isolated_env();
+        assert!(matches!(
+            Uri::try_from(r"C:\diagnostics\output\"),
+            Ok(Uri::Directory(path)) if path == Path::new(r"C:\diagnostics\output\")
+        ));
+        assert!(matches!(
+            Uri::try_from("C:/diagnostics/report.ndjson"),
+            Ok(Uri::File(path)) if path == Path::new("C:/diagnostics/report.ndjson")
+        ));
+        assert!(is_windows_drive_path("d:"));
+        assert!(!is_windows_drive_path("prod://abc123"));
+        assert!(!is_windows_drive_path("https://example.test"));
+        assert!(!is_windows_drive_path("c:prod"));
+        assert!(!is_windows_drive_path("c://cluster-1/elasticsearch"));
     }
 
     #[test]

@@ -100,6 +100,10 @@ impl StreamingDataSource for NodesStats {
 
         deserializer.deserialize_map(NodesStatsVisitor { sender })
     }
+
+    fn deserialize_stream_buffered<R: std::io::BufRead>(reader: R, sender: Sender<Result<Self::Item>>) -> Result<()> {
+        crate::processor::diagnostic::json_stream::stream_nested_map(reader, "nodes", sender)
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -289,24 +293,107 @@ impl<'de> Deserialize<'de> for IngestProcessor {
     where
         D: Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum IngestProcessorFormat {
-            Current {
-                #[serde(rename = "type")]
-                r#type: String,
-                stats: IngestProcessorStats,
-            },
-            Legacy(IngestProcessorStats),
+        enum Field {
+            Type,
+            Stats,
+            Count,
+            TimeInMillis,
+            Current,
+            Failed,
+            Ignore,
         }
 
-        match IngestProcessorFormat::deserialize(deserializer)? {
-            IngestProcessorFormat::Current { r#type, stats } => Ok(Self {
-                r#type: Some(r#type),
-                stats,
-            }),
-            IngestProcessorFormat::Legacy(stats) => Ok(Self { r#type: None, stats }),
+        impl<'de> Deserialize<'de> for Field {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                struct FieldVisitor;
+
+                impl serde::de::Visitor<'_> for FieldVisitor {
+                    type Value = Field;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                        formatter.write_str("ingest processor stats field name")
+                    }
+
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<Field, E> {
+                        Ok(match value {
+                            "type" => Field::Type,
+                            "stats" => Field::Stats,
+                            "count" => Field::Count,
+                            "time_in_millis" => Field::TimeInMillis,
+                            "current" => Field::Current,
+                            "failed" => Field::Failed,
+                            _ => Field::Ignore,
+                        })
+                    }
+                }
+
+                deserializer.deserialize_identifier(FieldVisitor)
+            }
         }
+
+        struct IngestProcessorVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for IngestProcessorVisitor {
+            type Value = IngestProcessor;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("ingest processor stats object")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut r#type: Option<String> = None;
+                let mut stats: Option<IngestProcessorStats> = None;
+                let mut count: Option<u64> = None;
+                let mut time_in_millis: Option<u64> = None;
+                let mut current: Option<u64> = None;
+                let mut failed: Option<u64> = None;
+
+                while let Some(key) = map.next_key::<Field>()? {
+                    match key {
+                        Field::Type => r#type = Some(map.next_value()?),
+                        Field::Stats => stats = Some(map.next_value()?),
+                        Field::Count => count = Some(map.next_value()?),
+                        Field::TimeInMillis => time_in_millis = Some(map.next_value()?),
+                        Field::Current => current = Some(map.next_value()?),
+                        Field::Failed => failed = Some(map.next_value()?),
+                        Field::Ignore => {
+                            let _ = map.next_value::<serde::de::IgnoredAny>()?;
+                        }
+                    }
+                }
+
+                if let (Some(r#type), Some(stats)) = (r#type, stats) {
+                    Ok(IngestProcessor {
+                        r#type: Some(r#type),
+                        stats,
+                    })
+                } else if let (Some(count), Some(time_in_millis), Some(current), Some(failed)) =
+                    (count, time_in_millis, current, failed)
+                {
+                    Ok(IngestProcessor {
+                        r#type: None,
+                        stats: IngestProcessorStats {
+                            count,
+                            time_in_millis,
+                            current,
+                            failed,
+                        },
+                    })
+                } else {
+                    Err(serde::de::Error::custom(
+                        "missing required ingest processor stats fields",
+                    ))
+                }
+            }
+        }
+
+        deserializer.deserialize_map(IngestProcessorVisitor)
     }
 }
 

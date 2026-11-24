@@ -32,7 +32,18 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use stream::StreamExporter;
 use tokio::sync::{mpsc, oneshot};
+use tokio_util::task::AbortOnDropHandle;
 use url::Url;
+
+/// Spawns a [`Exporter::document_channel`] consumer that is aborted when its
+/// handle drops, so an abandoned export stops starting queued bulk requests.
+pub fn spawn_consumer<F>(consumer: F) -> AbortOnDropHandle<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    AbortOnDropHandle::new(tokio::spawn(consumer))
+}
 
 trait Export {
     async fn is_connected(&self) -> bool;

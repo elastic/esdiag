@@ -311,37 +311,10 @@ fn temp_output_path(path: &Path) -> Result<PathBuf> {
     Ok(parent.join(format!(".{file_name}.tmp-{}-{unique}", std::process::id())))
 }
 
+/// `std::fs::rename` replaces an existing destination on every platform
+/// (`MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` on Windows), so readers
+/// always see either the old file or the new one, never a missing path.
 fn replace_file_atomic(path: &Path, temp_path: &Path) -> Result<()> {
-    #[cfg(windows)]
-    {
-        let backup_path = path.with_extension("bak");
-        let mut backup_created = false;
-
-        if path.exists() {
-            if backup_path.exists() {
-                let _ = std::fs::remove_file(&backup_path);
-            }
-            std::fs::rename(path, &backup_path)?;
-            backup_created = true;
-        }
-
-        match std::fs::rename(temp_path, path) {
-            Ok(()) => {
-                if backup_created {
-                    let _ = std::fs::remove_file(&backup_path);
-                }
-                return Ok(());
-            }
-            Err(err) => {
-                if backup_created && !path.exists() {
-                    let _ = std::fs::rename(&backup_path, path);
-                }
-                return Err(err.into());
-            }
-        }
-    }
-
-    #[cfg(not(windows))]
     std::fs::rename(temp_path, path)?;
     Ok(())
 }
@@ -689,10 +662,30 @@ where
         *prompted = Some(password.clone());
         return Ok(password);
     }
-    Err(eyre!(
-        "{ESDIAG_KEYSTORE_PASSWORD} is not set and no valid unlock lease is available; cannot decrypt secrets from keystore."
-    ))
+    Err(KeystoreLocked { secret_id: None }.into())
 }
+
+/// No keystore password is available without prompting: no scoped password,
+/// no `ESDIAG_KEYSTORE_PASSWORD`, and no valid unlock lease.
+#[derive(Debug, Clone)]
+pub struct KeystoreLocked {
+    /// The host secret that needed the password, when known.
+    pub secret_id: Option<String>,
+}
+
+impl std::fmt::Display for KeystoreLocked {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(secret_id) = &self.secret_id {
+            write!(formatter, "Host references secret '{secret_id}' but ")?;
+        }
+        write!(
+            formatter,
+            "{ESDIAG_KEYSTORE_PASSWORD} is not set and no valid unlock lease is available; cannot decrypt secrets from keystore."
+        )
+    }
+}
+
+impl std::error::Error for KeystoreLocked {}
 
 #[cfg(all(feature = "server", feature = "keystore"))]
 pub fn get_active_unlock_keystore_password() -> Result<Option<Secret<String>>> {
