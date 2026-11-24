@@ -780,6 +780,17 @@ impl BatchResponse {
         merge_rejection_reasons(&mut self.rejection_reasons, &other.rejection_reasons);
     }
 
+    /// Adds what a resend of part of this batch returned: the documents that
+    /// Elasticsearch throttled per item. It is the same batch, so neither the
+    /// batch count nor the request status changes.
+    pub fn merge_resend(&mut self, resend: Self) {
+        self.docs = self.docs.saturating_add(resend.docs);
+        self.errors = self.errors.saturating_add(resend.errors);
+        self.time = self.time.saturating_add(resend.time);
+        merge_rejections(&mut self.rejected_indices, &resend.rejected_indices);
+        merge_rejection_reasons(&mut self.rejection_reasons, &resend.rejection_reasons);
+    }
+
     fn merge_status_counts(&mut self, other: &Self) {
         if other.status_counts.is_empty() {
             if other.batch_count > 0 {
