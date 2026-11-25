@@ -10,6 +10,11 @@ published release notes, maintenance branches, and tagged history.
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `shard.indexing.avg_docs_sec` reporting `0` after shard relocations or node restarts by calculating it from the persistent `shard.docs.count` instead of the in-memory `shard.indexing.index_total` counter.
+- Fixed alias-based write indices emitting `index.is_write_index: false` on `metrics-shard-esdiag` documents, aligning shard documents with `metrics-index-esdiag` so write-index doc-rate aggregations include alias rollovers.
+
 ## [0.17.2] - 2026-11-11
 
 ### Fixed
