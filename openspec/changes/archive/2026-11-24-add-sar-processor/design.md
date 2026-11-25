@@ -256,10 +256,10 @@ All metricsets share one mapping, so every field name must have one meaning and 
 
 One data view, "Host Activity (SAR)", and four dashboards modeled on kSar: **Host Activity: Compute**, **Storage**, **Network**, and **System**. They are verified against processed output on the existing local stack and stored in `assets/kibana/esdiag/objects/{index-pattern,dashboard,links}/`, following existing object conventions.
 
-- **Sections**: each kSar graph is one collapsible section; Storage, a single kSar graph, gets one section per kSar plot. Kibana sections do not nest, and collapsed sections don't query until opened, which keeps large dashboards cheap.
+- **Sections**: each kSar graph is one collapsible section; Storage, a single kSar graph, gets aggregate I/O, Utilization, Bandwidth, and Filesystems sections. Kibana sections do not nest, and collapsed sections don't query until opened, which keeps large dashboards cheap.
 - **One metric per chart**: kSar plots several columns per chart; Kibana breakdowns already spend the color dimension on entities (devices, interfaces, CPUs, hosts), so each chart plots one metric.
 - **Host first**: SAR is host-scoped and Kibana cannot require a control selection, so entity charts break down by entity only and expect a `host.name` filter. Host-wide System charts break down by `host.name` to compare several SAR inputs.
-- **Per-CPU grid**: Lens XY has no small multiples, so the CPU dashboard holds 128 fixed Lens panels, one per CPU ID, four wide, in sections of 32; only `CPUs 0-31` starts expanded. Panels for absent CPUs show no data.
+- **Per-CPU grid**: Lens XY has no small multiples, so the Compute dashboard holds 128 fixed Lens panels, one per CPU ID, four wide, in sections of 32; only `CPUs 0-31` starts expanded. Panels for absent CPUs show no data.
   - *Rejected: one faceted Vega-Lite panel.* Exact per-host count, but hand-written Vega unlike every other shipped panel.
 - **All CPUs**: averages and 95th percentiles across cores per time bucket, from `cpu` documents. Averages of components are additive, so they stack; percentiles are not, so the p95 chart is unstacked.
 - **Navigation**: one shared "Hosts Overviews" links object, placed by reference on all four dashboards and on Hosts Overview to the right of the Elasticsearch overview links, keeps the current time range. On Hosts Overview it replaces the Nodes Overviews links, and Hosts Overview moves from the Nodes Overviews links to the end of the Elasticsearch overview links.

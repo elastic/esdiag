@@ -61,7 +61,7 @@ Every dashboard SHALL provide controls for `host.name` and `elasticsearch.node.n
 - **AND** expanded sections for the kSar block-device plots show, one metric per chart broken down by `sar.io.device`:
   - Utilization: `util.pct`, `tps`, `aqu_sz`, and `await_ms`.
   - Bandwidth: read, write, and discard `bytes_per_sec`, and `areq.bytes`.
-- **AND** the `sar.io.device_class` control narrows every per-device chart and tile to one class, such as `sd` or `dm`
+- **AND** the `sar.io.device_class` control narrows every per-device chart and tile to one class, such as `sd` or `dm`; the aggregate `sar.block` charts and tiles and the Filesystems charts carry no device class, so they show no data while a class is selected
 - **AND** a collapsed Filesystems section shows filesystem used, free, and inodes used by `sar.filesystem.name`
 
 #### Scenario: Network
