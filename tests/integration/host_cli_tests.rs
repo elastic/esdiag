@@ -362,8 +362,7 @@ async fn host_update_supports_secret_rotation_and_rejects_persisted_apikey_overr
     );
     assert_eq!(host.secret_reference(), Some("new-secret"));
 
-    // Even a key the cluster accepts must not be persisted inline.
-    mock.set_required_authorization("ApiKey override-key");
+    // The cluster would reject this key, but saving it is refused before the cluster sees it.
     let override_apikey = run_esdiag_async(
         vec![
             "host".to_string(),

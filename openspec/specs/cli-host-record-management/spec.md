@@ -106,11 +106,12 @@ The system SHALL preserve saved host fields that are not explicitly overridden b
 ### Requirement: Mutable Saved Host Override Support
 The system SHALL support in-place `esdiag host update <name>` overrides for saved host authentication fields, role assignments, and certificate validation settings without requiring the user to resupply the full host definition. For certificate validation settings, the system SHALL update the saved value only when `--accept-invalid-certs <bool>` is provided, SHALL preserve the saved value when the flag is omitted, SHALL enable invalid certificate acceptance when the value is `true`, and SHALL remove a previously enabled invalid-certificate override when the value is `false`.
 
-#### Scenario: Replace saved secret-backed auth with an API key override
+#### Scenario: Reject an inline API key override
 - **GIVEN** a saved host named `prod-es` currently references secret-backed authentication
 - **WHEN** the user runs `esdiag host update prod-es --apikey new-api-key`
-- **THEN** the system saves `prod-es` with API key authentication
-- **AND** any persisted secret reference for that host is no longer used as the saved auth source
+- **THEN** the command fails with an explicit error indicating that the host requires a secret reference before it can be saved
+- **AND** the system does not send the API key to the host
+- **AND** the saved `prod-es` record keeps its secret reference
 
 #### Scenario: Enable invalid certificate acceptance on a saved host
 - **GIVEN** a saved host named `staging-es` exists with certificate validation disabled
@@ -129,6 +130,23 @@ The system SHALL support in-place `esdiag host update <name>` overrides for save
 - **WHEN** the user runs `esdiag host update staging-es --accept-invalid-certs false`
 - **THEN** the system disables invalid certificate acceptance for the saved host
 - **AND** preserves the host's existing `app`, `url`, and auth configuration unless other overrides are supplied
+
+### Requirement: Saved Host Checks Precede Connection Testing
+`esdiag host add` and `esdiag host update` SHALL check that the resulting host record can be saved before asking for the keystore password to test the connection and before making any network call. The check SHALL cover the secret reference, the role assignments, and the template host name. A host that cannot be saved MUST fail with the reason, and its credential MUST NOT be sent.
+
+#### Scenario: Reject inline credentials before contacting the host
+- **GIVEN** no saved host named `prod-es` exists
+- **WHEN** the user runs `esdiag host add prod-es http://localhost:9200 --app elasticsearch --apikey new-api-key`
+- **THEN** the command fails with an explicit error indicating that the host requires a secret reference before it can be saved
+- **AND** the system makes no request to `http://localhost:9200`
+- **AND** the system does not save `prod-es`
+
+#### Scenario: Reject unsupported roles before contacting the host
+- **GIVEN** a saved Elasticsearch host named `prod-es` exists
+- **WHEN** the user runs `esdiag host update prod-es --roles view`
+- **THEN** the command fails with an explicit error indicating that the role is only valid for Kibana hosts
+- **AND** the system makes no request to the saved host
+- **AND** the saved `prod-es` record remains unchanged
 
 ### Requirement: Missing Host Update Guardrail
 The system SHALL reject `esdiag host update <name>` invocations for unknown host names rather than inferring a create flow.

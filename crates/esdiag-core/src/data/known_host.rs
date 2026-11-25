@@ -1019,7 +1019,20 @@ impl KnownHost {
         Ok(())
     }
 
-    pub fn save(mut self, name: &str) -> Result<String> {
+    /// Returns this host as `hosts.yml` may hold it under `name`, or why it
+    /// cannot be saved. Makes no network call and writes nothing.
+    pub fn into_persistable(mut self, name: &str) -> Result<Self> {
+        self.normalize_and_validate_roles(name)?;
+        self.validate_template_host_name(name)?;
+        self.credential = self.credential.persisted().map_err(|_| {
+            eyre!(
+                "Host '{name}' requires a secret reference before it can be saved. Use `--secret <id>` to persist auth, or `--nosave` for transient validation."
+            )
+        })?;
+        Ok(self)
+    }
+
+    pub fn save(self, name: &str) -> Result<String> {
         // parse the ~/.esdiag/hosts.yml file into a HashMap<String, Host>
         let mut hosts = match KnownHost::parse_hosts_yml() {
             Ok(hosts) => hosts,
@@ -1028,14 +1041,7 @@ impl KnownHost {
                 return Err(eyre!("Error parsing hosts.yml"));
             }
         };
-        self.normalize_and_validate_roles(name)?;
-        self.validate_template_host_name(name)?;
-        self.credential = self.credential.persisted().map_err(|_| {
-            eyre!(
-                "Host '{name}' requires a secret reference before it can be saved. Use `--secret <id>` to persist auth, or `--nosave` for transient validation."
-            )
-        })?;
-        hosts.insert(name.to_owned(), self);
+        hosts.insert(name.to_owned(), self.into_persistable(name)?);
         KnownHost::write_hosts_yml(&hosts)
     }
 

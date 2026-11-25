@@ -210,6 +210,9 @@ fn build_host_from_definition(
     }
 }
 
+/// A host that cannot be saved is refused before its password is asked for or
+/// its connection is tested, so its credential is never sent.
+///
 /// Connection validation reads the host's secret again, so the password is
 /// scoped over it: the one already obtained while building the host, otherwise
 /// one asked of `unasked_source` when validation will read an inherited or
@@ -222,6 +225,7 @@ async fn save_host(
     resolved_password: Option<Secret<String>>,
     unasked_source: Option<KeystorePasswordSource>,
 ) -> Result<String> {
+    let host = host.into_persistable(name)?;
     let keystore_password = match (resolved_password, unasked_source) {
         (Some(password), _) => Some(password),
         // On failure, validation reports the missing password itself.
@@ -538,6 +542,122 @@ mod tests {
         })
         .await
         .expect("update that keeps the saved secret");
+    }
+
+    /// Serves a cluster that rejects every request and counts what it received.
+    async fn serve_counting_cluster() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        let requests = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = requests.clone();
+        let app = axum::Router::new().fallback(move || {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            async { axum::http::StatusCode::UNAUTHORIZED }
+        });
+        (ElasticsearchMock::serve_router(app).await, requests)
+    }
+
+    #[tokio::test]
+    async fn host_that_cannot_be_saved_is_refused_without_a_request() {
+        let _env = setup_env();
+        let (url, requests) = serve_counting_cluster().await;
+        KnownHost::new_no_auth(
+            Application::Elasticsearch,
+            Url::parse(&url).expect("valid url"),
+            vec![HostRole::Collect],
+            None,
+            false,
+        )
+        .save("prod-es")
+        .expect("save host");
+        let saved = KnownHost::get_known(&"prod-es".to_string()).expect("saved host");
+        let inline_key = || KnownHostCliUpdate {
+            apikey: Some(Secret::new("inline-key".to_string())),
+            ..Default::default()
+        };
+        let secret_error = "requires a secret reference before it can be saved";
+
+        let error = host_add(HostAddInput {
+            name: "inline-es".to_string(),
+            app: Some(Application::Elasticsearch),
+            target: url.clone(),
+            url_template: false,
+            update: inline_key(),
+            keystore_password: get_keystore_password,
+        })
+        .await
+        .expect_err("add with an inline key");
+        assert!(error.to_string().contains(secret_error), "{error}");
+
+        let updates = [
+            (inline_key(), secret_error),
+            (
+                KnownHostCliUpdate {
+                    username: Some("elastic".to_string()),
+                    password: Some(Secret::new("inline-password".to_string())),
+                    ..Default::default()
+                },
+                secret_error,
+            ),
+            (
+                KnownHostCliUpdate {
+                    roles: Some(vec![HostRole::View]),
+                    ..Default::default()
+                },
+                "role 'view' is only valid for Kibana hosts",
+            ),
+        ];
+        for (update, expected) in updates {
+            let error = host_update(HostUpdateInput {
+                name: "prod-es".to_string(),
+                update,
+                keystore_password: get_keystore_password,
+            })
+            .await
+            .expect_err("update to a host that cannot be saved");
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+
+        assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert!(KnownHost::get_known(&"inline-es".to_string()).is_none());
+        assert_eq!(KnownHost::get_known(&"prod-es".to_string()), Some(saved));
+    }
+
+    #[tokio::test]
+    async fn host_that_cannot_be_saved_is_refused_before_the_password_is_asked() {
+        static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        fn counting_source() -> Result<Secret<String>> {
+            CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(Secret::new("pw".to_string()))
+        }
+
+        let _env = TestEnv::new();
+        let (url, requests) = serve_counting_cluster().await;
+        KnownHost::new(
+            Application::Elasticsearch,
+            Url::parse(&url).expect("valid url"),
+            vec![HostRole::Collect],
+            None,
+            false,
+            Credential::Keystore("prod-es".to_string()),
+        )
+        .save("prod-es")
+        .expect("save host");
+
+        let error = host_update(HostUpdateInput {
+            name: "prod-es".to_string(),
+            update: KnownHostCliUpdate {
+                roles: Some(vec![HostRole::View]),
+                ..Default::default()
+            },
+            keystore_password: counting_source,
+        })
+        .await
+        .expect_err("update to a role the app does not support");
+        assert!(
+            error.to_string().contains("role 'view' is only valid for Kibana hosts"),
+            "{error}"
+        );
+        assert_eq!(CALLS.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
