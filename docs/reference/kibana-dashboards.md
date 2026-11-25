@@ -127,8 +127,10 @@ filter to one `host.name` first. Kibana cannot require that filter.
 
 Every dashboard has controls for `host.name` and `elasticsearch.node.name`.
 Compute, Network, and System add `diagnostic.id`; Compute adds `sar.cpu.id`;
-Storage adds `sar.io.device_class`; Network adds `sar.network.interface`. A panel whose section is missing from `sar.txt` shows
-no data.
+Storage adds `sar.io.device_class`; Network adds `sar.network.interface`. A
+panel whose section is missing from `sar.txt` shows no data. Selecting a device
+class also empties the Storage charts and tiles that have no device: the
+aggregate transfers and the Filesystems section.
 
 `sar` names block devices either by kernel name (`sda`, `dm-3`) or by number
 (`dev8-0`, `dev253-3`), depending on its options. `sar.io.device_class` gives

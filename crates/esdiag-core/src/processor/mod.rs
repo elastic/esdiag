@@ -813,6 +813,14 @@ mod tests {
     }
 
     async fn process_es_bundle(files: &[(&str, &[u8])], requested: Option<&[&str]>) -> SyscallRun {
+        process_es_bundle_as(files, requested, Identifiers::default()).await
+    }
+
+    async fn process_es_bundle_as(
+        files: &[(&str, &[u8])],
+        requested: Option<&[&str]>,
+        identifiers: Identifiers,
+    ) -> SyscallRun {
         let root = tempfile::tempdir().expect("bundle dir");
         extract_archive("elasticsearch-api-diagnostics-9.3.3.zip", root.path());
         for (path, contents) in files {
@@ -828,7 +836,7 @@ mod tests {
         let receiver = Arc::new(Receiver::try_from(Uri::Directory(root.path().to_path_buf())).expect("receiver"));
         let output = tempfile::tempdir().expect("output dir");
         let exporter = Arc::new(Exporter::try_from(Uri::Directory(output.path().to_path_buf())).expect("exporter"));
-        let completed = Processor::try_new(receiver, exporter, Identifiers::default(), selection)
+        let completed = Processor::try_new(receiver, exporter, identifiers, selection)
             .await
             .expect("ready processor")
             .start()
@@ -894,6 +902,18 @@ mod tests {
         let events = run.sar_events();
         assert_eq!(events.len(), 1, "{events:?}");
         assert_eq!(events[0].0, EventSeverity::Success);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn sar_is_processed_whatever_the_platform() {
+        let run = process_es_bundle_as(
+            &[("syscalls/sar.txt", SAR_TEXT.as_bytes())],
+            None,
+            Identifiers::default().with_platform(crate::data::Platform::ECE),
+        )
+        .await;
+        assert_eq!(run.report.diagnostic.platform(), crate::data::Platform::ECE);
+        assert_eq!(run.sar_docs(), 2);
     }
 
     #[tokio::test(flavor = "multi_thread")]
