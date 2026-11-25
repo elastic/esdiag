@@ -386,7 +386,7 @@ fn compress_staged_log(staging_path: &Path, src_path: &Path, gz_path: &Path, can
     let tmp_path = gz_path.parent().unwrap_or_else(|| Path::new(".")).join(tmp_name);
 
     let mut was_cancelled = false;
-    let compress_result = (|| -> io::Result<()> {
+    let compress_result = (|| -> io::Result<Option<File>> {
         // Open without `FILE_SHARE_DELETE` (`share_mode(0)`) so concurrent
         // maintenance scans skip active `.tmp` files via
         // `ERROR_SHARING_VIOLATION` (32), while abandoned `.tmp` files from an
@@ -401,7 +401,7 @@ fn compress_staged_log(staging_path: &Path, src_path: &Path, gz_path: &Path, can
         loop {
             if cancelled.load(Ordering::Relaxed) {
                 was_cancelled = true;
-                return Ok(());
+                return Ok(None);
             }
             let read = input.read(&mut buf)?;
             if read == 0 {
@@ -411,7 +411,7 @@ fn compress_staged_log(staging_path: &Path, src_path: &Path, gz_path: &Path, can
         }
         let file = encoder.finish()?;
         file.sync_all()?;
-        Ok(())
+        Ok(Some(file))
     })();
 
     if was_cancelled {
@@ -421,22 +421,29 @@ fn compress_staged_log(staging_path: &Path, src_path: &Path, gz_path: &Path, can
         return Ok(());
     }
 
-    if let Err(err) = compress_result {
-        drop(input);
-        let _ = fs::remove_file(&tmp_path);
-        restore_staged_log(staging_path, src_path);
-        return Err(err);
-    }
-
-    // Publish atomically without overwriting an existing archive: `hard_link`
-    // fails with `AlreadyExists` if another process already published
-    // `gz_path`, in which case we publish under a unique recovery archive name
-    // so no staged log entries are lost.
-    let publish_result = match fs::hard_link(&tmp_path, gz_path) {
-        Ok(()) => {
+    let tmp_guard = match compress_result {
+        Ok(Some(file)) => file,
+        Ok(None) => {
+            drop(input);
             let _ = fs::remove_file(&tmp_path);
-            Ok(())
+            restore_staged_log(staging_path, src_path);
+            return Ok(());
         }
+        Err(err) => {
+            drop(input);
+            let _ = fs::remove_file(&tmp_path);
+            restore_staged_log(staging_path, src_path);
+            return Err(err);
+        }
+    };
+
+    // Keep `tmp_guard` open (`share_mode(0)`) across publication so concurrent
+    // pruning cannot delete `tmp_path` before it is linked. `hard_link`
+    // publishes atomically without overwriting an existing archive: if another
+    // process already published `gz_path`, `AlreadyExists` routes to a unique
+    // recovery archive name so no staged log entries are lost.
+    let publish_result = match fs::hard_link(&tmp_path, gz_path) {
+        Ok(()) => Ok(()),
         Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {
             let recovery_name = format!(
                 "{}.{}-{}.gz",
@@ -445,13 +452,14 @@ fn compress_staged_log(staging_path: &Path, src_path: &Path, gz_path: &Path, can
                 Uuid::new_v4()
             );
             let recovery_path = gz_path.parent().unwrap_or_else(|| Path::new(".")).join(recovery_name);
-            fs::rename(&tmp_path, &recovery_path)
+            fs::hard_link(&tmp_path, &recovery_path)
         }
         Err(err) => Err(err),
     };
+    drop(tmp_guard);
+    let _ = fs::remove_file(&tmp_path);
     if let Err(err) = publish_result {
         drop(input);
-        let _ = fs::remove_file(&tmp_path);
         restore_staged_log(staging_path, src_path);
         return Err(err);
     }
@@ -492,13 +500,13 @@ fn compress_single_log(src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) 
     tmp_file.lock()?;
 
     let mut was_cancelled = false;
-    let compress_result = (|| -> io::Result<()> {
+    let compress_result = (|| -> io::Result<Option<File>> {
         let mut encoder = GzEncoder::new(tmp_file, Compression::default());
         let mut buf = [0u8; 64 * 1024];
         loop {
             if cancelled.load(Ordering::Relaxed) {
                 was_cancelled = true;
-                return Ok(());
+                return Ok(None);
             }
             let read = input.read(&mut buf)?;
             if read == 0 {
@@ -513,7 +521,7 @@ fn compress_single_log(src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) 
             use std::os::unix::fs::PermissionsExt;
             file.set_permissions(fs::Permissions::from_mode(0o600))?;
         }
-        Ok(())
+        Ok(Some(file))
     })();
 
     if was_cancelled {
@@ -521,20 +529,33 @@ fn compress_single_log(src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) 
         return Ok(());
     }
 
-    if let Err(err) = compress_result {
-        let _ = fs::remove_file(&tmp_path);
-        return Err(err);
-    }
+    let tmp_guard = match compress_result {
+        Ok(Some(file)) => file,
+        Ok(None) => {
+            let _ = fs::remove_file(&tmp_path);
+            return Ok(());
+        }
+        Err(err) => {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(err);
+        }
+    };
 
+    // Keep `tmp_guard` (and its exclusive lock) alive across `gz_path` check
+    // and `fs::rename` so concurrent pruning cannot delete `tmp_path` before
+    // publication.
     if gz_path.exists() {
         let _ = fs::remove_file(&tmp_path);
+        drop(tmp_guard);
         return Ok(());
     }
 
     if let Err(err) = fs::rename(&tmp_path, gz_path) {
         let _ = fs::remove_file(&tmp_path);
+        drop(tmp_guard);
         return Err(err);
     }
+    drop(tmp_guard);
 
     match fs::remove_file(src_path) {
         Ok(()) => Ok(()),
