@@ -1,0 +1,764 @@
+{
+  "_meta": {
+    "description": "ESDiag host activity history from sar -A output. Filter on sar.metricset before aggregating: per-CPU fields share names between summary (all) and cpu documents."
+  },
+  "index_patterns": [
+    "metrics-host.sar-esdiag*"
+  ],
+  "composed_of": [
+    "esdiag@mappings",
+    "esdiag@metadata",
+    "esdiag@settings",
+    "esdiag@host"
+  ],
+  "allow_auto_create": true,
+  "data_stream": {
+    "hidden": false,
+    "allow_custom_routing": false
+  },
+  "priority": 300,
+  "template": {
+    "settings": {
+      "index.mapping.total_fields.limit": 1500
+    },
+    "mappings": {
+      "properties": {
+        "data_stream": {
+          "type": "object",
+          "properties": {
+            "dataset": {
+              "type": "constant_keyword",
+              "value": "host.sar"
+            },
+            "type": {
+              "type": "constant_keyword",
+              "value": "metrics"
+            }
+          }
+        },
+        "sar": {
+          "properties": {
+            "metricset": {
+              "type": "keyword"
+            },
+            "cpu": {
+              "properties": {
+                "id": {
+                  "type": "keyword"
+                },
+                "usr": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "sys": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "iowait": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "steal": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "idle": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "gnice": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "guest": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "irq": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "mhz": {
+                  "type": "float"
+                },
+                "nice": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "soft": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "wghmhz": {
+                  "type": "float"
+                }
+              }
+            },
+            "memory": {
+              "properties": {
+                "memused": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    },
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "memfree": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "avail": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "cached": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "dirty": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "slab": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "commit": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    },
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "active": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "buffers": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "inact": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                }
+              }
+            },
+            "swap": {
+              "properties": {
+                "swpused": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    },
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "pswpin_per_sec": {
+                  "type": "float"
+                },
+                "pswpout_per_sec": {
+                  "type": "float"
+                },
+                "swpcad": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    },
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "swpfree": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                }
+              }
+            },
+            "paging": {
+              "properties": {
+                "majflt_per_sec": {
+                  "type": "float"
+                },
+                "pgsteal_per_sec": {
+                  "type": "float"
+                },
+                "fault_per_sec": {
+                  "type": "float"
+                },
+                "pgfree_per_sec": {
+                  "type": "float"
+                },
+                "pgpgin_per_sec": {
+                  "type": "float"
+                },
+                "pgpgout_per_sec": {
+                  "type": "float"
+                },
+                "pgscand_per_sec": {
+                  "type": "float"
+                },
+                "pgscank_per_sec": {
+                  "type": "float"
+                },
+                "vmeff": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                }
+              }
+            },
+            "task": {
+              "properties": {
+                "cswch_per_sec": {
+                  "type": "float"
+                },
+                "proc_per_sec": {
+                  "type": "float"
+                }
+              }
+            },
+            "kernel": {
+              "properties": {
+                "file_nr": {
+                  "type": "long"
+                },
+                "inode_nr": {
+                  "type": "long"
+                },
+                "dentunusd": {
+                  "type": "long"
+                }
+              }
+            },
+            "sockets": {
+              "properties": {
+                "totsck": {
+                  "type": "long"
+                },
+                "tcpsck": {
+                  "type": "long"
+                },
+                "tcp_tw": {
+                  "type": "long"
+                },
+                "ip_frag": {
+                  "type": "long"
+                },
+                "rawsck": {
+                  "type": "long"
+                },
+                "udpsck": {
+                  "type": "long"
+                }
+              }
+            },
+            "tcp": {
+              "properties": {
+                "active_per_sec": {
+                  "type": "float"
+                },
+                "passive_per_sec": {
+                  "type": "float"
+                }
+              }
+            },
+            "etcp": {
+              "properties": {
+                "retrans_per_sec": {
+                  "type": "float"
+                }
+              }
+            },
+            "load": {
+              "properties": {
+                "runq_sz": {
+                  "type": "long"
+                },
+                "ldavg_1": {
+                  "type": "float"
+                },
+                "ldavg_5": {
+                  "type": "float"
+                },
+                "ldavg_15": {
+                  "type": "float"
+                },
+                "blocked": {
+                  "type": "long"
+                },
+                "plist_sz": {
+                  "type": "long"
+                }
+              }
+            },
+            "io": {
+              "properties": {
+                "device": {
+                  "type": "keyword"
+                },
+                "tps": {
+                  "type": "float"
+                },
+                "read": {
+                  "properties": {
+                    "bytes_per_sec": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "write": {
+                  "properties": {
+                    "bytes_per_sec": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "await_ms": {
+                  "type": "float"
+                },
+                "aqu_sz": {
+                  "type": "float"
+                },
+                "util": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "areq": {
+                  "properties": {
+                    "bytes": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "device_class": {
+                  "type": "keyword"
+                },
+                "discard": {
+                  "properties": {
+                    "bytes_per_sec": {
+                      "type": "float"
+                    }
+                  }
+                }
+              }
+            },
+            "network": {
+              "properties": {
+                "interface": {
+                  "type": "keyword"
+                },
+                "rx": {
+                  "properties": {
+                    "bytes_per_sec": {
+                      "type": "float"
+                    },
+                    "packets_per_sec": {
+                      "type": "float"
+                    },
+                    "errors_per_sec": {
+                      "type": "float"
+                    },
+                    "drops_per_sec": {
+                      "type": "float"
+                    },
+                    "compressed_per_sec": {
+                      "type": "float"
+                    },
+                    "fifo_errors_per_sec": {
+                      "type": "float"
+                    },
+                    "frame_errors_per_sec": {
+                      "type": "float"
+                    },
+                    "multicast_per_sec": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "tx": {
+                  "properties": {
+                    "bytes_per_sec": {
+                      "type": "float"
+                    },
+                    "packets_per_sec": {
+                      "type": "float"
+                    },
+                    "errors_per_sec": {
+                      "type": "float"
+                    },
+                    "drops_per_sec": {
+                      "type": "float"
+                    },
+                    "carrier_errors_per_sec": {
+                      "type": "float"
+                    },
+                    "compressed_per_sec": {
+                      "type": "float"
+                    },
+                    "fifo_errors_per_sec": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "ifutil": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "collisions_per_sec": {
+                  "type": "float"
+                }
+              }
+            },
+            "filesystem": {
+              "properties": {
+                "name": {
+                  "type": "keyword"
+                },
+                "mountpoint": {
+                  "type": "keyword"
+                },
+                "fsused": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                },
+                "iused": {
+                  "properties": {
+                    "pct": {
+                      "type": "float"
+                    },
+                    "count": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "fsfree": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "ifree": {
+                  "properties": {
+                    "count": {
+                      "type": "long"
+                    }
+                  }
+                }
+              }
+            },
+            "interrupt": {
+              "properties": {
+                "id": {
+                  "type": "keyword"
+                },
+                "cpu": {
+                  "type": "keyword"
+                },
+                "intr_per_sec": {
+                  "type": "float"
+                }
+              }
+            },
+            "tty": {
+              "properties": {
+                "name": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "fan": {
+              "properties": {
+                "name": {
+                  "type": "keyword"
+                },
+                "device": {
+                  "type": "keyword"
+                },
+                "id": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "temp": {
+              "properties": {
+                "name": {
+                  "type": "keyword"
+                },
+                "device": {
+                  "type": "keyword"
+                },
+                "id": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "in": {
+              "properties": {
+                "name": {
+                  "type": "keyword"
+                },
+                "device": {
+                  "type": "keyword"
+                },
+                "id": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "usb": {
+              "properties": {
+                "name": {
+                  "type": "keyword"
+                },
+                "bus": {
+                  "type": "keyword"
+                },
+                "idvendor": {
+                  "type": "keyword"
+                },
+                "idprod": {
+                  "type": "keyword"
+                },
+                "description": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "fc_host": {
+              "properties": {
+                "name": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "block": {
+              "properties": {
+                "bdscd_per_sec": {
+                  "type": "float"
+                },
+                "bread_per_sec": {
+                  "type": "float"
+                },
+                "bwrtn_per_sec": {
+                  "type": "float"
+                },
+                "dtps": {
+                  "type": "float"
+                },
+                "rtps": {
+                  "type": "float"
+                },
+                "tps": {
+                  "type": "float"
+                },
+                "wtps": {
+                  "type": "float"
+                }
+              }
+            },
+            "hugepages": {
+              "properties": {
+                "hugfree": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "hugrsvd": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "hugsurp": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    }
+                  }
+                },
+                "hugused": {
+                  "properties": {
+                    "bytes": {
+                      "type": "long"
+                    },
+                    "pct": {
+                      "type": "float"
+                    }
+                  }
+                }
+              }
+            },
+            "interrupts": {
+              "properties": {
+                "intr_per_sec": {
+                  "type": "float"
+                }
+              }
+            },
+            "nfs": {
+              "properties": {
+                "access_per_sec": {
+                  "type": "float"
+                },
+                "call_per_sec": {
+                  "type": "float"
+                },
+                "getatt_per_sec": {
+                  "type": "float"
+                },
+                "read_per_sec": {
+                  "type": "float"
+                },
+                "retrans_per_sec": {
+                  "type": "float"
+                },
+                "write_per_sec": {
+                  "type": "float"
+                }
+              }
+            },
+            "nfsd": {
+              "properties": {
+                "badcall_per_sec": {
+                  "type": "float"
+                },
+                "hit_per_sec": {
+                  "type": "float"
+                },
+                "miss_per_sec": {
+                  "type": "float"
+                },
+                "packet_per_sec": {
+                  "type": "float"
+                },
+                "saccess_per_sec": {
+                  "type": "float"
+                },
+                "scall_per_sec": {
+                  "type": "float"
+                },
+                "sgetatt_per_sec": {
+                  "type": "float"
+                },
+                "sread_per_sec": {
+                  "type": "float"
+                },
+                "swrite_per_sec": {
+                  "type": "float"
+                },
+                "tcp_per_sec": {
+                  "type": "float"
+                },
+                "udp_per_sec": {
+                  "type": "float"
+                }
+              }
+            },
+            "softnet": {
+              "properties": {
+                "dropd_per_sec": {
+                  "type": "float"
+                },
+                "flw_lim_per_sec": {
+                  "type": "float"
+                },
+                "rx_rps_per_sec": {
+                  "type": "float"
+                },
+                "squeezd_per_sec": {
+                  "type": "float"
+                },
+                "total_per_sec": {
+                  "type": "float"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "version": 1
+}

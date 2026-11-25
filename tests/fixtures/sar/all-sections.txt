@@ -1,0 +1,284 @@
+Linux 6.1.0-example (node-01.example.com) 	2026-08-05 	_x86_64_	(2 CPU)
+
+12:00:01 AM CPU %usr %nice %sys %iowait %steal %irq %soft %guest %gnice %idle
+12:10:10 AM all 12 12 12 12 12 12 12 12 12 12
+12:10:10 AM 0 12 12 12 12 12 12 12 12 12 12
+12:10:10 AM 1 12 12 12 12 12 12 12 12 12 12
+12:20:10 AM all 12 12 12 12 12 12 12 12 12 12
+12:20:10 AM 0 12 12 12 12 12 12 12 12 12 12
+12:20:10 AM 1 12 12 12 12 12 12 12 12 12 12
+Average: all 12 12 12 12 12 12 12 12 12 12
+Average: 0 12 12 12 12 12 12 12 12 12 12
+Average: 1 12 12 12 12 12 12 12 12 12 12
+
+12:00:01 AM CPU total/s dropd/s squeezd/s rx_rps/s flw_lim/s
+12:10:10 AM all 12 12 12 12 12
+12:10:10 AM 0 12 12 12 12 12
+12:10:10 AM 1 12 12 12 12 12
+12:20:10 AM all 12 12 12 12 12
+12:20:10 AM 0 12 12 12 12 12
+12:20:10 AM 1 12 12 12 12 12
+Average: all 12 12 12 12 12
+Average: 0 12 12 12 12 12
+Average: 1 12 12 12 12 12
+
+12:00:01 AM CPU MHz
+12:10:10 AM all 12
+12:10:10 AM 0 12
+12:10:10 AM 1 12
+12:20:10 AM all 12
+12:20:10 AM 0 12
+12:20:10 AM 1 12
+Average: all 12
+Average: 0 12
+Average: 1 12
+
+12:00:01 AM CPU wghMHz
+12:10:10 AM all 12
+12:10:10 AM 0 12
+12:10:10 AM 1 12
+12:20:10 AM all 12
+12:20:10 AM 0 12
+12:20:10 AM 1 12
+Average: all 12
+Average: 0 12
+Average: 1 12
+
+12:00:01 AM proc/s cswch/s
+12:10:10 AM 12 12
+12:20:10 AM 12 12
+Average: 12 12
+
+12:00:01 AM pswpin/s pswpout/s
+12:10:10 AM 12 12
+12:20:10 AM 12 12
+Average: 12 12
+
+12:00:01 AM pgpgin/s pgpgout/s fault/s majflt/s pgfree/s pgscank/s pgscand/s pgsteal/s %vmeff
+12:10:10 AM 12 12 12 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12 12 12 12
+Average: 12 12 12 12 12 12 12 12 12
+
+12:00:01 AM tps rtps wtps dtps bread/s bwrtn/s bdscd/s
+12:10:10 AM 12 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12 12
+Average: 12 12 12 12 12 12 12
+
+12:00:01 AM kbmemfree kbavail kbmemused %memused kbbuffers kbcached kbcommit %commit kbactive kbinact kbdirty kbanonpg kbslab kbkstack kbpgtbl kbvmused
+12:10:10 AM 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12
+Average: 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12
+
+12:00:01 AM frmpg/s bufpg/s campg/s
+12:10:10 AM 12 12 12
+12:20:10 AM 12 12 12
+Average: 12 12 12
+
+12:00:01 AM kbswpfree kbswpused %swpused kbswpcad %swpcad
+12:10:10 AM 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12
+Average: 12 12 12 12 12
+
+12:00:01 AM kbhugfree kbhugused %hugused kbhugrsvd kbhugsurp
+12:10:10 AM 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12
+Average: 12 12 12 12 12
+
+12:00:01 AM dentunusd file-nr inode-nr pty-nr
+12:10:10 AM 12 12 12 12
+12:20:10 AM 12 12 12 12
+Average: 12 12 12 12
+
+12:00:01 AM runq-sz plist-sz ldavg-1 ldavg-5 ldavg-15 blocked
+12:10:10 AM 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12
+Average: 12 12 12 12 12 12
+
+12:00:01 AM %scpu-10 %scpu-60 %scpu-300 %scpu
+12:10:10 AM 12 12 12 12
+12:20:10 AM 12 12 12 12
+Average: 12 12 12 12
+
+12:00:01 AM %sio-10 %sio-60 %sio-300 %sio %fio-10 %fio-60 %fio-300 %fio
+12:10:10 AM 12 12 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12 12 12
+Average: 12 12 12 12 12 12 12 12
+
+12:00:01 AM %smem-10 %smem-60 %smem-300 %smem %fmem-10 %fmem-60 %fmem-300 %fmem
+12:10:10 AM 12 12 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12 12 12
+Average: 12 12 12 12 12 12 12 12
+
+12:00:01 AM totsck tcpsck udpsck rawsck ip-frag tcp-tw
+12:10:10 AM 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12
+Average: 12 12 12 12 12 12
+
+12:00:01 AM tcp6sck udp6sck raw6sck ip6-frag
+12:10:10 AM 12 12 12 12
+12:20:10 AM 12 12 12 12
+Average: 12 12 12 12
+
+12:00:01 AM irec/s fwddgm/s idel/s orq/s asmrq/s asmok/s fragok/s fragcrt/s
+12:10:10 AM 12 12 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12 12 12
+Average: 12 12 12 12 12 12 12 12
+
+12:00:01 AM ihdrerr/s iadrerr/s iukwnpr/s idisc/s odisc/s onort/s asmf/s fragf/s
+12:10:10 AM 12 12 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12 12 12
+Average: 12 12 12 12 12 12 12 12
+
+12:00:01 AM imsg/s omsg/s iech/s iechr/s oech/s oechr/s itm/s itmr/s otm/s otmr/s iadrmk/s iadrmkr/s oadrmk/s oadrmkr/s
+12:10:10 AM 12 12 12 12 12 12 12 12 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12 12 12 12 12 12 12 12 12
+Average: 12 12 12 12 12 12 12 12 12 12 12 12 12 12
+
+12:00:01 AM ierr/s oerr/s idstunr/s odstunr/s itmex/s otmex/s iparmpb/s oparmpb/s isrcq/s osrcq/s iredir/s oredir/s
+12:10:10 AM 12 12 12 12 12 12 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12 12 12 12 12 12 12
+Average: 12 12 12 12 12 12 12 12 12 12 12 12
+
+12:00:01 AM active/s passive/s iseg/s oseg/s
+12:10:10 AM 12 12 12 12
+12:20:10 AM 12 12 12 12
+Average: 12 12 12 12
+
+12:00:01 AM atmptf/s estres/s retrans/s isegerr/s orsts/s
+12:10:10 AM 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12
+Average: 12 12 12 12 12
+
+12:00:01 AM idgm/s odgm/s noport/s idgmerr/s
+12:10:10 AM 12 12 12 12
+12:20:10 AM 12 12 12 12
+Average: 12 12 12 12
+
+12:00:01 AM irec6/s fwddgm6/s idel6/s orq6/s asmrq6/s asmok6/s imcpck6/s omcpck6/s fragok6/s fragcr6/s
+12:10:10 AM 12 12 12 12 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12 12 12 12 12
+Average: 12 12 12 12 12 12 12 12 12 12
+
+12:00:01 AM ihdrer6/s iadrer6/s iukwnp6/s i2big6/s idisc6/s odisc6/s inort6/s onort6/s asmf6/s fragf6/s itrpck6/s
+12:10:10 AM 12 12 12 12 12 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12 12 12 12 12 12
+Average: 12 12 12 12 12 12 12 12 12 12 12
+
+12:00:01 AM imsg6/s omsg6/s iech6/s iechr6/s oechr6/s igmbq6/s igmbr6/s ogmbr6/s igmbrd6/s ogmbrd6/s irtsol6/s ortsol6/s irtad6/s inbsol6/s onbsol6/s inbad6/s onbad6/s
+12:10:10 AM 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12
+Average: 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12
+
+12:00:01 AM ierr6/s idtunr6/s odtunr6/s itmex6/s otmex6/s iprmpb6/s oprmpb6/s iredir6/s oredir6/s ipck2b6/s opck2b6/s
+12:10:10 AM 12 12 12 12 12 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12 12 12 12 12 12
+Average: 12 12 12 12 12 12 12 12 12 12 12
+
+12:00:01 AM idgm6/s odgm6/s noport6/s idgmer6/s
+12:10:10 AM 12 12 12 12
+12:20:10 AM 12 12 12 12
+Average: 12 12 12 12
+
+12:00:01 AM call/s retrans/s read/s write/s access/s getatt/s
+12:10:10 AM 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12
+Average: 12 12 12 12 12 12
+
+12:00:01 AM scall/s badcall/s packet/s udp/s tcp/s hit/s miss/s sread/s swrite/s saccess/s sgetatt/s
+12:10:10 AM 12 12 12 12 12 12 12 12 12 12 12
+12:20:10 AM 12 12 12 12 12 12 12 12 12 12 12
+Average: 12 12 12 12 12 12 12 12 12 12 12
+
+12:00:01 AM DEV tps rkB/s wkB/s dkB/s areq-sz aqu-sz await %util
+12:10:10 AM sda 12 12 12 12 12 12 12 12
+12:10:10 AM sdb 12 12 12 12 12 12 12 12
+12:10:10 AM dm-0 12 12 12 12 12 12 12 12
+12:20:10 AM sda 12 12 12 12 12 12 12 12
+12:20:10 AM sdb 12 12 12 12 12 12 12 12
+12:20:10 AM dm-0 12 12 12 12 12 12 12 12
+Average: sda 12 12 12 12 12 12 12 12
+Average: sdb 12 12 12 12 12 12 12 12
+Average: dm-0 12 12 12 12 12 12 12 12
+
+12:00:01 AM IFACE rxpck/s txpck/s rxkB/s txkB/s rxcmp/s txcmp/s rxmcst/s %ifutil
+12:10:10 AM lo 12 12 12 12 12 12 12 12
+12:10:10 AM eth0 12 12 12 12 12 12 12 12
+12:20:10 AM lo 12 12 12 12 12 12 12 12
+12:20:10 AM eth0 12 12 12 12 12 12 12 12
+Average: lo 12 12 12 12 12 12 12 12
+Average: eth0 12 12 12 12 12 12 12 12
+
+12:00:01 AM IFACE rxerr/s txerr/s coll/s rxdrop/s txdrop/s txcarr/s rxfram/s rxfifo/s txfifo/s
+12:10:10 AM lo 12 12 12 12 12 12 12 12 12
+12:10:10 AM eth0 12 12 12 12 12 12 12 12 12
+12:20:10 AM lo 12 12 12 12 12 12 12 12 12
+12:20:10 AM eth0 12 12 12 12 12 12 12 12 12
+Average: lo 12 12 12 12 12 12 12 12 12
+Average: eth0 12 12 12 12 12 12 12 12 12
+
+12:00:01 AM INTR intr/s
+12:10:10 AM sum 12
+12:10:10 AM 0 12
+12:10:10 AM 1 12
+12:20:10 AM sum 12
+12:20:10 AM 0 12
+12:20:10 AM 1 12
+Average: sum 12
+Average: 0 12
+Average: 1 12
+
+12:00:01 AM CPU i000/s i001/s i008/s i009/s
+12:10:10 AM 0 12 12 12 12
+12:10:10 AM 1 12 12 12 12
+12:20:10 AM 0 12 12 12 12
+12:20:10 AM 1 12 12 12 12
+Average: 0 12 12 12 12
+Average: 1 12 12 12 12
+
+12:00:01 AM MBfsfree MBfsused %fsused %ufsused Ifree Iused %Iused FILESYSTEM
+12:10:10 AM 12 12 12 12 12 12 12 /dev/sda1
+12:20:10 AM 12 12 12 12 12 12 12 /dev/sda1
+Average: 12 12 12 12 12 12 12 /dev/sda1
+
+12:00:01 AM TTY rcvin/s xmtin/s framerr/s prtyerr/s brk/s ovrun/s
+12:10:10 AM 0 12 12 12 12 12 12
+12:10:10 AM 1 12 12 12 12 12 12
+12:20:10 AM 0 12 12 12 12 12 12
+12:20:10 AM 1 12 12 12 12 12 12
+Average: 0 12 12 12 12 12 12
+Average: 1 12 12 12 12 12 12
+
+12:00:01 AM FAN rpm drpm DEVICE
+12:10:10 AM 1 12 12 coretemp-isa-0000
+12:10:10 AM 2 12 12 coretemp-isa-0000
+12:20:10 AM 1 12 12 coretemp-isa-0000
+12:20:10 AM 2 12 12 coretemp-isa-0000
+Average: 1 12 12 coretemp-isa-0000
+Average: 2 12 12 coretemp-isa-0000
+
+12:00:01 AM TEMP degC %temp DEVICE
+12:10:10 AM 1 12 12 coretemp-isa-0000
+12:10:10 AM 2 12 12 coretemp-isa-0000
+12:20:10 AM 1 12 12 coretemp-isa-0000
+12:20:10 AM 2 12 12 coretemp-isa-0000
+Average: 1 12 12 coretemp-isa-0000
+Average: 2 12 12 coretemp-isa-0000
+
+12:00:01 AM IN inV %in DEVICE
+12:10:10 AM 1 12 12 coretemp-isa-0000
+12:10:10 AM 2 12 12 coretemp-isa-0000
+12:20:10 AM 1 12 12 coretemp-isa-0000
+12:20:10 AM 2 12 12 coretemp-isa-0000
+Average: 1 12 12 coretemp-isa-0000
+Average: 2 12 12 coretemp-isa-0000
+
+12:00:01 AM BUS idvendor idprod maxpower manufact product
+12:10:10 AM 1 1d6b 0002 12 Linux Foundation 2.0 root hub
+12:20:10 AM 1 1d6b 0002 12 Linux Foundation 2.0 root hub
+Average: 1 1d6b 0002 12 Linux Foundation 2.0 root hub
+
+12:00:01 AM FCHOST fch_rxf/s fch_txf/s fch_rxw/s fch_txw/s
+12:10:10 AM host0 12 12 12 12
+12:20:10 AM host0 12 12 12 12
+Average: host0 12 12 12 12
+

@@ -18,7 +18,7 @@ pub struct Node {
     build_type: String,
     component_version: Option<ComponentVersion>,
     pub host: Option<String>,
-    http: Option<Box<RawValue>>,
+    pub(super) http: Option<Box<RawValue>>,
     index_version: Option<i64>,
     //ingest: Box<RawValue>,
     pub ip: Option<String>,
@@ -35,7 +35,7 @@ pub struct Node {
     total_indexing_buffer: Option<Box<RawValue>>,
     total_indexing_buffer_in_bytes: Option<Box<RawValue>>,
     transport: Option<Box<RawValue>>,
-    transport_address: Option<String>,
+    pub(super) transport_address: Option<String>,
     transport_version: Option<i64>,
     pub version: Option<String>,
 }

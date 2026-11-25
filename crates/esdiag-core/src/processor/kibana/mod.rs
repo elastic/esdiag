@@ -486,6 +486,7 @@ mod tests {
             product: "kibana".to_string(),
             diagnostic_type: "custom".to_string(),
             selected: selected.into_iter().map(str::to_string).collect(),
+            requested: Vec::new(),
         });
         let (diagnostic, mut report) = KibanaDiagnostic::try_new(receiver, exporter, manifest, selection)
             .await

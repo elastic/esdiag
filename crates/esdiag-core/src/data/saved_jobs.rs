@@ -374,6 +374,7 @@ fn canonicalize_legacy_selection(selection: Option<LegacyJobProcessSelection>) -
         product: selection.product,
         diagnostic_type: selection.diagnostic_type,
         selected,
+        requested: Vec::new(),
     })
 }
 
@@ -625,16 +626,7 @@ fn explicit_process_selection(signals: &JobSignals) -> Result<Option<ProcessSele
         return Ok(None);
     }
 
-    let selected = ApiResolver::resolve_processing_selection(
-        &signals.process.product,
-        &signals.process.diagnostic_type,
-        &selected,
-    )?;
-    Ok(Some(ProcessSelection {
-        product: signals.process.product.clone(),
-        diagnostic_type: signals.process.diagnostic_type.clone(),
-        selected,
-    }))
+    ApiResolver::checked_selection(&signals.process.product, &signals.process.diagnostic_type, &selected).map(Some)
 }
 
 impl JobBuilder<NeedsCollect> {
@@ -1614,6 +1606,41 @@ collect-job:
             recompiled.send().map(|send| send.upload_id.as_str()),
             Some("upload-123")
         );
+    }
+
+    #[test]
+    fn resaving_a_job_keeps_default_syscall_sources_unrequested() {
+        let _env = setup_env();
+        save_collect_host("prod");
+        save_collect_host("monitoring");
+        let selection = ApiResolver::process_selection("elasticsearch", "standard", &[]).expect("default selection");
+        assert!(selection.selected.contains(&"syscalls.sar".to_string()));
+        let job = Job::try_new(
+            Identifiers::default(),
+            Input::Collect {
+                host: "prod".to_string(),
+                diagnostic_type: "standard".to_string(),
+                include: None,
+                exclude: None,
+            },
+            Some(SaveTarget::retained(PathBuf::from("/tmp/retain"))),
+            Some(Process {
+                selection: Some(selection.clone()),
+                export: JobOutput::KnownHost {
+                    name: "monitoring".to_string(),
+                },
+            }),
+            None,
+        )
+        .expect("process job");
+
+        let resaved = Job::from_signals(job.to_signals(), Identifiers::default()).expect("compile unchanged draft");
+        let resaved = resaved
+            .process()
+            .and_then(|process| process.selection.as_ref())
+            .expect("selection");
+        assert_eq!(resaved.selected, selection.selected);
+        assert!(resaved.requested.is_empty(), "{:?}", resaved.requested);
     }
 
     #[test]

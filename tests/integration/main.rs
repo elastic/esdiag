@@ -25,6 +25,7 @@ mod elasticsearch_asset_templates_tests;
 mod elasticsearch_feedback_tests;
 mod executor_cli_send_parity_tests;
 mod host_cli_tests;
+mod host_sar_processing_tests;
 mod logs_output_tests;
 mod logstash_archive_processing_tests;
 mod logstash_collection_tests;

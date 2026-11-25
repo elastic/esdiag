@@ -27,6 +27,10 @@ published release notes, maintenance branches, and tagged history.
 - Added processing for Kibana diagnostic bundles, including status, settings, security, Fleet, alerting, spaces, monitoring, synthetics, and detection-engine data.
 - Added Kibana Host Health and Kibana Task Manager dashboards for processed Kibana diagnostics.
 - Added one document per Kibana Task Manager task type in `metrics-kibana.task_manager.task_type-esdiag`.
+- Added processing of `syscalls/sar.txt` in Elasticsearch bundles into the host-scoped `metrics-host.sar-esdiag` stream, covering every SAR section with per-CPU, device, interface, and filesystem documents, correlated to the Elasticsearch nodes on the host, including co-located ECE and ECK nodes.
+- Added `syscalls.<key>` processing options for host command output. `standard` and `support` diagnostics process `syscalls/sar.txt` when present; an explicitly requested but missing or unparseable file is reported as a warning.
+- Added the Host Activity Compute, Storage, Network, and System dashboards, modeled on kSar, and their data view. Each opens with the Elasticsearch links beside a shared Hosts Overviews links panel that connects them, and Hosts Overview shows the Hosts Overviews links in place of the Nodes links.
+- Added `sar.io.device_class`, which classifies block devices the same way whether `sar` names them by kernel name or by device number.
 
 ### Changed
 
@@ -55,9 +59,12 @@ published release notes, maintenance branches, and tagged history.
 - Preserved HTTP-client identifiers unchanged during scrub normalization.
 - Rejected unterminated JSON strings during scrubbed diagnostic reads instead of silently supplying a missing closing quote.
 - Improved diagnostic archive processing performance and memory efficiency by opening independent ZIP handles per read, using `from_slice` with a 256 MB cap for non-streaming JSON entries, framing streaming JSON entries into a reusable buffer, switching deflate decompression to `zlib-rs`, pre-serializing exporter batches outside writer locks, caching flattened Elasticsearch metadata values, and eliminating `serde` `Content` buffering and rayon spin-contention on hot paths (#324).
+- Moved the Hosts dashboard link from the Nodes overview links to the end of the Elasticsearch overview links, after Search.
 
 ### Fixed
 
+- Fixed `shard.indexing.avg_docs_sec` reporting `0` after shard relocations or node restarts by calculating it from the persistent `shard.docs.count` instead of the in-memory `shard.indexing.index_total` counter.
+- Fixed alias-based write indices emitting `index.is_write_index: false` on `metrics-shard-esdiag` documents, aligning shard documents with `metrics-index-esdiag` so write-index doc-rate aggregations include alias rollovers.
 - Fixed the Elasticsearch exporter dropping documents that the output cluster throttled per item. When a bulk response is HTTP 200 with items rejected with status `429`, only those documents are sent again with the `ESDIAG_EXPORT_RETRY_*` backoff, and they count as errors only once the retries are exhausted (#463).
 - Fixed `esdiag setup` repeating provenance field warnings for every older data stream backing index on each run. It now warns per index only for indices that can still receive writes, summarizes older backing indices with unlinked provenance fields in one line per data stream, and only asks for a rollover after adding an alias to a writable index.
 - Fixed `.elasticrc.yml` errors exposing secrets. A malformed `$(...)` expression no longer echoes the field's value, and invalid service URL errors show the configured URL with its userinfo redacted instead of the resolved URL.
