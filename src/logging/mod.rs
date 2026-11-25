@@ -37,12 +37,30 @@ impl LogsGuard {
             remote.flush_and_stop(timeout).await;
         }
         if let Some(file) = self.file.take() {
-            let handle = tokio::task::spawn_blocking(move || file.run_on_exit());
-            if tokio::time::timeout(timeout, handle).await.is_err() {
-                eprintln!(
-                    "File log exit maintenance timed out after {}ms; remaining files will be processed on a later run",
-                    timeout.as_millis()
-                );
+            let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let cancelled_worker = std::sync::Arc::clone(&cancelled);
+            let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+            // Run exit maintenance on a plain OS thread rather than Tokio's
+            // blocking pool so dropping the Tokio runtime on CLI exit cannot
+            // block waiting for stalled filesystem I/O after the timeout fires.
+            match std::thread::Builder::new()
+                .name("esdiag-log-maintenance".into())
+                .spawn(move || {
+                    file.run_on_exit_with_cancel(&cancelled_worker);
+                    let _ = done_tx.send(());
+                }) {
+                Ok(_) => {
+                    if tokio::time::timeout(timeout, done_rx).await.is_err() {
+                        cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+                        eprintln!(
+                            "File log exit maintenance timed out after {}ms; remaining files will be processed on a later run",
+                            timeout.as_millis()
+                        );
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Failed to spawn file log exit maintenance thread: {err}");
+                }
             }
         }
     }

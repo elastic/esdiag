@@ -7,8 +7,9 @@ use esdiag_core::data::{daily_log_filename, open_daily_log_file};
 use eyre::Result;
 use flate2::{Compression, write::GzEncoder};
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing_subscriber::fmt::MakeWriter;
 use uuid::Uuid;
@@ -149,9 +150,16 @@ impl<'a> MakeWriter<'a> for DailyLogWriter {
 }
 
 impl DailyLogMaintenance {
-    /// Flushes the active daily log file, gzips previous days' `.log` files,
-    /// and prunes files older than `retention_days`.
+    /// Flushes the active daily log file, prunes expired files, and gzips
+    /// previous days' `.log` files.
     pub fn run_on_exit(&self) {
+        let never_cancelled = AtomicBool::new(false);
+        self.run_on_exit_with_cancel(&never_cancelled);
+    }
+
+    /// Same as [`Self::run_on_exit`], stopping early between files and copy
+    /// chunks when `cancelled` becomes `true`.
+    pub fn run_on_exit_with_cancel(&self, cancelled: &AtomicBool) {
         let today = (self.writer.clock)();
         // Rotate off any prior day's file before running maintenance so our own
         // shared advisory lock does not block compressing yesterday's log.
@@ -164,8 +172,11 @@ impl DailyLogMaintenance {
                 guard.current_date = today;
             }
         }
-        prune_expired_logs(&self.writer.dir, today, self.writer.retention_days);
-        compress_previous_logs(&self.writer.dir, today);
+        prune_expired_logs_with_cancel(&self.writer.dir, today, self.writer.retention_days, cancelled);
+        if cancelled.load(Ordering::Relaxed) {
+            return;
+        }
+        compress_previous_logs_with_cancel(&self.writer.dir, today, cancelled);
     }
 }
 
@@ -188,6 +199,11 @@ pub(crate) fn parse_daily_log_name(file_name: &str) -> Option<(NaiveDate, bool)>
 /// `date < today` into `esdiag-YYYY-MM-DD.log.gz` using atomic temp-file rename
 /// and `0600` permissions on Unix. Safe under concurrent processes.
 pub(crate) fn compress_previous_logs(dir: &Path, today: NaiveDate) {
+    let never_cancelled = AtomicBool::new(false);
+    compress_previous_logs_with_cancel(dir, today, &never_cancelled);
+}
+
+fn compress_previous_logs_with_cancel(dir: &Path, today: NaiveDate, cancelled: &AtomicBool) {
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(err) => {
@@ -197,6 +213,9 @@ pub(crate) fn compress_previous_logs(dir: &Path, today: NaiveDate) {
     };
 
     for entry in entries.flatten() {
+        if cancelled.load(Ordering::Relaxed) {
+            return;
+        }
         let name = entry.file_name();
         let Some(name_str) = name.to_str() else {
             continue;
@@ -212,7 +231,7 @@ pub(crate) fn compress_previous_logs(dir: &Path, today: NaiveDate) {
         if gz_path.exists() {
             continue;
         }
-        if let Err(err) = compress_single_log(&src_path, &gz_path) {
+        if let Err(err) = compress_single_log(&src_path, &gz_path, cancelled) {
             eprintln!("Failed to compress log file '{}': {err}", src_path.display());
         }
     }
@@ -270,7 +289,7 @@ fn try_open_exclusive_for_maintenance(path: &Path) -> io::Result<Option<File>> {
     }
 }
 
-fn compress_single_log(src_path: &Path, gz_path: &Path) -> io::Result<()> {
+fn compress_single_log(src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) -> io::Result<()> {
     let Some(mut input) = try_open_exclusive_for_maintenance(src_path)? else {
         return Ok(());
     };
@@ -294,9 +313,21 @@ fn compress_single_log(src_path: &Path, gz_path: &Path) -> io::Result<()> {
     }
     let tmp_file = options.write(true).create_new(true).open(&tmp_path)?;
 
+    let mut was_cancelled = false;
     let compress_result = (|| -> io::Result<()> {
         let mut encoder = GzEncoder::new(tmp_file, Compression::default());
-        io::copy(&mut input, &mut encoder)?;
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            if cancelled.load(Ordering::Relaxed) {
+                was_cancelled = true;
+                return Ok(());
+            }
+            let read = input.read(&mut buf)?;
+            if read == 0 {
+                break;
+            }
+            encoder.write_all(&buf[..read])?;
+        }
         let file = encoder.finish()?;
         file.sync_all()?;
         #[cfg(unix)]
@@ -306,6 +337,11 @@ fn compress_single_log(src_path: &Path, gz_path: &Path) -> io::Result<()> {
         }
         Ok(())
     })();
+
+    if was_cancelled {
+        let _ = fs::remove_file(&tmp_path);
+        return Ok(());
+    }
 
     if let Err(err) = compress_result {
         let _ = fs::remove_file(&tmp_path);
@@ -334,6 +370,11 @@ fn compress_single_log(src_path: &Path, gz_path: &Path) -> io::Result<()> {
 /// Deletes `esdiag-YYYY-MM-DD.log` and `esdiag-YYYY-MM-DD.log.gz` files in
 /// `dir` whose date is strictly older than `today - retention_days`.
 pub(crate) fn prune_expired_logs(dir: &Path, today: NaiveDate, retention_days: u32) {
+    let never_cancelled = AtomicBool::new(false);
+    prune_expired_logs_with_cancel(dir, today, retention_days, &never_cancelled);
+}
+
+fn prune_expired_logs_with_cancel(dir: &Path, today: NaiveDate, retention_days: u32, cancelled: &AtomicBool) {
     let Some(cutoff) = today.checked_sub_signed(Duration::days(i64::from(retention_days))) else {
         return;
     };
@@ -346,6 +387,9 @@ pub(crate) fn prune_expired_logs(dir: &Path, today: NaiveDate, retention_days: u
     };
 
     for entry in entries.flatten() {
+        if cancelled.load(Ordering::Relaxed) {
+            return;
+        }
         let name = entry.file_name();
         let Some(name_str) = name.to_str() else {
             continue;
@@ -533,5 +577,21 @@ mod tests {
 
         prune_expired_logs(dir, d(2026, 11, 24), u32::MAX);
         assert!(old.exists(), "huge retention window must preserve files without panicking");
+    }
+
+    #[test]
+    fn maintenance_respects_cancellation_without_leaving_temp_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let log = dir.join("esdiag-2026-11-23.log");
+        fs::write(&log, b"payload\n").unwrap();
+
+        let cancelled = std::sync::atomic::AtomicBool::new(true);
+        super::compress_previous_logs_with_cancel(dir, d(2026, 11, 24), &cancelled);
+        assert!(log.exists(), "cancelled compression must preserve original log");
+        assert!(!dir.join("esdiag-2026-11-23.log.gz").exists());
+
+        let entries: Vec<_> = fs::read_dir(dir).unwrap().flatten().collect();
+        assert_eq!(entries.len(), 1, "cancelled compression must not leave .tmp files");
     }
 }
