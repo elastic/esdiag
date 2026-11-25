@@ -546,6 +546,11 @@ impl DiagnosticReport {
             .events
             .iter()
             .any(|event| event.severity == EventSeverity::Error);
+        let has_recorded_problem = has_recorded_error
+            || summary
+                .events
+                .iter()
+                .any(|event| event.severity == EventSeverity::Warning);
         self.diagnostic.events.append(&mut summary.events);
         if summary.source.missing {
             // Source was not present in an imported bundle; that is not a
@@ -568,6 +573,9 @@ impl DiagnosticReport {
                     summary.docs + summary.doc_errors
                 ),
             ));
+        } else if summary.docs == 0 && has_recorded_problem {
+            // A parsed source that exported nothing and already explains why
+            // must not also claim success.
         } else {
             self.diagnostic.events.push(DiagnosticEvent::success(
                 summary.processor.clone(),
@@ -994,6 +1002,17 @@ impl ProcessorSummary {
         self.events
             .push(DiagnosticEvent::error(self.processor.clone(), reason.into()));
         self
+    }
+
+    pub fn with_warning(mut self, reason: impl Into<String>) -> Self {
+        self.events
+            .push(DiagnosticEvent::warning(self.processor.clone(), reason.into()));
+        self
+    }
+
+    /// Events recorded on this summary that have not yet been drained into a report.
+    pub fn events(&self) -> &[DiagnosticEvent] {
+        &self.events
     }
 
     pub fn add_batch(&mut self, batch: BatchResponse) {

@@ -1,0 +1,82 @@
+{
+  "attributes": {
+    "description": "Navigation links for the Hosts overview dashboards",
+    "layout": "horizontal",
+    "links": [
+      {
+        "destinationRefName": "link_host-activity-link-0_dashboard",
+        "id": "host-activity-link-0",
+        "label": "Compute",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 0,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_host-activity-link-1_dashboard",
+        "id": "host-activity-link-1",
+        "label": "Storage",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 1,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_host-activity-link-2_dashboard",
+        "id": "host-activity-link-2",
+        "label": "Network",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 2,
+        "type": "dashboardLink"
+      },
+      {
+        "destinationRefName": "link_host-activity-link-3_dashboard",
+        "id": "host-activity-link-3",
+        "label": "System",
+        "options": {
+          "openInNewTab": false,
+          "useCurrentDateRange": true,
+          "useCurrentFilters": false
+        },
+        "order": 3,
+        "type": "dashboardLink"
+      }
+    ],
+    "title": "Hosts Overviews"
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "494ccfe4-71e4-45fe-ac56-3969d6247dd1",
+  "references": [
+    {
+      "id": "host-activity-cpu",
+      "name": "link_host-activity-link-0_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "host-activity-storage",
+      "name": "link_host-activity-link-1_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "host-activity-network",
+      "name": "link_host-activity-link-2_dashboard",
+      "type": "dashboard"
+    },
+    {
+      "id": "host-activity-system",
+      "name": "link_host-activity-link-3_dashboard",
+      "type": "dashboard"
+    }
+  ],
+  "type": "links"
+}

@@ -688,17 +688,12 @@ fn explicit_process_selection(signals: &JobRunSignals) -> Result<Option<ProcessS
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .collect();
-    let selected = ApiResolver::resolve_processing_selection(
+    ApiResolver::checked_selection(
         &signals.job.process.product,
         &signals.job.process.diagnostic_type,
         &selected,
-    )?;
-
-    Ok(Some(ProcessSelection {
-        product: signals.job.process.product.clone(),
-        diagnostic_type: signals.job.process.diagnostic_type.clone(),
-        selected,
-    }))
+    )
+    .map(Some)
 }
 
 fn processing_job_event(replace_existing_entry: bool, job_id: u64, template: impl askama::Template) -> ServerEvent {

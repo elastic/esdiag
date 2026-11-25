@@ -511,6 +511,35 @@ output and cannot be used with output `-`.
 `--save-job <NAME>` needs a saved `collect` host as input and an explicit
 output. `--sources <PATH>` needs a source definition for the detected product.
 
+### Host system call output
+
+Elasticsearch bundles may carry host command output under `syscalls/`, for
+example from a self-managed host, an ECE allocator, or a Kubernetes node. Each
+processable source in `assets/syscalls/sources.yml` is a processing option
+named `syscalls.<key>`, selectable alongside the REST sources in saved jobs and
+the web UI. Syscall options are never required.
+
+| Option | File | Default in | Output |
+|---|---|---|---|
+| `syscalls.sar` | `syscalls/sar.txt` | `standard`, `support` | `metrics-host.sar-esdiag` |
+
+The defaults apply to saved jobs and the web UI. `esdiag process` on the
+command line has no selection, so it processes every source, including
+`syscalls/sar.txt` when present, whatever type the bundle was collected as.
+Only the text `sar.txt` is read; binary `saDD` and `sarDD` files are ignored.
+
+Saved jobs and the web UI submit every checked option, so a syscall option
+counts as explicitly selected only when the diagnostic type doesn't check it by
+default, such as `syscalls.sar` added to a `minimal` job.
+
+The report records each syscall source as follows:
+
+- A default source whose file is absent is skipped without an event.
+- An explicitly selected source whose file is absent is a warning.
+- A file that exists but cannot be parsed, or parses to no documents, is a
+  warning in either mode. Documents parsed before a failure are kept.
+- Unrecognized `sar` sections are skipped and reported as warnings.
+
 ## `serve`
 
 ```sh

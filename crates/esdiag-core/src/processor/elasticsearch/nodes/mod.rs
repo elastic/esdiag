@@ -3,8 +3,10 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 mod data;
+mod endpoint;
 mod lookup;
 mod processor;
 
 pub use data::*;
+pub use endpoint::*;
 pub use lookup::*;

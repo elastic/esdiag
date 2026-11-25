@@ -1,5 +1,6 @@
+use super::host_sar_processing_tests::host_activity_dashboards;
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::Path;
 
@@ -28,7 +29,7 @@ fn template_dataset_mapping(file_name: &str) -> Value {
     template["template"]["mappings"]["properties"]["data_stream"]["properties"]["dataset"].clone()
 }
 
-fn index_template(file_name: &str) -> Value {
+pub(crate) fn index_template(file_name: &str) -> Value {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("assets/elasticsearch/index_templates")
         .join(file_name);
@@ -36,7 +37,7 @@ fn index_template(file_name: &str) -> Value {
     serde_json::from_str(&content).unwrap_or_else(|err| panic!("parse {}: {}", path.display(), err))
 }
 
-fn component_template(file_name: &str) -> Value {
+pub(crate) fn component_template(file_name: &str) -> Value {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("assets/elasticsearch/component_templates")
         .join(file_name);
@@ -434,4 +435,140 @@ fn stream_template_drift_check_reports_injected_drift() {
             .iter()
             .any(|message| message == "index template pattern settings-orphan-esdiag* matches no emitted stream")
     );
+}
+
+/// Dotted paths of every explicitly mapped leaf field.
+pub(crate) fn mapped_fields(properties: &Value, prefix: &str, fields: &mut HashMap<String, String>) {
+    for (name, mapping) in properties.as_object().expect("mapping properties") {
+        let path = format!("{prefix}{name}");
+        match mapping.get("properties") {
+            Some(children) => mapped_fields(children, &format!("{path}."), fields),
+            None => {
+                let kind = mapping["type"].as_str().unwrap_or("object").to_string();
+                fields.insert(path, kind);
+            }
+        }
+    }
+}
+
+const RESERVED_DYNAMIC_PATTERNS: [&str; 8] = [
+    "*_time",
+    "*time_string",
+    "*size",
+    "*_memory",
+    "*histogram",
+    "*timestamp",
+    "*date_millis",
+    "*unsafe*",
+];
+
+#[test]
+fn host_sar_template_is_host_scoped_and_owns_its_stream() {
+    let template = index_template("metrics-host.sar.json");
+    let stream = "metrics-host.sar-esdiag";
+
+    assert_eq!(template_dataset("metrics-host.sar.json"), "host.sar");
+    assert_eq!(template["priority"], 300);
+    assert_eq!(
+        template["template"]["settings"]["index.mapping.total_fields.limit"],
+        1500
+    );
+    let components: Vec<&str> = template["composed_of"]
+        .as_array()
+        .expect("composed_of")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert!(components.contains(&"esdiag@host"));
+    assert!(!components.contains(&"esdiag@node"), "SAR documents are host-scoped");
+
+    let matching: Vec<String> = index_template_patterns()
+        .into_iter()
+        .filter(|pattern| wildcard_matches(pattern, stream))
+        .collect();
+    assert_eq!(
+        matching,
+        ["metrics-host.sar-esdiag*"],
+        "exactly one template owns {stream}"
+    );
+
+    let mut fields = HashMap::new();
+    mapped_fields(&template["template"]["mappings"]["properties"], "", &mut fields);
+    mapped_fields(
+        &component_template("esdiag@host.json")["template"]["mappings"]["properties"],
+        "",
+        &mut fields,
+    );
+    for field in fields.keys() {
+        let leaf = field.rsplit('.').next().unwrap_or(field);
+        for pattern in RESERVED_DYNAMIC_PATTERNS {
+            assert!(
+                !wildcard_matches(pattern, field) && !wildcard_matches(pattern, leaf),
+                "{field} matches reserved dynamic template {pattern}"
+            );
+        }
+    }
+    for field in [
+        "sar.metricset",
+        "sar.cpu.id",
+        "sar.io.device",
+        "sar.io.device_class",
+        "sar.network.interface",
+    ] {
+        assert_eq!(fields.get(field).map(String::as_str), Some("keyword"), "{field}");
+    }
+
+    // Lens reports an unmapped field as a panel error rather than an empty
+    // chart, and a bundle may lack any SAR section. A dynamically mapped
+    // field can also land as the wrong type for its chart.
+    mapped_fields(
+        &component_template("esdiag@metadata.json")["template"]["mappings"]["properties"],
+        "",
+        &mut fields,
+    );
+    let mapped_as = |field: &str| {
+        fields
+            .get(field)
+            .map(String::as_str)
+            .unwrap_or_else(|| panic!("dashboard field {field} has no explicit mapping"))
+    };
+    for (name, dashboard) in host_activity_dashboards() {
+        let attributes = &dashboard["attributes"];
+        let columns = attributes["panelsJSON"]
+            .as_array()
+            .expect("panels")
+            .iter()
+            .filter(|panel| panel["type"] == "lens" || panel["type"] == "vis")
+            .flat_map(|panel| {
+                panel["embeddableConfig"]["attributes"]["state"]["datasourceStates"]["formBased"]["layers"]
+                    .as_object()
+                    .expect("layers")
+                    .values()
+            })
+            .flat_map(|layer| layer["columns"].as_object().expect("columns").values());
+        for column in columns {
+            let Some(field) = column["sourceField"].as_str().filter(|field| *field != "@timestamp") else {
+                continue;
+            };
+            let kind = mapped_as(field);
+            if column["operationType"] == "terms" {
+                assert_eq!(kind, "keyword", "{name}: {field} breaks down a chart");
+            } else if column["operationType"] == "unique_count" {
+                assert_eq!(kind, "keyword", "{name}: {field} is counted by distinct value");
+            } else {
+                assert!(
+                    ["long", "float", "double"].contains(&kind),
+                    "{name}: {field} is charted as a number but mapped as {kind}"
+                );
+            }
+        }
+        for control in attributes["controlGroupInput"]["panelsJSON"]
+            .as_object()
+            .expect("controls")
+            .values()
+        {
+            let field = control["explicitInput"]["fieldName"].as_str().expect("control field");
+            assert_eq!(mapped_as(field), "keyword", "{name}: control {field}");
+        }
+    }
 }

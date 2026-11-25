@@ -52,7 +52,9 @@ express none of these combinations.
   never another platform (inclusion is one level deep and layer-homogeneous).
 - **Infrastructure data is dispatched off the platform, not a third axis.**
   `SelfManaged` yields opt-in Linux syscalls (available under no other platform),
-  `ECK` yields container metrics, managed cloud yields none.
+  `ECK` yields container metrics, managed cloud yields none. (Amended by
+  [ADR-0021](0021-syscall-sources-are-selected-per-source-not-by-platform.md):
+  syscall output is processed per selected source wherever a bundle contains it.)
 - **Migration touches every `Product` call site** (~90), the manifest schema, and
   the receiver/collector wiring. `Product` remains only as a legacy alias during
   the transition and takes no new concepts.

@@ -1,0 +1,3486 @@
+{
+  "attributes": {
+    "controlGroupInput": {
+      "chainingSystem": "HIERARCHICAL",
+      "controlStyle": "oneLine",
+      "ignoreParentSettingsJSON": {
+        "ignoreFilters": false,
+        "ignoreQuery": false,
+        "ignoreTimerange": false,
+        "ignoreValidations": false
+      },
+      "panelsJSON": {
+        "c1": {
+          "explicitInput": {
+            "dataViewId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+            "exclude": null,
+            "existsSelected": null,
+            "fieldName": "host.name",
+            "hideActionBar": null,
+            "hideExclude": null,
+            "hideExists": null,
+            "hideSort": null,
+            "placeholder": null,
+            "runPastTimeout": null,
+            "searchTechnique": "prefix",
+            "selectedOptions": [],
+            "singleSelect": null,
+            "sort": {
+              "by": "_count",
+              "direction": "desc"
+            },
+            "title": "host.name"
+          },
+          "grow": true,
+          "order": 0,
+          "type": "optionsListControl",
+          "width": "medium"
+        },
+        "c2": {
+          "explicitInput": {
+            "dataViewId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+            "exclude": null,
+            "existsSelected": null,
+            "fieldName": "node.name",
+            "hideActionBar": null,
+            "hideExclude": null,
+            "hideExists": null,
+            "hideSort": null,
+            "placeholder": null,
+            "runPastTimeout": null,
+            "searchTechnique": "prefix",
+            "selectedOptions": [],
+            "singleSelect": null,
+            "sort": {
+              "by": "_count",
+              "direction": "desc"
+            },
+            "title": "node.name"
+          },
+          "grow": true,
+          "order": 1,
+          "type": "optionsListControl",
+          "width": "medium"
+        },
+        "c3": {
+          "explicitInput": {
+            "dataViewId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+            "exclude": null,
+            "existsSelected": null,
+            "fieldName": "sar.io.device_class",
+            "hideActionBar": null,
+            "hideExclude": null,
+            "hideExists": null,
+            "hideSort": null,
+            "placeholder": null,
+            "runPastTimeout": null,
+            "searchTechnique": "prefix",
+            "selectedOptions": [],
+            "singleSelect": null,
+            "sort": {
+              "by": "_count",
+              "direction": "desc"
+            },
+            "title": "sar.io.device_class"
+          },
+          "grow": true,
+          "order": 2,
+          "type": "optionsListControl",
+          "width": "medium"
+        }
+      },
+      "showApplySelections": false
+    },
+    "description": "Block devices from sar.txt, modeled on kSar. Filter to one host.name first, then narrow with Device Class.",
+    "title": "Host Activity: Storage",
+    "optionsJSON": {
+      "autoApplyFilters": true,
+      "hidePanelBorders": false,
+      "hidePanelTitles": false,
+      "syncColors": false,
+      "syncCursor": true,
+      "syncTooltips": false,
+      "useMargins": true
+    },
+    "panelsJSON": [
+      {
+        "type": "links",
+        "embeddableConfig": {},
+        "panelIndex": "elasticsearch-links",
+        "gridData": {
+          "y": 0,
+          "x": 0,
+          "w": 22,
+          "h": 3,
+          "i": "elasticsearch-links"
+        }
+      },
+      {
+        "type": "links",
+        "embeddableConfig": {},
+        "panelIndex": "host-activity-links",
+        "gridData": {
+          "y": 0,
+          "x": 22,
+          "w": 26,
+          "h": 3,
+          "i": "host-activity-links"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Blocks read per second",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s4pblocks-read-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s4pblocks-read-per-second-layer": {
+                      "columnOrder": [
+                        "s4pblocks-read-per-second-by",
+                        "s4pblocks-read-per-second-x",
+                        "s4pblocks-read-per-second-m0"
+                      ],
+                      "columns": {
+                        "s4pblocks-read-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 10 values of host.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 10
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "host.name"
+                        },
+                        "s4pblocks-read-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Blocks read per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.block.bread_per_sec"
+                        },
+                        "s4pblocks-read-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"summary\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s4pblocks-read-per-second-m0"
+                    ],
+                    "layerId": "s4pblocks-read-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s4pblocks-read-per-second-by",
+                    "xAccessor": "s4pblocks-read-per-second-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s4pblocks-read-per-second",
+        "gridData": {
+          "y": 30,
+          "x": 0,
+          "w": 24,
+          "h": 15,
+          "i": "s4pblocks-read-per-second",
+          "sectionId": "host-activity-storage-s4"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Blocks written per second",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s4pblocks-written-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s4pblocks-written-per-second-layer": {
+                      "columnOrder": [
+                        "s4pblocks-written-per-second-by",
+                        "s4pblocks-written-per-second-x",
+                        "s4pblocks-written-per-second-m0"
+                      ],
+                      "columns": {
+                        "s4pblocks-written-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 10 values of host.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 10
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "host.name"
+                        },
+                        "s4pblocks-written-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Blocks written per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.block.bwrtn_per_sec"
+                        },
+                        "s4pblocks-written-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"summary\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s4pblocks-written-per-second-m0"
+                    ],
+                    "layerId": "s4pblocks-written-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s4pblocks-written-per-second-by",
+                    "xAccessor": "s4pblocks-written-per-second-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s4pblocks-written-per-second",
+        "gridData": {
+          "y": 30,
+          "x": 24,
+          "w": 24,
+          "h": 15,
+          "i": "s4pblocks-written-per-second",
+          "sectionId": "host-activity-storage-s4"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Write transfers per second",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s4pwrite-transfers-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s4pwrite-transfers-per-second-layer": {
+                      "columnOrder": [
+                        "s4pwrite-transfers-per-second-by",
+                        "s4pwrite-transfers-per-second-x",
+                        "s4pwrite-transfers-per-second-m0"
+                      ],
+                      "columns": {
+                        "s4pwrite-transfers-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 10 values of host.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 10
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "host.name"
+                        },
+                        "s4pwrite-transfers-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Write transfers per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.block.wtps"
+                        },
+                        "s4pwrite-transfers-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"summary\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s4pwrite-transfers-per-second-m0"
+                    ],
+                    "layerId": "s4pwrite-transfers-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s4pwrite-transfers-per-second-by",
+                    "xAccessor": "s4pwrite-transfers-per-second-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s4pwrite-transfers-per-second",
+        "gridData": {
+          "y": 15,
+          "x": 24,
+          "w": 24,
+          "h": 15,
+          "i": "s4pwrite-transfers-per-second",
+          "sectionId": "host-activity-storage-s4"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Read transfers per second",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s4pread-transfers-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s4pread-transfers-per-second-layer": {
+                      "columnOrder": [
+                        "s4pread-transfers-per-second-by",
+                        "s4pread-transfers-per-second-x",
+                        "s4pread-transfers-per-second-m0"
+                      ],
+                      "columns": {
+                        "s4pread-transfers-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 10 values of host.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 10
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "host.name"
+                        },
+                        "s4pread-transfers-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Read transfers per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.block.rtps"
+                        },
+                        "s4pread-transfers-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"summary\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s4pread-transfers-per-second-m0"
+                    ],
+                    "layerId": "s4pread-transfers-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s4pread-transfers-per-second-by",
+                    "xAccessor": "s4pread-transfers-per-second-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s4pread-transfers-per-second",
+        "gridData": {
+          "y": 15,
+          "x": 0,
+          "w": 24,
+          "h": 15,
+          "i": "s4pread-transfers-per-second",
+          "sectionId": "host-activity-storage-s4"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Transfers per second",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s4ptransfers-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s4ptransfers-per-second-layer": {
+                      "columnOrder": [
+                        "s4ptransfers-per-second-by",
+                        "s4ptransfers-per-second-x",
+                        "s4ptransfers-per-second-m0"
+                      ],
+                      "columns": {
+                        "s4ptransfers-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 10 values of host.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 10
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "host.name"
+                        },
+                        "s4ptransfers-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Transfers per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.block.tps"
+                        },
+                        "s4ptransfers-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"summary\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s4ptransfers-per-second-m0"
+                    ],
+                    "layerId": "s4ptransfers-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s4ptransfers-per-second-by",
+                    "xAccessor": "s4ptransfers-per-second-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s4ptransfers-per-second",
+        "gridData": {
+          "y": 0,
+          "x": 0,
+          "w": 24,
+          "h": 15,
+          "i": "s4ptransfers-per-second",
+          "sectionId": "host-activity-storage-s4"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Discard transfers per second",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s4pdiscard-transfers-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s4pdiscard-transfers-per-second-layer": {
+                      "columnOrder": [
+                        "s4pdiscard-transfers-per-second-by",
+                        "s4pdiscard-transfers-per-second-x",
+                        "s4pdiscard-transfers-per-second-m0"
+                      ],
+                      "columns": {
+                        "s4pdiscard-transfers-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 10 values of host.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 10
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "host.name"
+                        },
+                        "s4pdiscard-transfers-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Discard transfers per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.block.dtps"
+                        },
+                        "s4pdiscard-transfers-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"summary\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s4pdiscard-transfers-per-second-m0"
+                    ],
+                    "layerId": "s4pdiscard-transfers-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s4pdiscard-transfers-per-second-by",
+                    "xAccessor": "s4pdiscard-transfers-per-second-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s4pdiscard-transfers-per-second",
+        "gridData": {
+          "y": 45,
+          "x": 0,
+          "w": 24,
+          "h": 15,
+          "i": "s4pdiscard-transfers-per-second",
+          "sectionId": "host-activity-storage-s4"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Blocks discarded per second",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s4pblocks-discarded-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s4pblocks-discarded-per-second-layer": {
+                      "columnOrder": [
+                        "s4pblocks-discarded-per-second-by",
+                        "s4pblocks-discarded-per-second-x",
+                        "s4pblocks-discarded-per-second-m0"
+                      ],
+                      "columns": {
+                        "s4pblocks-discarded-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 10 values of host.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 10
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "host.name"
+                        },
+                        "s4pblocks-discarded-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Blocks discarded per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.block.bdscd_per_sec"
+                        },
+                        "s4pblocks-discarded-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"summary\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s4pblocks-discarded-per-second-m0"
+                    ],
+                    "layerId": "s4pblocks-discarded-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s4pblocks-discarded-per-second-by",
+                    "xAccessor": "s4pblocks-discarded-per-second-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s4pblocks-discarded-per-second",
+        "gridData": {
+          "y": 45,
+          "x": 24,
+          "w": 24,
+          "h": 15,
+          "i": "s4pblocks-discarded-per-second",
+          "sectionId": "host-activity-storage-s4"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Block devices",
+          "hide_title": true,
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s4pblock-devices-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s4pblock-devices-layer": {
+                      "columnOrder": [
+                        "s4pblock-devices-m0"
+                      ],
+                      "columns": {
+                        "s4pblock-devices-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Block devices",
+                          "operationType": "unique_count",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.io.device"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"io\""
+              },
+              "visualization": {
+                "layerId": "s4pblock-devices-layer",
+                "layerType": "data",
+                "metricAccessor": "s4pblock-devices-m0",
+                "showBar": false,
+                "valueFontMode": "fit"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsMetric"
+          }
+        },
+        "panelIndex": "s4pblock-devices",
+        "gridData": {
+          "y": 0,
+          "x": 24,
+          "w": 12,
+          "h": 5,
+          "i": "s4pblock-devices",
+          "sectionId": "host-activity-storage-s4"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Avg transfers/s",
+          "hide_title": true,
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s4pavg-transfers-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s4pavg-transfers-layer": {
+                      "columnOrder": [
+                        "s4pavg-transfers-m0"
+                      ],
+                      "columns": {
+                        "s4pavg-transfers-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Avg transfers/s",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.block.tps"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"summary\""
+              },
+              "visualization": {
+                "layerId": "s4pavg-transfers-layer",
+                "layerType": "data",
+                "metricAccessor": "s4pavg-transfers-m0",
+                "showBar": false,
+                "valueFontMode": "fit"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsMetric"
+          }
+        },
+        "panelIndex": "s4pavg-transfers",
+        "gridData": {
+          "y": 5,
+          "x": 36,
+          "w": 12,
+          "h": 5,
+          "i": "s4pavg-transfers",
+          "sectionId": "host-activity-storage-s4"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Max await (ms)",
+          "hide_title": true,
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s4pmax-await-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s4pmax-await-layer": {
+                      "columnOrder": [
+                        "s4pmax-await-m0"
+                      ],
+                      "columns": {
+                        "s4pmax-await-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Max await (ms)",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.io.await_ms"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"io\""
+              },
+              "visualization": {
+                "layerId": "s4pmax-await-layer",
+                "layerType": "data",
+                "metricAccessor": "s4pmax-await-m0",
+                "showBar": false,
+                "valueFontMode": "fit"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsMetric"
+          }
+        },
+        "panelIndex": "s4pmax-await",
+        "gridData": {
+          "y": 10,
+          "x": 24,
+          "w": 12,
+          "h": 5,
+          "i": "s4pmax-await",
+          "sectionId": "host-activity-storage-s4"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Peak transfers/s",
+          "hide_title": true,
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s4ppeak-transfers-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s4ppeak-transfers-layer": {
+                      "columnOrder": [
+                        "s4ppeak-transfers-m0"
+                      ],
+                      "columns": {
+                        "s4ppeak-transfers-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Peak transfers/s",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.block.tps"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"summary\""
+              },
+              "visualization": {
+                "layerId": "s4ppeak-transfers-layer",
+                "layerType": "data",
+                "metricAccessor": "s4ppeak-transfers-m0",
+                "showBar": false,
+                "valueFontMode": "fit"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsMetric"
+          }
+        },
+        "panelIndex": "s4ppeak-transfers",
+        "gridData": {
+          "y": 10,
+          "x": 36,
+          "w": 12,
+          "h": 5,
+          "i": "s4ppeak-transfers",
+          "sectionId": "host-activity-storage-s4"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Max queue depth",
+          "hide_title": true,
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s4pmax-queue-depth-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s4pmax-queue-depth-layer": {
+                      "columnOrder": [
+                        "s4pmax-queue-depth-m0"
+                      ],
+                      "columns": {
+                        "s4pmax-queue-depth-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Max queue depth",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "number",
+                              "params": {
+                                "decimals": 2
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.io.aqu_sz"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"io\""
+              },
+              "visualization": {
+                "layerId": "s4pmax-queue-depth-layer",
+                "layerType": "data",
+                "metricAccessor": "s4pmax-queue-depth-m0",
+                "showBar": false,
+                "valueFontMode": "fit"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsMetric"
+          }
+        },
+        "panelIndex": "s4pmax-queue-depth",
+        "gridData": {
+          "y": 5,
+          "x": 24,
+          "w": 12,
+          "h": 5,
+          "i": "s4pmax-queue-depth",
+          "sectionId": "host-activity-storage-s4"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Peak utilization",
+          "hide_title": true,
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s4ppeak-utilization-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s4ppeak-utilization-layer": {
+                      "columnOrder": [
+                        "s4ppeak-utilization-m0"
+                      ],
+                      "columns": {
+                        "s4ppeak-utilization-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Peak utilization",
+                          "operationType": "max",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "percent",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.io.util.pct"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"io\""
+              },
+              "visualization": {
+                "layerId": "s4ppeak-utilization-layer",
+                "layerType": "data",
+                "metricAccessor": "s4ppeak-utilization-m0",
+                "showBar": false,
+                "valueFontMode": "fit"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsMetric"
+          }
+        },
+        "panelIndex": "s4ppeak-utilization",
+        "gridData": {
+          "y": 0,
+          "x": 36,
+          "w": 12,
+          "h": 5,
+          "i": "s4ppeak-utilization",
+          "sectionId": "host-activity-storage-s4"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Utilization",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s3putilization-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s3putilization-layer": {
+                      "columnOrder": [
+                        "s3putilization-by",
+                        "s3putilization-x",
+                        "s3putilization-m0"
+                      ],
+                      "columns": {
+                        "s3putilization-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 50 values of sar.io.device",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.io.device"
+                        },
+                        "s3putilization-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Utilization",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "percent",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.io.util.pct"
+                        },
+                        "s3putilization-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"io\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s3putilization-m0"
+                    ],
+                    "layerId": "s3putilization-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s3putilization-by",
+                    "xAccessor": "s3putilization-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s3putilization",
+        "gridData": {
+          "y": 0,
+          "x": 0,
+          "w": 24,
+          "h": 15,
+          "i": "s3putilization",
+          "sectionId": "host-activity-storage-s0"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Await (ms)",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s3pawait-ms--layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s3pawait-ms--layer": {
+                      "columnOrder": [
+                        "s3pawait-ms--by",
+                        "s3pawait-ms--x",
+                        "s3pawait-ms--m0"
+                      ],
+                      "columns": {
+                        "s3pawait-ms--by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 50 values of sar.io.device",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.io.device"
+                        },
+                        "s3pawait-ms--m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Await (ms)",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.io.await_ms"
+                        },
+                        "s3pawait-ms--x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"io\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s3pawait-ms--m0"
+                    ],
+                    "layerId": "s3pawait-ms--layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s3pawait-ms--by",
+                    "xAccessor": "s3pawait-ms--x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s3pawait-ms-",
+        "gridData": {
+          "y": 15,
+          "x": 24,
+          "w": 24,
+          "h": 15,
+          "i": "s3pawait-ms-",
+          "sectionId": "host-activity-storage-s0"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Transfers per second",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s0ptransfers-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s0ptransfers-per-second-layer": {
+                      "columnOrder": [
+                        "s0ptransfers-per-second-by",
+                        "s0ptransfers-per-second-x",
+                        "s0ptransfers-per-second-m0"
+                      ],
+                      "columns": {
+                        "s0ptransfers-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 50 values of sar.io.device",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.io.device"
+                        },
+                        "s0ptransfers-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Transfers per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.io.tps"
+                        },
+                        "s0ptransfers-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"io\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s0ptransfers-per-second-m0"
+                    ],
+                    "layerId": "s0ptransfers-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s0ptransfers-per-second-by",
+                    "xAccessor": "s0ptransfers-per-second-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s0ptransfers-per-second",
+        "gridData": {
+          "y": 0,
+          "x": 24,
+          "w": 24,
+          "h": 15,
+          "i": "s0ptransfers-per-second",
+          "sectionId": "host-activity-storage-s0"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Average queue size",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s2paverage-queue-size-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s2paverage-queue-size-layer": {
+                      "columnOrder": [
+                        "s2paverage-queue-size-by",
+                        "s2paverage-queue-size-x",
+                        "s2paverage-queue-size-m0"
+                      ],
+                      "columns": {
+                        "s2paverage-queue-size-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 50 values of sar.io.device",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.io.device"
+                        },
+                        "s2paverage-queue-size-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Average queue size",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.io.aqu_sz"
+                        },
+                        "s2paverage-queue-size-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"io\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s2paverage-queue-size-m0"
+                    ],
+                    "layerId": "s2paverage-queue-size-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s2paverage-queue-size-by",
+                    "xAccessor": "s2paverage-queue-size-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s2paverage-queue-size",
+        "gridData": {
+          "y": 15,
+          "x": 0,
+          "w": 24,
+          "h": 15,
+          "i": "s2paverage-queue-size",
+          "sectionId": "host-activity-storage-s0"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Read bytes per second",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s1pread-bytes-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s1pread-bytes-per-second-layer": {
+                      "columnOrder": [
+                        "s1pread-bytes-per-second-by",
+                        "s1pread-bytes-per-second-x",
+                        "s1pread-bytes-per-second-m0"
+                      ],
+                      "columns": {
+                        "s1pread-bytes-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 50 values of sar.io.device",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.io.device"
+                        },
+                        "s1pread-bytes-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Read bytes per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.io.read.bytes_per_sec"
+                        },
+                        "s1pread-bytes-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"io\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s1pread-bytes-per-second-m0"
+                    ],
+                    "layerId": "s1pread-bytes-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s1pread-bytes-per-second-by",
+                    "xAccessor": "s1pread-bytes-per-second-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s1pread-bytes-per-second",
+        "gridData": {
+          "y": 0,
+          "x": 0,
+          "w": 24,
+          "h": 15,
+          "i": "s1pread-bytes-per-second",
+          "sectionId": "host-activity-storage-s1"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Write bytes per second",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s1pwrite-bytes-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s1pwrite-bytes-per-second-layer": {
+                      "columnOrder": [
+                        "s1pwrite-bytes-per-second-by",
+                        "s1pwrite-bytes-per-second-x",
+                        "s1pwrite-bytes-per-second-m0"
+                      ],
+                      "columns": {
+                        "s1pwrite-bytes-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 50 values of sar.io.device",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.io.device"
+                        },
+                        "s1pwrite-bytes-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Write bytes per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.io.write.bytes_per_sec"
+                        },
+                        "s1pwrite-bytes-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"io\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s1pwrite-bytes-per-second-m0"
+                    ],
+                    "layerId": "s1pwrite-bytes-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s1pwrite-bytes-per-second-by",
+                    "xAccessor": "s1pwrite-bytes-per-second-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s1pwrite-bytes-per-second",
+        "gridData": {
+          "y": 0,
+          "x": 24,
+          "w": 24,
+          "h": 15,
+          "i": "s1pwrite-bytes-per-second",
+          "sectionId": "host-activity-storage-s1"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Average request size",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s2paverage-request-size-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s2paverage-request-size-layer": {
+                      "columnOrder": [
+                        "s2paverage-request-size-by",
+                        "s2paverage-request-size-x",
+                        "s2paverage-request-size-m0"
+                      ],
+                      "columns": {
+                        "s2paverage-request-size-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 50 values of sar.io.device",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.io.device"
+                        },
+                        "s2paverage-request-size-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Average request size",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.io.areq.bytes"
+                        },
+                        "s2paverage-request-size-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"io\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s2paverage-request-size-m0"
+                    ],
+                    "layerId": "s2paverage-request-size-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s2paverage-request-size-by",
+                    "xAccessor": "s2paverage-request-size-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s2paverage-request-size",
+        "gridData": {
+          "y": 15,
+          "x": 0,
+          "w": 24,
+          "h": 15,
+          "i": "s2paverage-request-size",
+          "sectionId": "host-activity-storage-s1"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Discard bytes per second",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s1pdiscard-bytes-per-second-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s1pdiscard-bytes-per-second-layer": {
+                      "columnOrder": [
+                        "s1pdiscard-bytes-per-second-by",
+                        "s1pdiscard-bytes-per-second-x",
+                        "s1pdiscard-bytes-per-second-m0"
+                      ],
+                      "columns": {
+                        "s1pdiscard-bytes-per-second-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 50 values of sar.io.device",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.io.device"
+                        },
+                        "s1pdiscard-bytes-per-second-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "Discard bytes per second",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.io.discard.bytes_per_sec"
+                        },
+                        "s1pdiscard-bytes-per-second-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"io\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s1pdiscard-bytes-per-second-m0"
+                    ],
+                    "layerId": "s1pdiscard-bytes-per-second-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s1pdiscard-bytes-per-second-by",
+                    "xAccessor": "s1pdiscard-bytes-per-second-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s1pdiscard-bytes-per-second",
+        "gridData": {
+          "y": 15,
+          "x": 24,
+          "w": 24,
+          "h": 15,
+          "i": "s1pdiscard-bytes-per-second",
+          "sectionId": "host-activity-storage-s1"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Filesystem used",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s5pfilesystem-used-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s5pfilesystem-used-layer": {
+                      "columnOrder": [
+                        "s5pfilesystem-used-by",
+                        "s5pfilesystem-used-x",
+                        "s5pfilesystem-used-m0"
+                      ],
+                      "columns": {
+                        "s5pfilesystem-used-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 50 values of sar.filesystem.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.filesystem.name"
+                        },
+                        "s5pfilesystem-used-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "fsused",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "percent",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.filesystem.fsused.pct"
+                        },
+                        "s5pfilesystem-used-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"filesystem\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s5pfilesystem-used-m0"
+                    ],
+                    "layerId": "s5pfilesystem-used-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s5pfilesystem-used-by",
+                    "xAccessor": "s5pfilesystem-used-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s5pfilesystem-used",
+        "gridData": {
+          "y": 0,
+          "x": 0,
+          "w": 24,
+          "h": 15,
+          "i": "s5pfilesystem-used",
+          "sectionId": "host-activity-storage-s5"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Filesystem free",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s5pfilesystem-free-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s5pfilesystem-free-layer": {
+                      "columnOrder": [
+                        "s5pfilesystem-free-by",
+                        "s5pfilesystem-free-x",
+                        "s5pfilesystem-free-m0"
+                      ],
+                      "columns": {
+                        "s5pfilesystem-free-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 50 values of sar.filesystem.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.filesystem.name"
+                        },
+                        "s5pfilesystem-free-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "fsfree",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "bytes",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.filesystem.fsfree.bytes"
+                        },
+                        "s5pfilesystem-free-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"filesystem\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s5pfilesystem-free-m0"
+                    ],
+                    "layerId": "s5pfilesystem-free-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s5pfilesystem-free-by",
+                    "xAccessor": "s5pfilesystem-free-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s5pfilesystem-free",
+        "gridData": {
+          "y": 0,
+          "x": 24,
+          "w": 24,
+          "h": 15,
+          "i": "s5pfilesystem-free",
+          "sectionId": "host-activity-storage-s5"
+        }
+      },
+      {
+        "type": "vis",
+        "embeddableConfig": {
+          "title": "Inodes used",
+          "attributes": {
+            "references": [
+              {
+                "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                "name": "indexpattern-datasource-layer-s5pinodes-used-layer",
+                "type": "index-pattern"
+              }
+            ],
+            "state": {
+              "adHocDataViews": {},
+              "datasourceStates": {
+                "formBased": {
+                  "layers": {
+                    "s5pinodes-used-layer": {
+                      "columnOrder": [
+                        "s5pinodes-used-by",
+                        "s5pinodes-used-x",
+                        "s5pinodes-used-m0"
+                      ],
+                      "columns": {
+                        "s5pinodes-used-by": {
+                          "dataType": "string",
+                          "isBucketed": true,
+                          "label": "Top 50 values of sar.filesystem.name",
+                          "operationType": "terms",
+                          "params": {
+                            "exclude": [],
+                            "excludeIsRegex": false,
+                            "include": [],
+                            "includeIsRegex": false,
+                            "missingBucket": false,
+                            "orderBy": {
+                              "fallback": true,
+                              "type": "alphabetical"
+                            },
+                            "orderDirection": "asc",
+                            "otherBucket": false,
+                            "parentFormat": {
+                              "id": "terms"
+                            },
+                            "secondaryFields": [],
+                            "size": 50
+                          },
+                          "scale": "ordinal",
+                          "sourceField": "sar.filesystem.name"
+                        },
+                        "s5pinodes-used-m0": {
+                          "customLabel": true,
+                          "dataType": "number",
+                          "isBucketed": false,
+                          "label": "iused",
+                          "operationType": "average",
+                          "params": {
+                            "emptyAsNull": true,
+                            "format": {
+                              "id": "percent",
+                              "params": {
+                                "decimals": 1
+                              }
+                            }
+                          },
+                          "scale": "ratio",
+                          "sourceField": "sar.filesystem.iused.pct"
+                        },
+                        "s5pinodes-used-x": {
+                          "dataType": "date",
+                          "isBucketed": true,
+                          "label": "@timestamp",
+                          "operationType": "date_histogram",
+                          "params": {
+                            "dropPartials": false,
+                            "includeEmptyRows": true,
+                            "interval": "auto"
+                          },
+                          "scale": "interval",
+                          "sourceField": "@timestamp"
+                        }
+                      },
+                      "ignoreGlobalFilters": false,
+                      "incompleteColumns": {},
+                      "indexPatternId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+                      "sampling": 1
+                    }
+                  }
+                },
+                "indexpattern": {
+                  "layers": {}
+                },
+                "textBased": {
+                  "layers": {}
+                }
+              },
+              "filters": [],
+              "internalReferences": [],
+              "query": {
+                "language": "kuery",
+                "query": "sar.metricset : \"filesystem\""
+              },
+              "visualization": {
+                "axisTitlesVisibilitySettings": {
+                  "x": true,
+                  "yLeft": false,
+                  "yRight": true
+                },
+                "layers": [
+                  {
+                    "accessors": [
+                      "s5pinodes-used-m0"
+                    ],
+                    "layerId": "s5pinodes-used-layer",
+                    "layerType": "data",
+                    "palette": {
+                      "name": "default",
+                      "type": "palette"
+                    },
+                    "position": "top",
+                    "seriesType": "line",
+                    "showGridlines": false,
+                    "splitAccessor": "s5pinodes-used-by",
+                    "xAccessor": "s5pinodes-used-x"
+                  }
+                ],
+                "legend": {
+                  "isVisible": true,
+                  "position": "right"
+                },
+                "preferredSeriesType": "line",
+                "title": "Empty XY chart",
+                "valueLabels": "hide"
+              }
+            },
+            "title": "",
+            "version": 2,
+            "visualizationType": "lnsXY"
+          }
+        },
+        "panelIndex": "s5pinodes-used",
+        "gridData": {
+          "y": 15,
+          "x": 0,
+          "w": 24,
+          "h": 15,
+          "i": "s5pinodes-used",
+          "sectionId": "host-activity-storage-s5"
+        }
+      }
+    ],
+    "sections": [
+      {
+        "collapsed": false,
+        "title": "I/O (all devices)",
+        "gridData": {
+          "y": 3,
+          "i": "host-activity-storage-s4"
+        }
+      },
+      {
+        "collapsed": false,
+        "title": "Utilization",
+        "gridData": {
+          "y": 4,
+          "i": "host-activity-storage-s0"
+        }
+      },
+      {
+        "collapsed": false,
+        "title": "Bandwidth",
+        "gridData": {
+          "y": 5,
+          "i": "host-activity-storage-s1"
+        }
+      },
+      {
+        "collapsed": true,
+        "title": "Filesystems",
+        "gridData": {
+          "y": 6,
+          "i": "host-activity-storage-s5"
+        }
+      }
+    ],
+    "timeRestore": false,
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": {
+        "query": {
+          "query": "",
+          "language": "kuery"
+        }
+      }
+    },
+    "version": 2
+  },
+  "coreMigrationVersion": "8.8.0",
+  "id": "host-activity-storage",
+  "references": [
+    {
+      "type": "tag",
+      "id": "11ffb732-bed1-4aa4-8867-189e74792cdd",
+      "name": "tag-ref-11ffb732-bed1-4aa4-8867-189e74792cdd"
+    },
+    {
+      "type": "tag",
+      "id": "b210de37-7ebf-4ced-9a28-13c1620db46c",
+      "name": "tag-ref-b210de37-7ebf-4ced-9a28-13c1620db46c"
+    },
+    {
+      "type": "tag",
+      "id": "5e05b9ee-3e49-4efd-8a16-94de208ebb83",
+      "name": "tag-ref-5e05b9ee-3e49-4efd-8a16-94de208ebb83"
+    },
+    {
+      "name": "elasticsearch-links:savedObjectRef",
+      "type": "links",
+      "id": "d277872a-9c33-4d95-84f0-6dba30dcbdf1"
+    },
+    {
+      "name": "host-activity-links:savedObjectRef",
+      "type": "links",
+      "id": "494ccfe4-71e4-45fe-ac56-3969d6247dd1"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s4pblocks-read-per-second:indexpattern-datasource-layer-s4pblocks-read-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s4pblocks-written-per-second:indexpattern-datasource-layer-s4pblocks-written-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s4pwrite-transfers-per-second:indexpattern-datasource-layer-s4pwrite-transfers-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s4pread-transfers-per-second:indexpattern-datasource-layer-s4pread-transfers-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s4ptransfers-per-second:indexpattern-datasource-layer-s4ptransfers-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s4pdiscard-transfers-per-second:indexpattern-datasource-layer-s4pdiscard-transfers-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s4pblocks-discarded-per-second:indexpattern-datasource-layer-s4pblocks-discarded-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s4pblock-devices:indexpattern-datasource-layer-s4pblock-devices-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s4pavg-transfers:indexpattern-datasource-layer-s4pavg-transfers-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s4pmax-await:indexpattern-datasource-layer-s4pmax-await-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s4ppeak-transfers:indexpattern-datasource-layer-s4ppeak-transfers-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s4pmax-queue-depth:indexpattern-datasource-layer-s4pmax-queue-depth-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s4ppeak-utilization:indexpattern-datasource-layer-s4ppeak-utilization-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s3putilization:indexpattern-datasource-layer-s3putilization-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s3pawait-ms-:indexpattern-datasource-layer-s3pawait-ms--layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s0ptransfers-per-second:indexpattern-datasource-layer-s0ptransfers-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s2paverage-queue-size:indexpattern-datasource-layer-s2paverage-queue-size-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s1pread-bytes-per-second:indexpattern-datasource-layer-s1pread-bytes-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s1pwrite-bytes-per-second:indexpattern-datasource-layer-s1pwrite-bytes-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s2paverage-request-size:indexpattern-datasource-layer-s2paverage-request-size-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s1pdiscard-bytes-per-second:indexpattern-datasource-layer-s1pdiscard-bytes-per-second-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s5pfilesystem-used:indexpattern-datasource-layer-s5pfilesystem-used-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s5pfilesystem-free:indexpattern-datasource-layer-s5pfilesystem-free-layer",
+      "type": "index-pattern"
+    },
+    {
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
+      "name": "s5pinodes-used:indexpattern-datasource-layer-s5pinodes-used-layer",
+      "type": "index-pattern"
+    },
+    {
+      "name": "c1:optionsListDataView",
+      "type": "index-pattern",
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac"
+    },
+    {
+      "name": "c2:optionsListDataView",
+      "type": "index-pattern",
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac"
+    },
+    {
+      "name": "c3:optionsListDataView",
+      "type": "index-pattern",
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac"
+    }
+  ],
+  "type": "dashboard",
+  "typeMigrationVersion": "10.3.0"
+}
