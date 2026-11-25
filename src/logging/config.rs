@@ -95,8 +95,8 @@ fn parse_env_bool(name: &str) -> bool {
 
 fn resolve_env_auth() -> Result<Auth> {
     let apikey = non_empty_env("ESDIAG_LOGS_APIKEY");
-    let username = non_empty_env("ESDIAG_LOGS_USERNAME");
-    let password = non_empty_env("ESDIAG_LOGS_PASSWORD");
+    let username = non_empty_env_raw("ESDIAG_LOGS_USERNAME");
+    let password = non_empty_env_raw("ESDIAG_LOGS_PASSWORD");
 
     match (apikey, username, password) {
         (Some(key), None, None) => {
@@ -112,6 +112,10 @@ fn resolve_env_auth() -> Result<Auth> {
             "ESDIAG_LOGS_USERNAME and ESDIAG_LOGS_PASSWORD must be configured together"
         )),
     }
+}
+
+fn non_empty_env_raw(name: &str) -> Option<String> {
+    env::var(name).ok().filter(|value| !value.is_empty())
 }
 
 fn validate_apikey_header(apikey: &str) -> Result<()> {

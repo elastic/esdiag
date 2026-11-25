@@ -174,20 +174,44 @@ pub fn daily_log_filename(date: chrono::NaiveDate) -> String {
 pub fn open_daily_log_file(dir: &Path, date: chrono::NaiveDate) -> Result<std::fs::File> {
     std::fs::create_dir_all(dir)?;
     let path = dir.join(daily_log_filename(date));
-    let mut options = OpenOptions::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
+    for _ in 0..8 {
+        let mut options = OpenOptions::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options.create(true).append(true).open(&path)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        }
+        file.lock_shared()?;
+        if locked_handle_matches_path(&file, &path)? {
+            return Ok(file);
+        }
     }
-    let file = options.create(true).append(true).open(&path)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    Err(eyre::eyre!(
+        "Daily log file '{}' was concurrently rotated while opening",
+        path.display()
+    ))
+}
+
+#[cfg(unix)]
+fn locked_handle_matches_path(file: &std::fs::File, path: &Path) -> Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+    let handle_meta = file.metadata()?;
+    match std::fs::metadata(path) {
+        Ok(path_meta) => Ok(handle_meta.dev() == path_meta.dev() && handle_meta.ino() == path_meta.ino()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(err) => Err(err.into()),
     }
-    let _ = file.lock_shared();
-    Ok(file)
+}
+
+#[cfg(not(unix))]
+fn locked_handle_matches_path(_file: &std::fs::File, path: &Path) -> Result<bool> {
+    Ok(path.exists())
 }
 
 /// Opens the run log for appending, optionally truncating it first. The log is
