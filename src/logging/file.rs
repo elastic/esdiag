@@ -220,7 +220,7 @@ pub(crate) fn compress_previous_logs(dir: &Path, today: NaiveDate) {
 }
 
 fn compress_single_log(src_path: &Path, gz_path: &Path) -> io::Result<()> {
-    let mut input = match File::open(src_path) {
+    let mut input = match OpenOptions::new().read(true).write(true).open(src_path) {
         Ok(file) => file,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(err) => return Err(err),
@@ -279,6 +279,8 @@ fn compress_single_log(src_path: &Path, gz_path: &Path) -> io::Result<()> {
         let _ = fs::remove_file(&tmp_path);
         return Err(err);
     }
+    #[cfg(windows)]
+    drop(input);
 
     match fs::remove_file(src_path) {
         Ok(()) => Ok(()),
@@ -304,14 +306,41 @@ pub(crate) fn prune_expired_logs(dir: &Path, today: NaiveDate, retention_days: u
         let Some(name_str) = name.to_str() else {
             continue;
         };
-        let Some((date, _)) = parse_daily_log_name(name_str) else {
+        let Some((date, is_compressed)) = parse_daily_log_name(name_str) else {
             continue;
         };
-        if date < cutoff
-            && let Err(err) = fs::remove_file(entry.path())
+        if date >= cutoff {
+            continue;
+        }
+        let path = entry.path();
+        if !is_compressed {
+            let Ok(file) = OpenOptions::new().read(true).write(true).open(&path) else {
+                continue;
+            };
+            match file.try_lock() {
+                Ok(()) => {}
+                Err(fs::TryLockError::WouldBlock) => continue,
+                Err(err) => {
+                    eprintln!("Failed to lock expired log file '{}': {err}", path.display());
+                    continue;
+                }
+            }
+            // On Windows, an open handle prevents `remove_file`; on Unix, keep
+            // the exclusive lock held across `remove_file` so writers cannot
+            // race in between unlock and unlink.
+            #[cfg(windows)]
+            drop(file);
+            if let Err(err) = fs::remove_file(&path)
+                && err.kind() != io::ErrorKind::NotFound
+            {
+                eprintln!("Failed to remove expired log file '{}': {err}", path.display());
+            }
+            continue;
+        }
+        if let Err(err) = fs::remove_file(&path)
             && err.kind() != io::ErrorKind::NotFound
         {
-            eprintln!("Failed to remove expired log file '{}': {err}", entry.path().display());
+            eprintln!("Failed to remove expired log file '{}': {err}", path.display());
         }
     }
 }

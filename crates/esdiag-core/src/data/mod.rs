@@ -181,7 +181,7 @@ pub fn open_daily_log_file(dir: &Path, date: chrono::NaiveDate) -> Result<std::f
             use std::os::unix::fs::OpenOptionsExt;
             options.mode(0o600);
         }
-        let file = options.create(true).append(true).open(&path)?;
+        let file = options.read(true).create(true).append(true).open(&path)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
