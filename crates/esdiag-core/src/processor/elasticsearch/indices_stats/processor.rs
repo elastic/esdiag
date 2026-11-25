@@ -16,16 +16,16 @@ use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use tokio::sync::mpsc;
 
-struct IndexProcessingContext<'a> {
-    lookups: &'a Lookups,
-    metadata: &'a ElasticsearchMetadata,
-    index_metadata: &'a MetadataValue,
-    shard_metadata: &'a MetadataValue,
-    index_tx: &'a mpsc::Sender<IndexStatsDocument>,
-    shard_tx: &'a mpsc::Sender<ShardStatsDocument>,
+pub(super) struct IndexProcessingContext<'a> {
+    pub(super) lookups: &'a Lookups,
+    pub(super) metadata: &'a ElasticsearchMetadata,
+    pub(super) index_metadata: &'a MetadataValue,
+    pub(super) shard_metadata: &'a MetadataValue,
+    pub(super) index_tx: &'a mpsc::Sender<IndexStatsDocument>,
+    pub(super) shard_tx: &'a mpsc::Sender<ShardStatsDocument>,
 }
 
-async fn process_index(index_name: String, mut index_stats: IndexStats, ctx: &IndexProcessingContext<'_>) {
+pub(super) async fn process_index(index_name: String, mut index_stats: IndexStats, ctx: &IndexProcessingContext<'_>) {
     let shards_stats = index_stats.shards.take();
     let index_settings = ctx
         .lookups
@@ -42,7 +42,7 @@ async fn process_index(index_name: String, mut index_stats: IndexStats, ctx: &In
         IndexSettingsDocument::from(settings).ilm(ctx.lookups.ilm_explain.by_name(&index_name).cloned())
     });
 
-    let write_phase_sec = match EnrichedIndexStats::try_from(index_stats) {
+    let (write_phase_sec, is_write_index) = match EnrichedIndexStats::try_from(index_stats) {
         Ok(enriched_stats) => {
             let stats = enriched_stats
                 .name(index_name.clone())
@@ -53,18 +53,25 @@ async fn process_index(index_name: String, mut index_stats: IndexStats, ctx: &In
                 );
             let index_document = IndexStatsDocument::new(stats, ctx.index_metadata.clone()).calculate();
             let write_phase_sec = index_document.index.write_phase_sec;
+            let is_write_index = Some(index_document.index.is_write_index);
             if (ctx.index_tx.send(index_document).await).is_err() {
                 tracing::warn!("Index channel closed unexpectedly");
             }
-            write_phase_sec
+            (write_phase_sec, is_write_index)
         }
         Err(_) => {
             tracing::warn!("Failed to create index document");
-            None
+            (None, None)
         }
     };
 
-    let index_settings = index_settings.map(|s: IndexSettingsDocument| s.write_phase(write_phase_sec));
+    let index_settings = index_settings.map(|s: IndexSettingsDocument| {
+        let s = s.write_phase(write_phase_sec);
+        match is_write_index {
+            Some(is_write_index) => s.is_write_index(Some(is_write_index)),
+            None => s,
+        }
+    });
 
     if let Some(shards) = shards_stats {
         match extract_shard_documents(
@@ -508,14 +515,14 @@ impl ShardStatsDocument {
         let write_phase_sec = &self.index.as_ref().map(|i| i.write_phase_sec.unwrap_or(0)).unwrap_or(0);
 
         let index_time_in_millis = &stats.indexing.as_ref().map(|i| i.index_time_in_millis).unwrap_or(0);
-        let index_total = &stats.indexing.as_ref().map(|i| i.index_total).unwrap_or(0);
+        let docs_count = stats.docs.as_ref().map(|d| d.count).unwrap_or(0);
         let total_size = &stats.store.as_ref().map(|s| s.size_in_bytes).unwrap_or(0);
 
         // Calculated indexing stats
         if let Some(ref mut indexing) = stats.indexing {
             indexing.avg_docs_sec = Some(match write_phase_sec {
                 0 => 0,
-                x => index_total / x,
+                x => docs_count / x,
             });
             indexing.avg_cpu_millis = Some(match write_phase_sec {
                 0 => 0,
