@@ -1,0 +1,52 @@
+name: package
+
+on:
+  pull_request:
+    branches:
+      - "[0-9]*.[0-9]*"
+    paths:
+      - "Cargo.toml"
+      - "crates/esdiag-core/Cargo.toml"
+      - "crates/esdiag-gui/Cargo.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  check-version-change:
+    name: Check crate version change
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: check
+        name: Detect crate version changes
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          changed=false
+          for manifest in Cargo.toml crates/esdiag-core/Cargo.toml crates/esdiag-gui/Cargo.toml; do
+            if git diff "$base"..."$head" -- "$manifest" | grep -qE '^[+-]version[[:space:]]*='; then
+              changed=true
+              break
+            fi
+          done
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+  package:
+    name: Package
+    needs: check-version-change
+    if: needs.check-version-change.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: bin/sync-crate-assets.sh
+      - run: bin/sync-crate-assets.sh --check
+      # Cargo counts the gitignored bundled/ copies as uncommitted.
+      - run: test -z "$(git status --porcelain)"
+      - run: cargo publish --dry-run --locked --allow-dirty --workspace --exclude elasticrc --exclude repo-tools

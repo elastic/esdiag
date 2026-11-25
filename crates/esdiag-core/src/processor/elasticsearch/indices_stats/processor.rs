@@ -68,7 +68,7 @@ pub(super) async fn process_index(index_name: String, mut index_stats: IndexStat
     let index_settings = index_settings.map(|s: IndexSettingsDocument| {
         let s = s.write_phase(write_phase_sec);
         match is_write_index {
-            Some(is_write_index) => s.is_write_index(Some(is_write_index)),
+            Some(is_write_index) => s.write_index(Some(is_write_index)),
             None => s,
         }
     });
