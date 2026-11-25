@@ -1,55 +1,48 @@
 ---
 type: Maintainer Guide
 title: Branch Management
-description: Maintainer guide to long-lived branch strategy and release flow.
+description: Maintainer guide to branch strategy and release flow.
 tags: [repository, branching, release]
 ---
 
 Branch Management
 =================
 
-This document captures the long-lived branch strategy and release flow used by maintainers.
+This document captures the branch strategy and release flow used by maintainers.
 
 Branch Roles
 ------------
 
-This repository uses a small set of long-lived branches with clearly defined roles:
+This repository uses three branch types with clearly defined roles:
 
-- `main`: the latest stable release line. Every commit here should be releasable.
-- `preview`: the integration branch for upcoming work. New features and fixes land here first.
-- `x.y`: long-lived release maintenance branches such as `0.13` and `0.14`. These are used for version-specific hotfixes that may ship directly to production without pulling in newer work from `main`.
-- `feature/*` and `fix/*`: short-lived working branches for day-to-day development.
+- `main`: the primary integration branch for upcoming releases. New features and fixes land here via pull requests.
+- Release (`x.y`): long-lived release maintenance branches such as `0.16` and `0.17`, cut from `main` for a release line. These are used for version-specific releases and hotfixes without pulling in newer work from `main`.
+- Feature (`feature/*`, `fix/*`, etc.): working branches for day-to-day development and integrating work-in-progress before opening a pull request against `main`.
 
 Normal Development
 ------------------
 
 - Create a fork of the repository.
-- Create feature branches from `upstream/preview`.
-- Rebase forked branches freely to keep them current and clean.
-- Merge feature branches into `upstream/preview` with a squash merge.
-- Branch protections forbid commits to `main`, `preview`, or any `0.x` branch.
+- Create feature branches from `upstream/main`.
+- Integrate work-in-progress on a feature branch; rebase forked branches freely to keep them current and clean.
+- Open pull requests against `upstream/main` and merge with a squash merge.
+- Branch protections forbid direct commits to `main` or any `x.y` release branch.
 
 Releases
 --------
 
-- Keep `preview` ready for the next release by integrating and validating new work there.
-- Before releasing, bring `preview` up to date with `main` so stable fixes already merged to `main` are included in the release candidate.
-- Open a PR from `preview` to `main`.
-- Merge that PR with a merge commit to preserve a clear release boundary.
-- After the `preview` -> `main` PR merges, fast-forward `preview` to the new `main` tip so both long-lived branches point to the same commit before new preview-only work resumes.
-- Do not rebase `preview` after a release PR merge, and do not create a follow-up sync merge commit unless branch protections leave no other option.
-- Tag the release from `main` and create the new `0.x` maintenance branch from that release point.
+- Cut a new `x.y` release branch from `main` when preparing a minor release, or target the existing `x.y` branch for a patch release.
+- Finalize release version bumps and changelog entries on the release branch via pull request.
+- Tag the release from the `x.y` release branch.
 
 Hotfixes
 --------
 
-- Branch from the affected stable branch, either `main` or the relevant `0.x` branch.
+- Land the fix on `main` first (or branch from the affected `x.y` release branch when an urgent production fix cannot wait).
 - Keep hotfixes narrowly scoped and production-safe.
-- Merge the hotfix into the affected stable branch and release from there.
-- Immediately forward-port the same fix to `main` if the fix landed on a `0.x` branch.
-- Ensure `preview` also receives the fix so it is not lost in the next release.
+- Backport fixes from `main` to affected `x.y` release branches, or immediately forward-port to `main` if the fix landed on `x.y` first.
 
 Summary
 -------
 
-In short: new work flows into `preview`, releases flow from `preview` to `main`, and hotfixes flow forward from older stable branches into newer ones.
+In short: work-in-progress integrates on feature branches and merges into `main`, releases ship from `x.y` release branches cut from `main`, and hotfixes are ported between `main` and active `x.y` release branches.

@@ -56,8 +56,8 @@ Also:
 Pull Request Workflow
 ---------------------
 
-- Create your working branch from `preview`.
-- Open pull requests against `preview` unless a maintainer asks you to target a different branch.
+- Create your working branch from `main`.
+- Integrate work-in-progress on your feature branch, then open pull requests against `main` unless a maintainer asks you to target a release branch (`x.y`).
 - Rebase your branch as needed to keep it current.
 - Maintainers handle the final merge strategy and release flow.
 
