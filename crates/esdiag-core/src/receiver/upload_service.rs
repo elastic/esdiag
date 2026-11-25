@@ -40,7 +40,11 @@ impl TryFrom<Url> for UploadServiceDownloader {
 
     fn try_from(url: Url) -> Result<Self> {
         let mut url = url.clone();
-        let token = url.password().ok_or_else(|| eyre!("No token provided"))?.to_string();
+        // `Url` keeps userinfo percent-encoded; the header carries the token itself.
+        let encoded = url.password().ok_or_else(|| eyre!("No token provided"))?;
+        let token = urlencoding::decode(encoded)
+            .map_err(|_| eyre!("Download token is not valid UTF-8"))?
+            .into_owned();
         // Since token authentication is by header, clear provided username and password from the URL
         url.set_username("").ok();
         url.set_password(None).ok();
@@ -52,5 +56,20 @@ impl TryFrom<Url> for UploadServiceDownloader {
 impl std::fmt::Display for UploadServiceDownloader {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Elastic Upload Service {}", self.url)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::UploadServiceDownloader;
+
+    #[test]
+    fn the_header_token_is_the_decoded_url_password() {
+        let mut url = url::Url::parse("https://upload.elastic.co/d/abc").unwrap();
+        url.set_username("token").unwrap();
+        url.set_password(Some("a/b:c=d@e%f+g")).unwrap();
+        let downloader = UploadServiceDownloader::try_from(url).expect("downloader");
+        assert_eq!(downloader.token, "a/b:c=d@e%f+g");
+        assert_eq!(downloader.url.as_str(), "https://upload.elastic.co/d/abc");
     }
 }

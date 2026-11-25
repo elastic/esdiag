@@ -519,7 +519,7 @@ async fn process_upload(host: Arc<dyn McpHost>, uri: Uri, identity: RequestIdent
         guard.scope(),
         Box::pin(async {
             let exporter = host.exporter().await?;
-            let output = exporter.to_string();
+            let output = exporter.safe_display();
             let binding = BindingKey::try_new("mcp-upload-input")?;
             let mut context =
                 ExecutionContext::default().with_identity(ExecutionIdentity::new(new_job_id(), &identity.user));

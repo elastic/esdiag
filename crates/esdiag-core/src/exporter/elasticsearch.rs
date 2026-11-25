@@ -604,6 +604,18 @@ impl std::fmt::Display for ElasticsearchExporter {
     }
 }
 
+impl ElasticsearchExporter {
+    /// The output URL without userinfo, query, or fragment.
+    pub(super) fn safe_url(&self) -> String {
+        let mut url = self.url.clone();
+        let _ = url.set_username("");
+        let _ = url.set_password(None);
+        url.set_query(None);
+        url.set_fragment(None);
+        url.to_string()
+    }
+}
+
 fn elasticsearch_bulk_bytes_limit() -> Option<usize> {
     let bytes = crate::env::get_int("ESDIAG_ES_BULK_BYTES").unwrap_or(crate::env::ESDIAG_ES_BULK_BYTES);
     (bytes > 0).then_some(bytes)

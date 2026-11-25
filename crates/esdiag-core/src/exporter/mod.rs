@@ -417,6 +417,17 @@ impl TryFrom<Uri> for Exporter {
     }
 }
 
+impl Exporter {
+    /// The [`Display`](std::fmt::Display) form without any credentials an
+    /// Elasticsearch output URL embeds, for callers outside the server.
+    pub fn safe_display(&self) -> String {
+        match self {
+            Exporter::Elasticsearch(exporter) => format!("Elasticsearch {}", exporter.safe_url()),
+            other => other.to_string(),
+        }
+    }
+}
+
 impl std::fmt::Display for Exporter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -1019,6 +1030,15 @@ mod tests {
             panic!("expected the environment viewer");
         };
         assert_eq!(viewer.concrete_url().map(Url::password), Some(Some("hunter2")));
+    }
+
+    #[test]
+    fn safe_display_omits_output_url_credentials() {
+        let url = Url::parse("https://elastic:hunter2@es.example:9200/?apikey=k#f").unwrap();
+        let exporter = Exporter::Elasticsearch(
+            super::ElasticsearchExporter::try_new(url, crate::data::Auth::None).expect("exporter"),
+        );
+        assert_eq!(exporter.safe_display(), "Elasticsearch https://es.example:9200/");
     }
 
     #[tokio::test]
