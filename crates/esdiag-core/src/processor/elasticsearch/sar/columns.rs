@@ -146,23 +146,37 @@ fn normalize(name: &str) -> String {
         .collect()
 }
 
-/// Append `_value` to a name a reserved dynamic template would capture. The
-/// `*unsafe*` pattern matches anywhere, so that fragment is split instead.
+/// Append `_value` to each dotted segment a reserved dynamic template would
+/// capture; templates match parent objects too, which would disable every
+/// field beneath them. The `*unsafe*` pattern matches anywhere, so that
+/// fragment is split instead.
 pub fn guard_reserved(name: String) -> String {
     let name = if name.contains("unsafe") {
         name.replace("unsafe", "un_safe")
     } else {
         name
     };
-    if is_reserved(&name) {
-        format!("{name}_value")
-    } else {
-        name
+    if !is_reserved(&name) {
+        return name;
     }
+    name.split('.')
+        .map(|segment| {
+            if is_reserved_segment(segment) {
+                format!("{segment}_value")
+            } else {
+                segment.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(".")
 }
 
 pub fn is_reserved(name: &str) -> bool {
-    name.contains("unsafe") || RESERVED_SUFFIXES.iter().any(|suffix| name.ends_with(suffix))
+    name.split('.').any(is_reserved_segment)
+}
+
+fn is_reserved_segment(segment: &str) -> bool {
+    segment.contains("unsafe") || RESERVED_SUFFIXES.iter().any(|suffix| segment.ends_with(suffix))
 }
 
 /// A parsed cell value.
@@ -271,6 +285,9 @@ mod tests {
         assert_eq!(named("blk_time"), "blk_time_value");
         assert_eq!(named("pagesize"), "pagesize_value");
         assert_eq!(named("%unsafe"), "un_safe.pct");
+        assert_eq!(named("%_time"), "_time_value.pct");
+        assert_eq!(named("kb_time"), "_time_value.bytes");
+        assert!(is_reserved("_time.pct"), "reserved parent segment");
         assert!(!is_reserved("aqu_sz"));
     }
 

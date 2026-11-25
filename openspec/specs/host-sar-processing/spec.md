@@ -302,7 +302,7 @@ The system SHALL name and normalize SAR values with these generic rules. They ap
 
 Non-numeric columns (entity names, USB vendor and product identifiers, descriptions) SHALL be kept as keywords. USB manufacturer and product text can contain spaces, so it SHALL be kept whole as `sar.usb.description`.
 
-No indexed SAR field name SHALL match an ESDiag dynamic-template pattern that disables or re-types fields: `*_time`, `*time_string`, `*size`, `*_memory`, `*histogram`, `*timestamp`, `*date_millis`, or `*unsafe*`. A generated name that would match one SHALL get `_value` appended.
+No indexed SAR field name SHALL match an ESDiag dynamic-template pattern that disables or re-types fields: `*_time`, `*time_string`, `*size`, `*_memory`, `*histogram`, `*timestamp`, `*date_millis`, or `*unsafe*`. Templates also capture parent objects, so the rule applies to every dotted segment: a generated segment that would match one SHALL get `_value` appended.
 
 #### Scenario: Percentage ratio
 - **GIVEN** a CPU row with `%usr` = `6.10`
