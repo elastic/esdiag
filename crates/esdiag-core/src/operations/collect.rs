@@ -4,11 +4,11 @@
 
 use super::{collection_outcome, ensure_host_role, format_execution_failure, process::sources_application_key};
 use crate::{
-    cli_output::CommandOutcome,
+    cli_output::{CategorizeFailure, CategorizedError, CliFailureCategory, CommandOutcome},
     data::{HostRole, Uri, collect_application},
     job::{
         context::ExecutionContext,
-        executor::execute_with_context,
+        executor::{execute_with_context, failed_stage},
         model::{BindingKey, Input, Job, SaveTarget, SendTarget},
     },
     processor::{Identifiers, default_collect_archive_name},
@@ -100,11 +100,15 @@ pub async fn collect(input: CollectInput) -> Result<CommandOutcome> {
             )?;
             let mut outcome = execute_with_context(job, context).await;
             if !outcome.succeeded() {
-                return Err(outcome.failure_error(format_execution_failure(&outcome)));
+                let category = failed_stage(&outcome).failure_category();
+                return Err(outcome.failure_error(format_execution_failure(&outcome))).categorize(category);
             }
-            let result = outcome
-                .collection
-                .ok_or_else(|| eyre!("Collection completed without a collection result"))?;
+            let result = outcome.collection.ok_or_else(|| {
+                CategorizedError::new(
+                    CliFailureCategory::CollectionFailed,
+                    "Collection completed without a collection result",
+                )
+            })?;
             let send_destination = outcome
                 .send
                 .as_ref()

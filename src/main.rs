@@ -12,8 +12,8 @@ use clap::{
 #[cfg(feature = "agent")]
 use esdiag::cli_output::{AgentSkillTargetResult, AgentSkillsFailureContext};
 use esdiag::cli_output::{
-    AgentSkillsResult, CliOutcome, CommandOutcome, KeystoreOperation, OutputFormat, command_failure,
-    write_terminal_outcome,
+    AgentSkillsResult, CategorizeFailure, CliFailureCategory, CliOutcome, CommandOutcome, KeystoreOperation,
+    OutputFormat, command_failure, write_terminal_outcome,
 };
 #[cfg(feature = "server")]
 use esdiag::exporter::Exporter;
@@ -689,7 +689,12 @@ async fn async_main() -> Result<ExitCode> {
 
     let format = cli.format;
     let setup_command = matches!(cli.command, Some(Commands::Setup { .. }));
-    match run(cli, format).await {
+    let keystore_command = matches!(cli.command, Some(Commands::Keystore { .. }));
+    let mut result = run(cli, format).await;
+    if keystore_command {
+        result = result.categorize(CliFailureCategory::KeystoreFailed);
+    }
+    match result {
         Ok(result) => {
             if let CommandOutcome::Completed(outcome) = result {
                 write_terminal_outcome(format, &outcome)?;

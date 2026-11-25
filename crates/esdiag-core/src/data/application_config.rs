@@ -3,6 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{Application, ElasticOutputContext, HostRole, KnownHost, load_saved_jobs};
+use crate::cli_output::CategorizedError;
 use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
@@ -146,10 +147,10 @@ impl ApplicationConfig {
             {
                 let config = elasticrc::ConfigFile::load_with_options(None, None)?;
                 let context = config.contexts().get(&output_context.context).ok_or_else(|| {
-                    eyre!(
+                    CategorizedError::not_found(format!(
                         "Configured Elastic CLI output context '{}' was not found",
                         output_context.context
-                    )
+                    ))
                 })?;
                 if context.elasticsearch.is_none() {
                     return Err(eyre!(
@@ -164,9 +165,9 @@ impl ApplicationConfig {
                 output_context.context
             ));
         } else if let Some(output_name) = &self.output.default {
-            let output = hosts
-                .get(output_name)
-                .ok_or_else(|| eyre!("Configured output host '{output_name}' was not found"))?;
+            let output = hosts.get(output_name).ok_or_else(|| {
+                CategorizedError::not_found(format!("Configured output host '{output_name}' was not found"))
+            })?;
             if !output.has_role(HostRole::Send) {
                 return Err(eyre!("Configured output host '{output_name}' must include role 'send'"));
             }
@@ -192,7 +193,9 @@ impl ApplicationConfig {
         if let Some(job_name) = &self.job.default {
             let jobs = load_saved_jobs()?;
             if !jobs.contains_key(job_name) {
-                return Err(eyre!("Configured default job '{job_name}' was not found"));
+                return Err(
+                    CategorizedError::not_found(format!("Configured default job '{job_name}' was not found")).into(),
+                );
             }
         }
 

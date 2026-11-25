@@ -64,7 +64,7 @@ pub async fn run_saved_job(name: &str, job: SavedJob) -> Result<JobOutcome> {
 pub fn handle_job_delete(name: &str) -> Result<()> {
     let mut jobs = load_saved_jobs()?;
     if jobs.shift_remove(name).is_none() {
-        return Err(eyre!("Saved job '{}' not found", name));
+        return Err(SavedJobNotFound { name: name.to_string() }.into());
     }
     save_saved_jobs(&jobs)?;
     tracing::info!("Deleted saved job '{name}'");

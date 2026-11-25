@@ -8,7 +8,7 @@ use crate::agent::builder::AgentProgress;
 #[cfg(feature = "agent")]
 use crate::data::OutputDeployment;
 use crate::{
-    cli_output::{CliOutcome, CommandOutcome, DiagnosticResult},
+    cli_output::{CategorizedError, CliFailureCategory, CliOutcome, CommandOutcome, DiagnosticResult},
     data::{Application, ApplicationConfig, HostReference, HostRole, Uri},
     job::{
         FailedStage, JobExecutionFailure, JobOutcome,
@@ -238,9 +238,12 @@ async fn execute(input: ProcessInput) -> Result<Processed> {
     let diagnostic = if stdout_owned {
         None
     } else {
-        let mut diagnostic = process
-            .map(|result| result.diagnostic)
-            .ok_or_else(|| eyre!("Process completed without a diagnostic report"))?;
+        let mut diagnostic = process.map(|result| result.diagnostic).ok_or_else(|| {
+            CategorizedError::new(
+                CliFailureCategory::ProcessingFailed,
+                "Process completed without a diagnostic report",
+            )
+        })?;
         diagnostic.output = output_display;
         Some(diagnostic)
     };

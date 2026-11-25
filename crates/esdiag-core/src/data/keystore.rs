@@ -3,6 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use super::{KnownHost, load_saved_jobs};
+use crate::cli_output::{CategorizeFailure, CategorizedError, CliFailureCategory};
 use crate::env::ESDIAG_KEYSTORE_PASSWORD;
 use aes_gcm_siv::{
     Aes256GcmSiv, Nonce,
@@ -349,9 +350,12 @@ pub fn get_keystore_path() -> Result<PathBuf> {
 
 pub fn get_unlock_path() -> Result<PathBuf> {
     let keystore_path = get_keystore_path()?;
-    let parent = keystore_path
-        .parent()
-        .ok_or_else(|| eyre!("Keystore path '{}' has no parent directory", keystore_path.display()))?;
+    let parent = keystore_path.parent().ok_or_else(|| {
+        CategorizedError::new(
+            CliFailureCategory::KeystoreFailed,
+            format!("Keystore path '{}' has no parent directory", keystore_path.display()),
+        )
+    })?;
     Ok(parent.join(UNLOCK_FILE))
 }
 
@@ -392,9 +396,10 @@ fn parse_secret_auth(username: Option<String>, password: Option<String>, apikey:
     match (apikey, username, password) {
         (Some(apikey), None, None) => Ok(SecretAuth::apikey(apikey)),
         (None, Some(username), Some(password)) => Ok(SecretAuth::basic(username, password)),
-        _ => Err(eyre!(
-            "Invalid secret auth: use either --apikey or --user with --password"
-        )),
+        _ => Err(
+            CategorizedError::invalid_input("Invalid secret auth: use either --apikey or --user with --password")
+                .into(),
+        ),
     }
 }
 
@@ -787,29 +792,34 @@ pub fn update_secret(
     let entry = store
         .secrets
         .get_mut(secret_id)
-        .ok_or_else(|| eyre!("Secret '{secret_id}' not found"))?;
+        .ok_or_else(|| secret_not_found(secret_id))?;
     *entry = SecretEntry::default();
     entry.upsert_auth(auth);
     write_store(&store, keystore_password)?;
     Ok(get_keystore_path()?.display().to_string())
 }
 
+fn secret_not_found(secret_id: &str) -> CategorizedError {
+    CategorizedError::not_found(format!("Secret '{secret_id}' not found"))
+}
+
 pub fn remove_secret(secret_id: &str, expected: Option<SecretAuth>, keystore_password: &str) -> Result<String> {
     let mut store = read_store(keystore_password)?;
     if !store.secrets.contains_key(secret_id) {
-        return Err(eyre!("Secret '{secret_id}' not found"));
+        return Err(secret_not_found(secret_id).into());
     }
     ensure_secret_is_unreferenced(secret_id)?;
     let entry = store
         .secrets
         .get_mut(secret_id)
-        .ok_or_else(|| eyre!("Secret '{secret_id}' not found"))?;
+        .ok_or_else(|| secret_not_found(secret_id))?;
 
     if let Some(expected) = expected {
         if !entry.contains_auth(&expected) {
-            return Err(eyre!(
+            return Err(CategorizedError::invalid_input(format!(
                 "Provided auth options do not match the stored secret for '{secret_id}'"
-            ));
+            ))
+            .into());
         }
         entry.remove_auth(&expected);
         if entry.is_empty() {
@@ -957,6 +967,10 @@ pub fn keystore_exists() -> Result<bool> {
 }
 
 fn read_store(keystore_password: &str) -> Result<KeystoreData> {
+    decrypt_store(keystore_password).categorize(CliFailureCategory::KeystoreFailed)
+}
+
+fn decrypt_store(keystore_password: &str) -> Result<KeystoreData> {
     let path = get_keystore_path()?;
     if !path.is_file() {
         return Ok(KeystoreData::default());
@@ -996,6 +1010,10 @@ fn read_store(keystore_password: &str) -> Result<KeystoreData> {
 }
 
 fn write_store(store: &KeystoreData, keystore_password: &str) -> Result<()> {
+    encrypt_store(store, keystore_password).categorize(CliFailureCategory::KeystoreFailed)
+}
+
+fn encrypt_store(store: &KeystoreData, keystore_password: &str) -> Result<()> {
     let salt = rand::random::<[u8; SALT_SIZE]>();
     let nonce = rand::random::<[u8; NONCE_SIZE]>();
     let kdf = KdfParams::current();

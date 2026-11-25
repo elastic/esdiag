@@ -4,7 +4,7 @@
 
 use super::host_result;
 use crate::{
-    cli_output::{CliOutcome, CommandOutcome},
+    cli_output::{CategorizedError, CliOutcome, CommandOutcome},
     client::Client,
     data::{
         Application, Auth, HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate, SecretAuth, Settings, Uri,
@@ -91,7 +91,8 @@ pub async fn host_update(input: HostUpdateInput) -> Result<CommandOutcome> {
             "No host update fields were provided. Use `esdiag host auth {name}` to test the saved host without modifying it."
         ));
     }
-    let existing = KnownHost::get_known(&name).ok_or_else(|| eyre!("Host '{name}' not found"))?;
+    let existing =
+        KnownHost::get_known(&name).ok_or_else(|| CategorizedError::not_found(format!("Host '{name}' not found")))?;
     let mut lookup = resolve_host_secret_auth(update.secret.as_deref(), keystore_password)?;
     let unasked_source = lookup.unasked_source(keystore_password);
     let host = existing.merge_cli_update(&update, lookup.auth.take())?;
@@ -141,7 +142,8 @@ pub async fn host_auth(target: String) -> Result<CommandOutcome> {
             message: None,
         }));
     }
-    let host = KnownHost::get_known(&target).ok_or_else(|| eyre!("Host '{target}' not found"))?;
+    let host = KnownHost::get_known(&target)
+        .ok_or_else(|| CategorizedError::not_found(format!("Host '{target}' not found")))?;
     if host.is_template() {
         return Ok(CommandOutcome::Completed(CliOutcome::HostAuthenticated {
             name: target.clone(),
@@ -297,7 +299,7 @@ fn resolve_host_secret_auth(
 
     let keystore_password = keystore_password()?;
     let auth = resolve_secret_auth(secret_id, keystore_password.expose_secret())?
-        .ok_or_else(|| eyre!("Secret '{secret_id}' was not found in keystore"))?;
+        .ok_or_else(|| CategorizedError::not_found(format!("Secret '{secret_id}' was not found in keystore")))?;
     Ok(SecretLookup {
         auth: Some(auth),
         keystore_password: Some(keystore_password),

@@ -9,8 +9,9 @@ use tempfile::tempdir;
 /// appears on that failure, so its absence in the accept tests is meaningful.
 const SOURCES_VALIDATION_ERROR: &str = "valid logstash sources.yml";
 
-/// Override file name, passed relative to the child's working directory.
-const OVERRIDE_FILE: &str = "sources.yml";
+/// Override file name, passed relative to the child's working directory. It holds the words of
+/// several failure categories, which must not affect the reported category.
+const OVERRIDE_FILE: &str = "auth-collect-process-send-secret.yml";
 
 const MISMATCHED_OVERRIDE: &str = r#"version:
   versions:
@@ -189,8 +190,7 @@ fn parse_failure(output: &Output) -> serde_json::Value {
     failure
 }
 
-/// Runs from `cwd` so a relative `--sources` path keeps temporary-directory names, which
-/// `classify_failure` would scan for category keywords, out of the error message.
+/// Runs from `cwd` so `--sources` can be a relative path.
 fn run_esdiag(args: &[&str], home: &Path, cwd: &Path, hosts_path: Option<&Path>) -> Output {
     let home_path = home.to_str().expect("home path");
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_esdiag"));

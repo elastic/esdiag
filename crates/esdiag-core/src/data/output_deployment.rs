@@ -6,6 +6,7 @@ use super::{
     Application, ApplicationConfig, Auth, CredentialDirection, ElasticContextTarget, ElasticOutputContext, HostRole,
     KnownHost, KnownHostBuilder,
 };
+use crate::cli_output::CategorizedError;
 use eyre::{Result, eyre};
 use std::env;
 use url::Url;
@@ -249,15 +250,18 @@ fn persisted_output() -> Result<KnownHost> {
     let output_name = config.output.default.ok_or_else(|| {
         eyre!("No output deployment is configured. Run `esdiag init` or provide an explicit output target.")
     })?;
-    KnownHost::get_known(&output_name).ok_or_else(|| eyre!("Configured output host '{output_name}' was not found"))
+    KnownHost::get_known(&output_name).ok_or_else(|| {
+        CategorizedError::not_found(format!("Configured output host '{output_name}' was not found")).into()
+    })
 }
 
 fn linked_viewer(elasticsearch: &KnownHost) -> Result<Option<(KnownHost, Auth)>> {
     let Some(viewer_name) = elasticsearch.viewer() else {
         return Ok(None);
     };
-    let viewer = KnownHost::get_known(&viewer_name.to_string())
-        .ok_or_else(|| eyre!("Output deployment viewer '{viewer_name}' was not found"))?;
+    let viewer = KnownHost::get_known(&viewer_name.to_string()).ok_or_else(|| {
+        CategorizedError::not_found(format!("Output deployment viewer '{viewer_name}' was not found"))
+    })?;
     validate_view_host(&viewer, viewer_name)?;
     let auth = viewer.get_auth_for_direction(CredentialDirection::Output)?;
     Ok(Some((viewer, auth)))

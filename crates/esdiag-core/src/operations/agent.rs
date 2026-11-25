@@ -4,7 +4,7 @@
 
 use crate::{
     agent::builder::{AgentBuilderClient, AgentBuilderLocation, AgentFailure, AgentProgress, AgentRequest},
-    cli_output::{AgentUsageResult, CliOutcome, CommandOutcome},
+    cli_output::{AgentUsageResult, CategorizedError, CliFailureCategory, CliOutcome, CommandOutcome},
     client::KibanaClient,
     data::OutputDeployment,
 };
@@ -49,9 +49,12 @@ where
     let viewer = deployment
         .kibana
         .ok_or_else(|| eyre!("The configured output deployment has no Kibana viewer"))?;
-    let viewer_auth = deployment
-        .kibana_auth
-        .ok_or_else(|| eyre!("The configured output deployment has no Kibana viewer authentication"))?;
+    let viewer_auth = deployment.kibana_auth.ok_or_else(|| {
+        CategorizedError::new(
+            CliFailureCategory::AuthenticationFailed,
+            "The configured output deployment has no Kibana viewer authentication",
+        )
+    })?;
     let viewer_url = viewer.get_url()?;
     let location = AgentBuilderLocation::new(viewer_url.clone(), agent_builder_space(&viewer_url));
     let client_url = if std::env::var("ESDIAG_CONTAINER_LOCAL_STACK").ok().as_deref() == Some("full") {

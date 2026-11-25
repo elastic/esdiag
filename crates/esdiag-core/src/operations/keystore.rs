@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::{
-    cli_output::{CliOutcome, CommandOutcome, KeystoreOperation},
+    cli_output::{CategorizedError, CliOutcome, CommandOutcome, KeystoreOperation},
     data::{
         SecretAuth, UnlockStatus, add_secret, clear_unlock_lease, create_keystore, get_keystore_path, get_unlock_path,
         get_unlock_status, keystore_exists, remove_secret, update_secret, validate_existing_keystore_password,
@@ -186,9 +186,10 @@ fn expected_secret_auth(
         (None, None, None) => Ok(None),
         (Some(apikey), None, None) => Ok(Some(SecretAuth::apikey(apikey))),
         (None, Some(username), Some(password)) => Ok(Some(SecretAuth::basic(username, password))),
-        _ => Err(eyre!(
-            "Invalid auth options: use either --apikey or --user with --password"
-        )),
+        _ => Err(CategorizedError::invalid_input(
+            "Invalid auth options: use either --apikey or --user with --password",
+        )
+        .into()),
     }
 }
 

@@ -4,6 +4,7 @@
 
 //! Flow-neutral operations used by terminal and future GUI onboarding.
 
+use crate::cli_output::CategorizedError;
 use crate::data::{
     Application, ApplicationConfig, HostRole, Job, JobOutput, KnownHost, KnownHostBuilder, OnboardingWorkflow,
     OutputDeployment, SavedJobs, SecretAuth, keystore_exists, runtime_output_is_declared, save_saved_jobs,
@@ -338,8 +339,9 @@ pub fn clear_collection_deferral() -> Result<()> {
 
 pub fn save_default_processing_job(name: String, collect_host: String) -> Result<ApplicationConfig> {
     validate_name(&name, "default job")?;
-    let collect = KnownHost::get_known(&collect_host)
-        .ok_or_else(|| eyre!("Configured collect host '{collect_host}' was not found"))?;
+    let collect = KnownHost::get_known(&collect_host).ok_or_else(|| {
+        CategorizedError::not_found(format!("Configured collect host '{collect_host}' was not found"))
+    })?;
     if !collect.has_role(HostRole::Collect) {
         return Err(eyre!(
             "Configured collect host '{collect_host}' must include role 'collect'"

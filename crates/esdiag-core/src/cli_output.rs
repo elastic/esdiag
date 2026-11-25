@@ -462,6 +462,72 @@ impl CliFailureCategory {
     }
 }
 
+/// An error raised with the failure category it reports. Displays as the error
+/// it holds.
+pub struct CategorizedError {
+    category: CliFailureCategory,
+    message: String,
+    source: Option<eyre::Report>,
+}
+
+impl CategorizedError {
+    pub fn new(category: CliFailureCategory, message: impl Into<String>) -> Self {
+        Self {
+            category,
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::new(CliFailureCategory::NotFound, message)
+    }
+
+    pub fn invalid_input(message: impl Into<String>) -> Self {
+        Self::new(CliFailureCategory::InvalidInput, message)
+    }
+}
+
+impl std::fmt::Debug for CategorizedError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CategorizedError")
+            .field("category", &self.category)
+            .field("message", &self.message)
+            .finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Display for CategorizedError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for CategorizedError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.source.as_ref().map(|source| source.as_ref())
+    }
+}
+
+/// Names the failure category of an operation's errors. A more specific
+/// category raised inside the operation still wins.
+pub trait CategorizeFailure<T> {
+    fn categorize(self, category: CliFailureCategory) -> eyre::Result<T>;
+}
+
+impl<T> CategorizeFailure<T> for eyre::Result<T> {
+    fn categorize(self, category: CliFailureCategory) -> eyre::Result<T> {
+        self.map_err(|source| {
+            eyre::Report::new(CategorizedError {
+                category,
+                message: source.to_string(),
+                source: Some(source),
+            })
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JobStage {
@@ -481,8 +547,14 @@ pub struct CompletedStages {
     pub send: Option<SendResult>,
 }
 
+/// The category of `error`, from its typed causes and never from its message,
+/// which can hold paths and names the user chose.
 pub fn classify_failure(error: &eyre::Report) -> CliFailureCategory {
-    if error.downcast_ref::<crate::data::SecretAlreadyExists>().is_some() {
+    use crate::job::{JobExecutionFailure, SavedJobNotFound};
+    if error
+        .chain()
+        .any(|cause| cause.is::<crate::data::SecretAlreadyExists>())
+    {
         return CliFailureCategory::Conflict;
     }
     if let Some(response) = http_response_details(error) {
@@ -494,22 +566,20 @@ pub fn classify_failure(error: &eyre::Report) -> CliFailureCategory {
             _ => CliFailureCategory::InvalidInput,
         };
     }
-    let message = error.to_string().to_ascii_lowercase();
-    if message.contains("not found") {
-        CliFailureCategory::NotFound
-    } else if message.contains("auth") || message.contains("credential") {
-        CliFailureCategory::AuthenticationFailed
-    } else if message.contains("collect") {
-        CliFailureCategory::CollectionFailed
-    } else if message.contains("process") {
-        CliFailureCategory::ProcessingFailed
-    } else if message.contains("Elastic Upload Service") || message.contains("send") {
-        CliFailureCategory::SendFailed
-    } else if message.contains("keystore") || message.contains("secret") {
-        CliFailureCategory::KeystoreFailed
-    } else {
-        CliFailureCategory::InvalidInput
+    if let Some(failure) = error.downcast_ref::<JobExecutionFailure>() {
+        return failure.stage.failure_category();
     }
+    if error.chain().any(|cause| cause.is::<crate::data::KeystoreLocked>()) {
+        return CliFailureCategory::KeystoreFailed;
+    }
+    if error.chain().any(|cause| cause.is::<SavedJobNotFound>()) {
+        return CliFailureCategory::NotFound;
+    }
+    error
+        .chain()
+        .filter_map(|cause| cause.downcast_ref::<CategorizedError>())
+        .last()
+        .map_or(CliFailureCategory::InvalidInput, |failure| failure.category)
 }
 
 pub fn safe_failure_message(error: &eyre::Report) -> String {
@@ -677,10 +747,11 @@ pub fn structured_failure(error: &eyre::Report) -> CliFailure {
         }
         return failure;
     };
-    let (category, failed_stage) = match job_failure.stage {
-        FailedStage::Collect => (CliFailureCategory::CollectionFailed, JobStage::Collect),
-        FailedStage::Process => (CliFailureCategory::ProcessingFailed, JobStage::Process),
-        FailedStage::Send => (CliFailureCategory::SendFailed, JobStage::Send),
+    let category = job_failure.stage.failure_category();
+    let failed_stage = match job_failure.stage {
+        FailedStage::Collect => JobStage::Collect,
+        FailedStage::Process => JobStage::Process,
+        FailedStage::Send => JobStage::Send,
     };
     let outcome = &job_failure.outcome;
     let completed = CompletedStages {
@@ -715,6 +786,7 @@ pub fn structured_failure(error: &eyre::Report) -> CliFailure {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use eyre::WrapErr;
 
     #[test]
     fn yaml_and_json_have_stable_discriminators_and_blank_separators() {
@@ -917,7 +989,7 @@ mod tests {
 
     #[test]
     fn setup_errors_report_the_setup_failed_category() {
-        let error = eyre::eyre!("Context 'missing' was not found");
+        let error = eyre::Report::new(CategorizedError::not_found("Context 'missing' was not found"));
         assert_eq!(command_failure(&error, true).category, "setup_failed");
         assert_eq!(command_failure(&error, false).category, "not_found");
     }
@@ -983,6 +1055,76 @@ mod tests {
             value["recovery"]["kibana_url"],
             "https://kb.example/app/agent_builder/conversations/conv-123"
         );
+    }
+
+    #[test]
+    fn messages_do_not_choose_the_category() {
+        for message in [
+            "Unable to read /Users/me/auth-backups/diag.zip",
+            "Failed to write /data/process/out.ndjson",
+            "Host 'collect-not found-send' must include role 'view'",
+            "/srv/keystore/credentials/secret.yml is a directory",
+        ] {
+            let error = eyre::eyre!("{message}");
+            assert_eq!(classify_failure(&error), CliFailureCategory::InvalidInput, "{message}");
+            assert_eq!(safe_failure_message(&error), "command execution failed", "{message}");
+        }
+    }
+
+    #[test]
+    fn categorized_errors_keep_their_message_and_the_most_specific_category() {
+        let error = Err::<(), _>(eyre::eyre!(
+            "Keystore path '/srv/collect/secrets.yml' has no parent directory"
+        ))
+        .categorize(CliFailureCategory::KeystoreFailed)
+        .wrap_err("Failed to process /auth/send")
+        .unwrap_err();
+        assert_eq!(classify_failure(&error), CliFailureCategory::KeystoreFailed);
+
+        let error = Err::<(), _>(eyre::Report::new(CategorizedError::not_found(
+            "Secret 'collect' not found",
+        )))
+        .categorize(CliFailureCategory::KeystoreFailed)
+        .unwrap_err();
+        assert_eq!(classify_failure(&error), CliFailureCategory::NotFound);
+        assert_eq!(error.to_string(), "Secret 'collect' not found");
+
+        let error = Err::<(), _>(eyre::Report::new(crate::receiver::ElasticsearchRequestError::new(
+            elasticsearch::http::StatusCode::UNAUTHORIZED,
+            String::new(),
+            5,
+            0,
+        )))
+        .categorize(CliFailureCategory::SendFailed)
+        .unwrap_err();
+        assert_eq!(classify_failure(&error), CliFailureCategory::AuthenticationFailed);
+        assert_eq!(structured_failure(&error).status, Some(401));
+    }
+
+    #[test]
+    fn job_failures_report_the_failed_stage() {
+        use crate::job::{FailedStage, JobExecutionFailure, JobOutcome};
+        for (stage, category, message) in [
+            (
+                FailedStage::Collect,
+                "collection_failed",
+                "diagnostic collection failed",
+            ),
+            (
+                FailedStage::Process,
+                "processing_failed",
+                "diagnostic processing failed",
+            ),
+            (FailedStage::Send, "send_failed", "diagnostic send failed"),
+        ] {
+            let failure = structured_failure(&eyre::Report::new(JobExecutionFailure::new(
+                stage,
+                JobOutcome::default(),
+                eyre::eyre!("Unable to open /auth/not found/diag.zip"),
+            )));
+            assert_eq!(failure.category, category);
+            assert_eq!(failure.message, message);
+        }
     }
 
     #[test]
