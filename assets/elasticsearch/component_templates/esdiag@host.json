@@ -32,20 +32,16 @@
             }
           }
         },
-        "elasticsearch": {
+        "node": {
           "properties": {
-            "node": {
-              "properties": {
-                "id": {
-                  "type": "keyword"
-                },
-                "match": {
-                  "type": "keyword"
-                },
-                "name": {
-                  "type": "keyword"
-                }
-              }
+            "id": {
+              "type": "keyword"
+            },
+            "match": {
+              "type": "keyword"
+            },
+            "name": {
+              "type": "keyword"
             }
           }
         },

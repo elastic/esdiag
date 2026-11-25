@@ -67,7 +67,7 @@
             "dataViewId": "c8db3cfe-1ec8-4763-9714-e1109cf707ac",
             "exclude": null,
             "existsSelected": null,
-            "fieldName": "elasticsearch.node.name",
+            "fieldName": "node.name",
             "hideActionBar": null,
             "hideExclude": null,
             "hideExists": null,
@@ -81,7 +81,7 @@
               "by": "_count",
               "direction": "desc"
             },
-            "title": "elasticsearch.node.name"
+            "title": "node.name"
           },
           "grow": true,
           "order": 2,

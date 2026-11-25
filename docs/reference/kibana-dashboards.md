@@ -125,7 +125,7 @@ graphs, with one metric per chart:
 The Compute, Storage, and Network charts aggregate every host in the selection, so
 filter to one `host.name` first. Kibana cannot require that filter.
 
-Every dashboard has controls for `host.name` and `elasticsearch.node.name`.
+Every dashboard has controls for `host.name` and `node.name`.
 Compute, Network, and System add `diagnostic.id`; Compute adds `sar.cpu.id`;
 Storage adds `sar.io.device_class`; Network adds `sar.network.interface`. A
 panel whose section is missing from `sar.txt` shows no data. Selecting a device
@@ -157,8 +157,9 @@ best guess. Filesystem inode counts are `sar.filesystem.ifree.count` and
 UTC and sets `sar.timezone` to `assumed_utc`. If the host ran in another
 timezone, the samples are shifted by that offset.
 
-`elasticsearch.node.id` and `elasticsearch.node.name` list the bundle's nodes
-that run on the host. `elasticsearch.node.match` records how ESDiag found them:
+`node.id` and `node.name` list the bundle's nodes that run on the host, so a
+`node.name` filter carries over between the Host Activity dashboards and the
+node dashboards. `node.match` records how ESDiag found them:
 
 | Value | Evidence |
 |---|---|
@@ -166,4 +167,4 @@ that run on the host. `elasticsearch.node.match` records how ESDiag found them:
 | `k8s_node_name` | The SAR hostname equals a node's `k8s_node_name` attribute (ECK), or its short name does and every match names the same Kubernetes node. `kubernetes.node.name` is set too. |
 | `hostname` | The SAR hostname equals a node's host, name, or HTTP publish host, or matches one of them unambiguously by short name. |
 | `manifest_host` | The bundle manifest's collection target equals a node's host, IP, or HTTP publish host. |
-| `none` | No evidence. `elasticsearch.node.id` and `elasticsearch.node.name` are omitted. |
+| `none` | No evidence. `node.id` and `node.name` are omitted. |

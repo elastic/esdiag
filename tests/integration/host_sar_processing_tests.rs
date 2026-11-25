@@ -190,14 +190,21 @@ fn sar_bundle_exports_host_documents_correlated_with_colocated_nodes() {
         assert_eq!(doc["data_stream"]["dataset"], "host.sar");
         assert_eq!(doc["host"]["name"], "node-01.example.com");
         assert_eq!(doc["host"]["ip"], json!(["10.0.0.10"]));
-        assert_eq!(doc["elasticsearch"]["node"]["match"], "listen_socket");
-        assert_eq!(doc["elasticsearch"]["node"]["id"], json!(["node-a", "node-b"]));
-        assert_eq!(
-            doc["elasticsearch"]["node"]["name"],
-            json!(["instance-0", "instance-1"])
-        );
+        assert_eq!(doc["node"]["match"], "listen_socket");
+        assert_eq!(doc["node"]["id"], json!(["node-a", "node-b"]));
+        assert_eq!(doc["node"]["name"], json!(["instance-0", "instance-1"]));
         assert_eq!(doc["sar.timezone"], "assumed_utc");
-        assert!(doc.get("node").is_none(), "SAR documents carry no node.* enrichment");
+        let node_fields: Vec<&str> = doc["node"]
+            .as_object()
+            .expect("node object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            node_fields,
+            ["id", "match", "name"],
+            "SAR documents carry no node.* enrichment"
+        );
         assert_ne!(doc["diagnostic"]["collection_date"], doc["@timestamp"]);
     }
 

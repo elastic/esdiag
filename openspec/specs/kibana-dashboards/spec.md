@@ -118,7 +118,7 @@ SAR metrics describe a host. The dashboards expect the user to filter to one hos
 
 Every dashboard SHALL open with two links panels, by reference to shared links objects: the Elasticsearch overview links on the left and the "Hosts Overviews" links, linking all four dashboards, on the right. Hosts Overview SHALL carry the same pair, with the Hosts Overviews links in place of the Nodes Overviews links, and the Elasticsearch overview links SHALL link to Hosts Overview last, after Search.
 
-Every dashboard SHALL provide controls for `host.name` and `elasticsearch.node.name`, plus its own controls:
+Every dashboard SHALL provide controls for `host.name` and `node.name`, plus its own controls:
 - Compute: `diagnostic.id` and `sar.cpu.id`.
 - Storage: `sar.io.device_class`.
 - Network: `diagnostic.id` and `sar.network.interface`.
@@ -141,7 +141,7 @@ Every dashboard SHALL provide controls for `host.name` and `elasticsearch.node.n
 - **GIVEN** SAR documents for a host correlated with two Elasticsearch nodes
 - **WHEN** the user opens the System dashboard
 - **THEN** the host appears once per `host.name` series, not once per node
-- **AND** filtering `elasticsearch.node.name` to either node shows that host's data
+- **AND** filtering `node.name` to either node shows that host's data
 
 #### Scenario: All CPUs
 - **GIVEN** `cpu` documents for a host with several CPUs

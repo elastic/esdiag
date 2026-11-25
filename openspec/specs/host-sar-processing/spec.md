@@ -184,7 +184,7 @@ When host-to-node correlation finds concrete listening IP addresses, `host.ip` S
 ### Requirement: Co-located Elasticsearch node correlation
 The system SHALL correlate a SAR host with zero, one, or many Elasticsearch nodes from the same diagnostic's node list.
 
-Correlated nodes SHALL be recorded as multi-valued `elasticsearch.node.id` and `elasticsearch.node.name`. The method that produced the match SHALL be recorded in `elasticsearch.node.match`, one of `listen_socket`, `k8s_node_name`, `hostname`, `manifest_host`, or `none`.
+Correlated nodes SHALL be recorded as multi-valued `node.id` and `node.name`, the same keyword fields every other ESDiag index uses, so dashboard filters on them apply across indices. The method that produced the match SHALL be recorded in `node.match`, one of `listen_socket`, `k8s_node_name`, `hostname`, `manifest_host`, or `none`.
 
 The system SHALL apply these methods in order and use the first that matches at least one node:
 1. **`listen_socket`**: the node's transport or HTTP publish `ip:port` equals a listening socket with a concrete, non-loopback address in `syscalls/ss.txt`, or in `syscalls/netstat.txt` when `ss.txt` is absent.
@@ -192,17 +192,17 @@ The system SHALL apply these methods in order and use the first that matches at 
 3. **`hostname`**: the SAR hostname equals the node's `host`, `name`, or HTTP publish hostname, case-insensitively, by full name; or, by short name, only when every short-name match shares the same full host value.
 4. **`manifest_host`**: the collection target host recorded in the bundle manifest matches the node's `host`, `ip`, or HTTP publish hostname. A loopback or `localhost` target SHALL never match.
 
-SAR documents SHALL NOT carry the single-node `node.*` enrichment fields.
+SAR documents SHALL NOT carry any other `node.*` field, such as the single-node roles, tier, or version enrichment, because a host can run several nodes.
 
 #### Scenario: ECE allocator with multiple nodes
 - **GIVEN** a host listening on `10.0.0.5:18001` and `10.0.0.5:18002`, and two nodes publishing transport addresses `10.0.0.5:18001` and `10.0.0.5:18002`
 - **WHEN** the file is processed
-- **THEN** every SAR document MUST carry both node IDs and both node names in `elasticsearch.node.id` and `elasticsearch.node.name`, and `elasticsearch.node.match` = `listen_socket`
+- **THEN** every SAR document MUST carry both node IDs and both node names in `node.id` and `node.name`, and `node.match` = `listen_socket`
 
 #### Scenario: Other allocators' nodes are excluded
 - **GIVEN** a diagnostic whose node list includes nodes on other hosts, with publish addresses this host does not listen on
 - **WHEN** the file is processed
-- **THEN** those nodes MUST NOT appear in `elasticsearch.node.*`
+- **THEN** those nodes MUST NOT appear in `node.id` or `node.name`
 
 #### Scenario: Wildcard binds do not match
 - **GIVEN** a host whose only Elasticsearch listening sockets are bound to `0.0.0.0` or `[::]`
@@ -212,7 +212,7 @@ SAR documents SHALL NOT carry the single-node `node.*` enrichment fields.
 #### Scenario: ECK Kubernetes node
 - **GIVEN** a SAR hostname `worker-3` and two nodes with attribute `k8s_node_name` = `worker-3`, but no listening-socket match
 - **WHEN** the file is processed
-- **THEN** both nodes MUST be correlated with `elasticsearch.node.match` = `k8s_node_name`
+- **THEN** both nodes MUST be correlated with `node.match` = `k8s_node_name`
 - **AND** every SAR document MUST carry `kubernetes.node.name` = `worker-3`
 
 #### Scenario: Ambiguous Kubernetes short name
@@ -228,7 +228,7 @@ SAR documents SHALL NOT carry the single-node `node.*` enrichment fields.
 #### Scenario: No correlation evidence
 - **GIVEN** a bundle whose node list is missing or matches by no method
 - **WHEN** the file is processed
-- **THEN** SAR documents MUST still be exported with `host.*` identity, `elasticsearch.node.match` = `none`, and no `elasticsearch.node.id` or `elasticsearch.node.name`
+- **THEN** SAR documents MUST still be exported with `host.*` identity, `node.match` = `none`, and no `node.id` or `node.name`
 
 ### Requirement: Sample timestamps
 Each SAR document's `@timestamp` SHALL be the SAR sample time. `diagnostic.collection_date` SHALL remain the bundle collection time. SAR times without a timezone SHALL be interpreted as UTC, and every SAR document SHALL record `sar.timezone` = `assumed_utc`. The system SHALL NOT derive a timezone from `syscalls/uname.txt`.

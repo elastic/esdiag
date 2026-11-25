@@ -45,7 +45,7 @@ fn is_concrete(ip: IpAddr) -> bool {
     !ip.is_unspecified() && !ip.is_loopback()
 }
 
-/// How the SAR host was tied to its nodes, stored in `elasticsearch.node.match`.
+/// How the SAR host was tied to its nodes, stored in `node.match`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchMethod {
     ListenSocket,
@@ -224,7 +224,7 @@ impl NodeCorrelation {
     }
 }
 
-/// The `host.*`, `elasticsearch.node.*`, and `kubernetes.node.*` fields every
+/// The `host.*`, `node.*`, and `kubernetes.node.*` fields every
 /// SAR document carries.
 pub fn host_envelope(
     header: &SarHeader,
@@ -263,7 +263,7 @@ pub fn host_envelope(
 
     let mut envelope = Map::new();
     envelope.insert("host".into(), Value::Object(host));
-    envelope.insert("elasticsearch".into(), json!({ "node": node }));
+    envelope.insert("node".into(), Value::Object(node));
     if let Some(kubernetes_node) = &correlation.kubernetes_node {
         envelope.insert("kubernetes".into(), json!({ "node": { "name": kubernetes_node } }));
     }
@@ -505,18 +505,19 @@ mod tests {
         assert_eq!(envelope["host"]["architecture"], "x86_64");
         assert_eq!(envelope["host"]["cpu"]["count"], 4);
         assert_eq!(envelope["host"]["ip"], json!(["10.0.0.5"]));
-        assert_eq!(envelope["elasticsearch"]["node"]["id"], json!(["a", "b"]));
         assert_eq!(
-            envelope["elasticsearch"]["node"]["name"],
-            json!(["instance-a", "instance-b"])
+            envelope["node"],
+            json!({
+                "id": ["a", "b"],
+                "name": ["instance-a", "instance-b"],
+                "match": "listen_socket",
+            })
         );
-        assert_eq!(envelope["elasticsearch"]["node"]["match"], "listen_socket");
         assert!(envelope.get("kubernetes").is_none());
-        assert!(envelope.get("node").is_none());
 
         let none = correlate("other", &[], &[], None);
         let envelope = Value::Object(host_envelope(&header, &[], &none));
-        assert_eq!(envelope["elasticsearch"]["node"], json!({"match": "none"}));
+        assert_eq!(envelope["node"], json!({"match": "none"}));
         assert!(envelope["host"].get("ip").is_none());
     }
 }
