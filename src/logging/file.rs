@@ -203,6 +203,14 @@ pub(crate) fn parse_daily_log_name(file_name: &str) -> Option<(NaiveDate, bool)>
     }
 }
 
+/// Parses an abandoned Windows staging filename `esdiag-YYYY-MM-DD.log.<id>.compressing`,
+/// returning its log date.
+pub(crate) fn parse_staged_daily_log_name(file_name: &str) -> Option<NaiveDate> {
+    let rest = file_name.strip_prefix("esdiag-")?;
+    let without_suffix = rest.strip_suffix(".compressing")?;
+    let (date_str, _) = without_suffix.split_once(".log.")?;
+    NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()
+}
 /// Compresses all uncompressed `esdiag-YYYY-MM-DD.log` files in `dir` with
 /// `date < today` into `esdiag-YYYY-MM-DD.log.gz` using atomic temp-file rename
 /// and `0600` permissions on Unix. Safe under concurrent processes.
@@ -228,19 +236,35 @@ fn compress_previous_logs_with_cancel(dir: &Path, today: NaiveDate, cancelled: &
         let Some(name_str) = name.to_str() else {
             continue;
         };
-        let Some((date, is_compressed)) = parse_daily_log_name(name_str) else {
-            continue;
-        };
-        if is_compressed || date >= today {
+        if let Some((date, is_compressed)) = parse_daily_log_name(name_str) {
+            if is_compressed || date >= today {
+                continue;
+            }
+            let src_path = entry.path();
+            let gz_path = dir.join(format!("{name_str}.gz"));
+            if gz_path.exists() {
+                continue;
+            }
+            if let Err(err) = compress_single_log(&src_path, &gz_path, cancelled) {
+                eprintln!("Failed to compress log file '{}': {err}", src_path.display());
+            }
             continue;
         }
-        let src_path = entry.path();
-        let gz_path = dir.join(format!("{name_str}.gz"));
-        if gz_path.exists() {
-            continue;
-        }
-        if let Err(err) = compress_single_log(&src_path, &gz_path, cancelled) {
-            eprintln!("Failed to compress log file '{}': {err}", src_path.display());
+        #[cfg(windows)]
+        if let Some(date) = parse_staged_daily_log_name(name_str) {
+            if date >= today {
+                continue;
+            }
+            let staging_path = entry.path();
+            let src_path = dir.join(daily_log_filename(date));
+            let gz_path = dir.join(format!("{}.gz", daily_log_filename(date)));
+            if gz_path.exists() {
+                let _ = fs::remove_file(&staging_path);
+                continue;
+            }
+            if let Err(err) = compress_staged_log(&staging_path, &src_path, &gz_path, cancelled) {
+                eprintln!("Failed to recover staged log file '{}': {err}", staging_path.display());
+            }
         }
     }
 }
@@ -318,6 +342,29 @@ fn compress_single_log(src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) 
         Err(err) => return Err(err),
     }
 
+    compress_staged_log(&staging_path, src_path, gz_path, cancelled)
+}
+
+#[cfg(windows)]
+fn compress_staged_log(
+    staging_path: &Path,
+    src_path: &Path,
+    gz_path: &Path,
+    cancelled: &AtomicBool,
+) -> io::Result<()> {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    // Claim exclusive ownership of the staging file (`share_mode(0)`) so
+    // concurrent recovery/pruning scans skip actively compressed staging files
+    // via `ERROR_SHARING_VIOLATION` (32), while abandoned staging files from an
+    // interrupted exit are recovered on the next run.
+    let mut input = match OpenOptions::new().read(true).share_mode(0).open(staging_path) {
+        Ok(file) => file,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(err) if err.raw_os_error() == Some(32) => return Ok(()),
+        Err(err) => return Err(err),
+    };
+
     let tmp_name = format!(
         "{}.{}-{}.tmp",
         gz_path.file_name().and_then(|n| n.to_str()).unwrap_or("esdiag.log.gz"),
@@ -331,7 +378,6 @@ fn compress_single_log(src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) 
 
     let mut was_cancelled = false;
     let compress_result = (|| -> io::Result<()> {
-        let mut input = File::open(&staging_path)?;
         let tmp_file = OpenOptions::new().write(true).create_new(true).open(&tmp_path)?;
         let mut encoder = GzEncoder::new(tmp_file, Compression::default());
         let mut buf = [0u8; 64 * 1024];
@@ -352,32 +398,38 @@ fn compress_single_log(src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) 
     })();
 
     if was_cancelled {
+        drop(input);
         let _ = fs::remove_file(&tmp_path);
-        restore_staged_log(&staging_path, src_path);
+        restore_staged_log(staging_path, src_path);
         return Ok(());
     }
 
     if let Err(err) = compress_result {
+        drop(input);
         let _ = fs::remove_file(&tmp_path);
-        restore_staged_log(&staging_path, src_path);
+        restore_staged_log(staging_path, src_path);
         return Err(err);
     }
 
     if gz_path.exists() {
+        drop(input);
         let _ = fs::remove_file(&tmp_path);
-        let _ = fs::remove_file(&staging_path);
+        let _ = fs::remove_file(staging_path);
         return Ok(());
     }
 
     if let Err(err) = fs::rename(&tmp_path, gz_path) {
+        drop(input);
         let _ = fs::remove_file(&tmp_path);
-        restore_staged_log(&staging_path, src_path);
+        restore_staged_log(staging_path, src_path);
         return Err(err);
     }
 
-    match fs::remove_file(&staging_path) {
+    drop(input);
+    match fs::remove_file(staging_path) {
         Ok(()) => Ok(()),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(err) if err.raw_os_error() == Some(32) => Ok(()),
         Err(err) => Err(err),
     }
 }
@@ -486,7 +538,14 @@ fn prune_expired_logs_with_cancel(dir: &Path, today: NaiveDate, retention_days: 
         let Some(name_str) = name.to_str() else {
             continue;
         };
-        let Some((date, is_compressed)) = parse_daily_log_name(name_str) else {
+        let (date, is_compressed) = if let Some(parsed) = parse_daily_log_name(name_str) {
+            parsed
+        } else if let Some(date) = parse_staged_daily_log_name(name_str) {
+            // Treat abandoned Windows `.compressing` staging files as expired
+            // when older than the retention window (active staging files are
+            // held with `share_mode(0)` so `remove_file` skips them with error 32).
+            (date, true)
+        } else {
             continue;
         };
         if date >= cutoff {
@@ -685,5 +744,23 @@ mod tests {
 
         let entries: Vec<_> = fs::read_dir(dir).unwrap().flatten().collect();
         assert_eq!(entries.len(), 1, "cancelled compression must not leave .tmp files");
+    }
+
+    #[test]
+    fn parse_staged_daily_log_name_and_prune_abandoned_staging_file() {
+        let parsed = super::parse_staged_daily_log_name("esdiag-2026-10-20.log.1234-uuid.compressing");
+        assert_eq!(parsed, Some(d(2026, 10, 20)));
+        assert_eq!(super::parse_staged_daily_log_name("notes.compressing"), None);
+
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let expired_staged = dir.join("esdiag-2026-10-20.log.1234-uuid.compressing");
+        let recent_staged = dir.join("esdiag-2026-11-23.log.1234-uuid.compressing");
+        fs::write(&expired_staged, b"old").unwrap();
+        fs::write(&recent_staged, b"recent").unwrap();
+
+        prune_expired_logs(dir, d(2026, 11, 24), 30);
+        assert!(!expired_staged.exists(), "expired abandoned staging file must be pruned");
+        assert!(recent_staged.exists(), "within-retention staging file must be preserved");
     }
 }
