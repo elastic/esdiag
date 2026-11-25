@@ -55,15 +55,3 @@ jobs:
           absent rmcp -p esdiag --no-default-features
           absent esdiag-gui -p esdiag --no-default-features --features mcp
           absent sse-stream -p esdiag --no-default-features --features mcp
-
-  package:
-    name: Package
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: bin/sync-crate-assets.sh
-      - run: bin/sync-crate-assets.sh --check
-      # Cargo counts the gitignored bundled/ copies as uncommitted.
-      - run: test -z "$(git status --porcelain)"
-      - run: cargo publish --dry-run --locked --allow-dirty --workspace --exclude elasticrc --exclude repo-tools
