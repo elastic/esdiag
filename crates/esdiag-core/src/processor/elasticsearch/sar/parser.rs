@@ -81,6 +81,10 @@ struct ActiveSection {
     entity: Vec<usize>,
     /// Interrupt numbers of a matrix header's columns, by column index.
     interrupts: Vec<Option<String>>,
+    /// The interrupt section's `INTR` and `CPU` columns; a header without
+    /// `INTR` reports only the host total.
+    interrupt_column: Option<usize>,
+    cpu_column: Option<usize>,
     filesystem_column: Option<usize>,
     mountpoint_column: Option<usize>,
     /// Where free-text USB manufacturer and product columns start.
@@ -258,6 +262,8 @@ impl ActiveSection {
             summary_metrics: Vec::new(),
             entity: Vec::new(),
             interrupts: Vec::new(),
+            interrupt_column: None,
+            cpu_column: None,
             filesystem_column: None,
             mountpoint_column: None,
             description_column: columns.len(),
@@ -269,7 +275,10 @@ impl ActiveSection {
                 active.metrics = metrics_except(&[0], section.prefix);
             }
             Layout::Interrupts => {
-                active.entity = [position("INTR"), position("CPU")].into_iter().flatten().collect();
+                let (interrupt, cpu) = (position("INTR"), position("CPU"));
+                active.interrupt_column = interrupt;
+                active.cpu_column = cpu;
+                active.entity = [interrupt, cpu].into_iter().flatten().collect();
                 active.metrics = metrics_except(&active.entity, section.prefix);
                 active.summary_metrics = metrics_except(&active.entity, "sar.interrupts");
             }
@@ -370,8 +379,11 @@ impl ActiveSection {
                 push(Target::Entity { metricset, keys }, self.fields(&self.metrics, cells));
             }
             Layout::Interrupts => {
-                let interrupt = cells.get(self.entity[0]).copied().unwrap_or_default();
-                let cpu = self.entity.get(1).and_then(|index| cells.get(*index)).copied();
+                let interrupt = match self.interrupt_column {
+                    Some(column) => cells.get(column).copied().unwrap_or_default(),
+                    None => "sum",
+                };
+                let cpu = self.cpu_column.and_then(|column| cells.get(column)).copied();
                 let all_cpus = cpu.is_none_or(|cpu| cpu.eq_ignore_ascii_case("all"));
                 if interrupt.eq_ignore_ascii_case("sum") && all_cpus {
                     push(Target::Summary, self.fields(&self.summary_metrics, cells));
@@ -725,6 +737,27 @@ mod tests {
             field(&records[1], "sar.interrupt.intr_per_sec"),
             Some(&SarValue::Float(12.0))
         );
+    }
+
+    #[test]
+    fn interrupt_headers_without_an_intr_column_report_the_total() {
+        let (records, _) = parse(&format!("{HEADER}\n\n12:00:01 AM intr/s\n12:10:00 AM 500.00\n"));
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].target, Target::Summary);
+        assert_eq!(
+            field(&records[0], "sar.interrupts.intr_per_sec"),
+            Some(&SarValue::Float(500.0))
+        );
+
+        let (records, _) = parse(&format!(
+            "{HEADER}\n\n12:00:01 AM CPU intr/s\n12:10:00 AM all 500.00\n12:10:00 AM 0 12.00\n"
+        ));
+        assert_eq!(records[0].target, Target::Summary);
+        assert!(matches!(
+            &records[1].target,
+            Target::Entity { metricset: Metricset::Interrupt, keys }
+                if keys.contains(&("sar.interrupt.cpu", SarValue::Text("0".to_string())))
+        ));
     }
 
     #[test]
