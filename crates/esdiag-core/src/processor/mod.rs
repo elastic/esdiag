@@ -278,7 +278,7 @@ impl Processor<Ready> {
     }
 
     /// State transition from `Ready` to `Processing`, returning the progress channel
-    async fn start(self) -> Result<Processor<Processing>, Processor<Failed>> {
+    async fn start(self) -> Result<Processor<Processing>, Box<Processor<Failed>>> {
         tracing::debug!("Transitioned: Processor<Processing>");
         let (summary_tx, summary_rx) = mpsc::channel::<ProcessorSummary>(10);
 
@@ -307,7 +307,7 @@ impl Processor<Ready> {
                     report,
                 },
             }),
-            Err(err) => Err(Processor {
+            Err(err) => Err(Box::new(Processor {
                 receiver: self.receiver,
                 exporter: self.exporter,
                 start_time: self.start_time,
@@ -317,7 +317,7 @@ impl Processor<Ready> {
                     error: err.to_string(),
                     report: None,
                 },
-            }),
+            })),
         }
     }
 }
@@ -356,7 +356,7 @@ pub(crate) async fn process_documents(
 /// The actively `Processing` state.
 impl Processor<Processing> {
     #[tracing::instrument(skip_all)]
-    async fn process(self) -> Result<Processor<Completed>, Processor<Failed>> {
+    async fn process(self) -> Result<Processor<Completed>, Box<Processor<Failed>>> {
         tracing::debug!("Processing with async progress updates");
 
         let Processing {
@@ -383,7 +383,7 @@ impl Processor<Processing> {
             Ok(report) => report,
             Err(err) => {
                 tracing::error!("Failed to await summary handle: {}", err);
-                return Err(Processor {
+                return Err(Box::new(Processor {
                     receiver: self.receiver,
                     exporter: self.exporter,
                     start_time: self.start_time,
@@ -393,7 +393,7 @@ impl Processor<Processing> {
                         error: err.to_string(),
                         report: None,
                     },
-                });
+                }));
             }
         };
 
@@ -445,7 +445,7 @@ impl Processor<Processing> {
         }
 
         if let Some(error) = process_error.or(report_error) {
-            return Err(Processor {
+            return Err(Box::new(Processor {
                 receiver: self.receiver,
                 exporter: self.exporter,
                 start_time: self.start_time,
@@ -455,7 +455,7 @@ impl Processor<Processing> {
                     error: error.to_string(),
                     report: Some(report),
                 },
-            });
+            }));
         }
 
         let output = self.exporter.outcome_uri();
@@ -562,11 +562,6 @@ impl Diagnostic {
 
 trait DocumentExporter<T, U> {
     async fn documents_export(self, exporter: &Exporter, lookups: &T, metadata: &U) -> ProcessorSummary;
-
-    #[allow(unused_variables)]
-    async fn export_raw(data: String, exporter: &Exporter, lookups: &T, metadata: &U) -> ProcessorSummary {
-        ProcessorSummary::new("error".to_string())
-    }
 }
 
 trait StreamingDocumentExporter<T, U>: StreamingDataSource {
