@@ -118,18 +118,15 @@ impl DailyLogWriter {
                     compress_previous_logs(&dir, today);
                 }
             };
-            if tokio::runtime::Handle::try_current().is_ok() {
-                // Run rollover maintenance on a detached OS thread rather than
-                // Tokio's blocking pool so runtime shutdown cannot block waiting
-                // for large prior-day compression or stalled filesystem I/O.
-                if let Err(err) = std::thread::Builder::new()
-                    .name("esdiag-log-rollover".into())
-                    .spawn(maintenance)
-                {
-                    eprintln!("Failed to spawn file log rollover maintenance thread: {err}");
-                }
-            } else {
-                maintenance();
+            // Always run rollover maintenance on a detached OS thread so
+            // logging calls from any thread (with or without an entered Tokio
+            // runtime) never block on directory scans or gzip compression, and
+            // Tokio runtime shutdown cannot wait on stalled filesystem I/O.
+            if let Err(err) = std::thread::Builder::new()
+                .name("esdiag-log-rollover".into())
+                .spawn(maintenance)
+            {
+                eprintln!("Failed to spawn file log rollover maintenance thread: {err}");
             }
         }
 
@@ -227,6 +224,17 @@ pub(crate) fn parse_recovery_archive_name(file_name: &str) -> Option<NaiveDate> 
     NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()
 }
 
+/// Parses an abandoned compression temporary file `esdiag-YYYY-MM-DD.log.gz.<id>.tmp`,
+/// returning its log date.
+pub(crate) fn parse_temp_archive_name(file_name: &str) -> Option<NaiveDate> {
+    let rest = file_name.strip_prefix("esdiag-")?;
+    let without_suffix = rest.strip_suffix(".tmp")?;
+    let (date_str, id) = without_suffix.split_once(".log.gz.")?;
+    if id.is_empty() {
+        return None;
+    }
+    NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()
+}
 /// Compresses all uncompressed `esdiag-YYYY-MM-DD.log` files in `dir` with
 /// `date < today` into `esdiag-YYYY-MM-DD.log.gz` using atomic temp-file rename
 /// and `0600` permissions on Unix. Safe under concurrent processes.
@@ -379,7 +387,15 @@ fn compress_staged_log(staging_path: &Path, src_path: &Path, gz_path: &Path, can
 
     let mut was_cancelled = false;
     let compress_result = (|| -> io::Result<()> {
-        let tmp_file = OpenOptions::new().write(true).create_new(true).open(&tmp_path)?;
+        // Open without `FILE_SHARE_DELETE` (`share_mode(0)`) so concurrent
+        // maintenance scans skip active `.tmp` files via
+        // `ERROR_SHARING_VIOLATION` (32), while abandoned `.tmp` files from an
+        // interrupted exit are cleaned up on later runs.
+        let tmp_file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .share_mode(0)
+            .open(&tmp_path)?;
         let mut encoder = GzEncoder::new(tmp_file, Compression::default());
         let mut buf = [0u8; 64 * 1024];
         loop {
@@ -412,19 +428,26 @@ fn compress_staged_log(staging_path: &Path, src_path: &Path, gz_path: &Path, can
         return Err(err);
     }
 
-    let publish_result = if !gz_path.exists() {
-        fs::rename(&tmp_path, gz_path)
-    } else {
-        // Another run already published `gz_path`; publish this staged log
-        // under a unique recovery archive name so no entries are lost.
-        let recovery_name = format!(
-            "{}.{}-{}.gz",
-            src_path.file_name().and_then(|n| n.to_str()).unwrap_or("esdiag.log"),
-            std::process::id(),
-            Uuid::new_v4()
-        );
-        let recovery_path = gz_path.parent().unwrap_or_else(|| Path::new(".")).join(recovery_name);
-        fs::rename(&tmp_path, &recovery_path)
+    // Publish atomically without overwriting an existing archive: `hard_link`
+    // fails with `AlreadyExists` if another process already published
+    // `gz_path`, in which case we publish under a unique recovery archive name
+    // so no staged log entries are lost.
+    let publish_result = match fs::hard_link(&tmp_path, gz_path) {
+        Ok(()) => {
+            let _ = fs::remove_file(&tmp_path);
+            Ok(())
+        }
+        Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {
+            let recovery_name = format!(
+                "{}.{}-{}.gz",
+                src_path.file_name().and_then(|n| n.to_str()).unwrap_or("esdiag.log"),
+                std::process::id(),
+                Uuid::new_v4()
+            );
+            let recovery_path = gz_path.parent().unwrap_or_else(|| Path::new(".")).join(recovery_name);
+            fs::rename(&tmp_path, &recovery_path)
+        }
+        Err(err) => Err(err),
     };
     if let Err(err) = publish_result {
         drop(input);
@@ -462,6 +485,11 @@ fn compress_single_log(src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) 
         options.mode(0o600);
     }
     let tmp_file = options.write(true).create_new(true).open(&tmp_path)?;
+    // Hold an exclusive advisory lock on the temporary file while compressing
+    // so concurrent maintenance scans recognize active `.tmp` files and only
+    // delete abandoned ones left behind by an interrupted exit.
+    #[cfg(unix)]
+    tmp_file.lock()?;
 
     let mut was_cancelled = false;
     let compress_result = (|| -> io::Result<()> {
@@ -545,6 +573,36 @@ fn prune_expired_logs_with_cancel(dir: &Path, today: NaiveDate, retention_days: 
         let Some(name_str) = name.to_str() else {
             continue;
         };
+        if parse_temp_archive_name(name_str).is_some() {
+            let path = entry.path();
+            #[cfg(not(windows))]
+            {
+                let file = match try_open_exclusive_for_maintenance(&path) {
+                    Ok(Some(file)) => file,
+                    Ok(None) => continue,
+                    Err(err) => {
+                        eprintln!("Failed to lock abandoned temp archive '{}': {err}", path.display());
+                        continue;
+                    }
+                };
+                if let Err(err) = fs::remove_file(&path)
+                    && err.kind() != io::ErrorKind::NotFound
+                {
+                    eprintln!("Failed to remove abandoned temp archive '{}': {err}", path.display());
+                }
+                drop(file);
+            }
+            #[cfg(windows)]
+            {
+                if let Err(err) = fs::remove_file(&path)
+                    && err.kind() != io::ErrorKind::NotFound
+                    && err.raw_os_error() != Some(32)
+                {
+                    eprintln!("Failed to remove abandoned temp archive '{}': {err}", path.display());
+                }
+            }
+            continue;
+        }
         let (date, is_compressed) = if let Some(parsed) = parse_daily_log_name(name_str) {
             parsed
         } else if let Some(date) =
@@ -672,15 +730,21 @@ mod tests {
         // Advance day and write again -> rotates to Nov 25 and gzips Nov 24.
         *clock.lock().unwrap() = d(2026, 11, 25);
         writer.make_writer().write_all(b"day two\n").unwrap();
-
         assert_eq!(
             fs::read_to_string(dir.join("esdiag-2026-11-25.log")).unwrap(),
             "day two\n"
         );
+        // Rollover maintenance runs asynchronously on a detached OS thread;
+        // wait briefly for Nov 24 compression to complete.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while (dir.join("esdiag-2026-11-24.log").exists() || !dir.join("esdiag-2026-11-24.log.gz").exists())
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         assert!(!dir.join("esdiag-2026-11-24.log").exists());
         assert!(dir.join("esdiag-2026-11-24.log.gz").exists());
     }
-
     #[test]
     fn retention_prunes_expired_logs_and_preserves_boundary_and_unrelated_files() {
         let tmp = tempfile::tempdir().unwrap();
@@ -775,15 +839,47 @@ mod tests {
             Some(d(2026, 10, 20))
         );
         assert_eq!(super::parse_recovery_archive_name("esdiag-2026-10-20.log.gz"), None);
+        assert_eq!(
+            super::parse_temp_archive_name("esdiag-2026-11-23.log.gz.1234-uuid.tmp"),
+            Some(d(2026, 11, 23))
+        );
+        assert_eq!(super::parse_temp_archive_name("notes.tmp"), None);
 
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
         let expired_staged = dir.join("esdiag-2026-10-20.log.1234-uuid.compressing");
         let expired_recovery = dir.join("esdiag-2026-10-20.log.1234-uuid.gz");
         let recent_staged = dir.join("esdiag-2026-11-23.log.1234-uuid.compressing");
+        let abandoned_tmp = dir.join("esdiag-2026-11-23.log.gz.1234-uuid.tmp");
+        let active_tmp = dir.join("esdiag-2026-11-23.log.gz.5678-uuid.tmp");
         fs::write(&expired_staged, b"old").unwrap();
         fs::write(&expired_recovery, b"old-gz").unwrap();
         fs::write(&recent_staged, b"recent").unwrap();
+        fs::write(&abandoned_tmp, b"partial").unwrap();
+
+        // Simulate an active compressor holding an exclusive lock on `active_tmp`.
+        let active_handle = {
+            #[cfg(unix)]
+            {
+                let file = fs::File::create(&active_tmp).unwrap();
+                file.lock().unwrap();
+                file
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::OpenOptionsExt;
+                fs::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .share_mode(0)
+                    .open(&active_tmp)
+                    .unwrap()
+            }
+            #[cfg(not(any(unix, windows)))]
+            {
+                fs::File::create(&active_tmp).unwrap()
+            }
+        };
 
         prune_expired_logs(dir, d(2026, 11, 24), 30);
         assert!(
@@ -795,5 +891,15 @@ mod tests {
             recent_staged.exists(),
             "within-retention staging file must be preserved"
         );
+        assert!(
+            !abandoned_tmp.exists(),
+            "abandoned compression temp file must be cleaned up"
+        );
+        #[cfg(any(unix, windows))]
+        assert!(
+            active_tmp.exists(),
+            "actively locked compression temp file must be preserved"
+        );
+        drop(active_handle);
     }
 }
