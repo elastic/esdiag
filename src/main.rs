@@ -15,6 +15,8 @@ use esdiag::cli_output::{
     AgentSkillsResult, CliOutcome, CommandOutcome, KeystoreOperation, OutputFormat, command_failure,
     write_terminal_outcome,
 };
+#[cfg(feature = "server")]
+use esdiag::exporter::Exporter;
 use esdiag::operations;
 #[cfg(feature = "server")]
 use esdiag::server::{AuthProvider, RuntimeMode, Server, ServerStartOptions};
@@ -36,7 +38,6 @@ use esdiag::{
     },
     elastic_upload_service,
     env::LOG_LEVEL,
-    exporter::Exporter,
     onboarding::{
         CollectHostInput, OutputDeploymentInput, inspect as inspect_onboarding, save_collect_host, save_default_job,
         save_default_processing_job, save_output_deployment, save_user, save_workflow, saved_job_fits_workflow,
@@ -47,11 +48,12 @@ use redact::Secret;
 use std::{
     ffi::OsString,
     io::{IsTerminal, Write},
-    net::Ipv4Addr,
     path::PathBuf,
-    process::{Command, ExitCode},
+    process::ExitCode,
     time::Duration,
 };
+#[cfg(feature = "server")]
+use std::{net::Ipv4Addr, process::Command};
 use tracing_subscriber::{EnvFilter, Layer, fmt, layer::SubscriberExt};
 use url::Url;
 
@@ -761,6 +763,7 @@ fn cli_command(extension_profile: bool) -> clap::Command {
         return command;
     }
 
+    #[cfg_attr(not(any(feature = "server", feature = "agent", feature = "mcp")), allow(unused_mut))]
     let mut command = command
         .bin_name("elastic diag")
         .mut_arg("agent", |argument| argument.hide(true))
@@ -1024,6 +1027,7 @@ async fn run_local_lifecycle(args: Vec<OsString>) -> Result<CommandOutcome> {
 }
 
 #[tracing::instrument(skip_all)]
+#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 async fn run(cli: Cli, format: OutputFormat) -> Result<CommandOutcome> {
     // If there are CLI arguments but no subcommand, avoid starting the desktop/Tauri
     // entrypoint. The desktop UI should only start when launched absolutely without arguments.
@@ -1708,6 +1712,7 @@ async fn run_init_wizard() -> Result<CommandOutcome> {
         if !reuse_output {
             unlock_keystore(default_unlock_ttl())?;
             let keystore_password = get_password_for_secret_commands()?;
+            #[cfg_attr(not(feature = "setup"), allow(unused_variables))]
             let (output_name, output_url, viewer_url, viewer_name, secret_id, auth, output_client, viewer_client) = loop {
                 let (output_name, output_url, viewer_url, viewer_api_url, secret_id, auth) =
                     match prompt_output_location(
@@ -2249,6 +2254,7 @@ fn needs_processing_default_job(collect_job_saved: bool) -> Result<bool> {
     Ok(collect_job_saved || !inspect_onboarding()?.default_job_configured)
 }
 
+#[cfg(any(feature = "setup", test))]
 fn should_run_output_setup(started_local_stack: bool, approved: impl FnOnce() -> Result<bool>) -> Result<bool> {
     if started_local_stack { Ok(false) } else { approved() }
 }
@@ -2871,16 +2877,18 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "setup", feature = "agent"))]
+    use super::SetupCommands;
     #[cfg(feature = "setup")]
     use super::TrialArgs;
     #[cfg(feature = "agent")]
     use super::{AgentCommands, AgentSkillTarget, install_skill_targets};
     use super::{
-        Cli, Commands, ConfiguredDefaultJob, HostCommands, KeystoreCommands, SetupCommands, cli_command,
-        command_owns_stdout, configured_default_job, default_diagnostic_user_from, detected_esdiag_local_preset,
-        elastic_cli_help_text, ensure_output_deployment_valid, is_agent_mode, keep_default_job,
-        local_core_stack_start_args, missing_extension_process_input, needs_processing_default_job,
-        resolve_log_file_filter, resolve_secret_input_with_prompt, resolve_tracing_filter, saved_job_fits_workflow,
+        Cli, Commands, ConfiguredDefaultJob, HostCommands, KeystoreCommands, cli_command, command_owns_stdout,
+        configured_default_job, default_diagnostic_user_from, detected_esdiag_local_preset, elastic_cli_help_text,
+        ensure_output_deployment_valid, is_agent_mode, keep_default_job, local_core_stack_start_args,
+        missing_extension_process_input, needs_processing_default_job, resolve_log_file_filter,
+        resolve_secret_input_with_prompt, resolve_tracing_filter, saved_job_fits_workflow,
         should_error_for_missing_subcommand, should_run_output_setup, should_start_local_core_stack,
         validate_extension_profile,
     };
@@ -3135,9 +3143,7 @@ mod tests {
         );
         assert_ne!(error.exit_code(), 0);
         let help = error.to_string();
-        for subcommand in ["completions"] {
-            assert!(help.contains(subcommand), "{help}");
-        }
+        assert!(help.contains("completions"), "{help}");
         #[cfg(feature = "setup")]
         for subcommand in ["elasticsearch", "kibana", "output", "env", "context"] {
             assert!(help.contains(subcommand), "{help}");

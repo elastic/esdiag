@@ -5,20 +5,22 @@
 use super::{ServerState, get_theme_dark, template};
 #[cfg(all(feature = "keystore", feature = "setup"))]
 use crate::data::OnboardingWorkflow;
-use crate::data::{Application, ApplicationConfig, HostReference, HostRole, KnownHost, Settings, is_collectable_app};
+use crate::data::{Application, ApplicationConfig, HostRole, KnownHost, Settings, is_collectable_app};
 #[cfg(feature = "keystore")]
-use crate::data::{Job, load_saved_jobs_async};
+use crate::data::{HostReference, Job, load_saved_jobs_async};
 use crate::exporter::Exporter;
 #[cfg(all(feature = "keystore", feature = "setup"))]
 use crate::onboarding;
 use crate::processor::api::ApiResolver;
 use askama::Template;
+#[cfg(all(feature = "keystore", feature = "setup"))]
+use axum::response::Redirect;
 #[cfg(feature = "keystore")]
 use axum::response::Response;
 use axum::{
     extract::{Query, State},
     http::HeaderMap,
-    response::{Html, IntoResponse, Redirect},
+    response::{Html, IntoResponse},
 };
 use serde::{Deserialize, Deserializer, Serialize, de};
 use std::{path::PathBuf, str::FromStr, sync::Arc};

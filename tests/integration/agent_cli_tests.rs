@@ -1,10 +1,8 @@
-use std::{
-    io::BufRead,
-    path::Path,
-    process::{Command, Output, Stdio},
-    sync::mpsc,
-    time::Duration,
-};
+#[cfg(feature = "keystore")]
+use std::path::Path;
+use std::process::{Command, Output};
+#[cfg(feature = "server")]
+use std::{io::BufRead, process::Stdio, sync::mpsc, time::Duration};
 use tempfile::TempDir;
 
 fn setup_home() -> TempDir {

@@ -275,7 +275,9 @@ fn validate_view_host(host: &KnownHost, name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{OutputDeployment, OutputDeploymentSource};
-    use crate::data::{Application, ApplicationConfig, Auth, ElasticOutputContext, HostRole, KnownHostBuilder};
+    use crate::data::{Application, ApplicationConfig, HostRole, KnownHostBuilder};
+    #[cfg(feature = "elasticrc")]
+    use crate::data::{Auth, ElasticOutputContext};
     use std::collections::BTreeMap;
     use url::Url;
 
