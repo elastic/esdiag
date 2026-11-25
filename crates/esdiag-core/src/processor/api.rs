@@ -393,6 +393,19 @@ impl ApiResolver {
         })
     }
 
+    /// Build a selection from a full checked list, as the web form and saved-job
+    /// signals submit it. The list cannot tell a user's choice from a default
+    /// left checked, so only keys outside the diagnostic type's defaults count
+    /// as requested, and resubmitting an unchanged list keeps its provenance.
+    pub fn checked_selection(product: &str, diagnostic_type: &str, checked: &[String]) -> Result<ProcessSelection> {
+        let defaults: HashSet<String> = Self::resolve_processing_selection(product, diagnostic_type, &[])?
+            .into_iter()
+            .collect();
+        let mut selection = Self::process_selection(product, diagnostic_type, checked)?;
+        selection.requested.retain(|key| !defaults.contains(key));
+        Ok(selection)
+    }
+
     pub fn resolve_processing_selection_with_collect_filters(
         product: &str,
         diagnostic_type: &str,
@@ -407,7 +420,11 @@ impl ApiResolver {
             .filter(|key| processing_keys.contains(key.as_str()))
             .cloned()
             .collect();
-        if let Ok(diag_type) = std::str::FromStr::from_str(diagnostic_type) {
+        if diagnostic_type.eq_ignore_ascii_case("custom") {
+            selected
+                .extend(syscall::catalog::product_options(product).map(|(key, _)| syscall::catalog::option_key(key)));
+        } else {
+            let diag_type = std::str::FromStr::from_str(diagnostic_type)?;
             selected.extend(Self::default_syscall_options(product, &diag_type));
         }
 
@@ -937,6 +954,7 @@ mod tests {
 
         assert!(selected.contains(&"nodes_stats".to_string()));
         assert!(selected.contains(&"cluster_settings_defaults".to_string()));
+        assert!(selected.contains(&"syscalls.sar".to_string()));
     }
 
     #[test]
@@ -1026,6 +1044,20 @@ mod tests {
         let defaults = ApiResolver::process_selection("elasticsearch", "standard", &[]).unwrap();
         assert!(defaults.selected.contains(&"syscalls.sar".to_string()));
         assert!(defaults.requested.is_empty());
+    }
+
+    #[test]
+    fn checked_selections_request_only_keys_beyond_the_defaults() {
+        let standard = ApiResolver::process_selection("elasticsearch", "standard", &[]).unwrap();
+        let resubmitted = ApiResolver::checked_selection("elasticsearch", "standard", &standard.selected).unwrap();
+        assert_eq!(resubmitted.selected, standard.selected);
+        assert!(resubmitted.requested.is_empty(), "{:?}", resubmitted.requested);
+
+        let minimal = ApiResolver::process_selection("elasticsearch", "minimal", &[]).unwrap();
+        let mut checked = minimal.selected.clone();
+        checked.push("syscalls.sar".to_string());
+        let added = ApiResolver::checked_selection("elasticsearch", "minimal", &checked).unwrap();
+        assert_eq!(added.requested, ["syscalls.sar"]);
     }
 
     #[test]

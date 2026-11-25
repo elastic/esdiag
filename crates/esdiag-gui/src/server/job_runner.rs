@@ -688,7 +688,7 @@ fn explicit_process_selection(signals: &JobRunSignals) -> Result<Option<ProcessS
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .collect();
-    ApiResolver::process_selection(
+    ApiResolver::checked_selection(
         &signals.job.process.product,
         &signals.job.process.diagnostic_type,
         &selected,

@@ -523,9 +523,14 @@ the web UI. Syscall options are never required.
 |---|---|---|---|
 | `syscalls.sar` | `syscalls/sar.txt` | `standard`, `support` | `metrics-host.sar-esdiag` |
 
-`esdiag process` on the command line uses the defaults for the diagnostic type,
-so a `standard` bundle processes `syscalls/sar.txt` when it is present. Only the
-text `sar.txt` is read; binary `saDD` and `sarDD` files are ignored.
+The defaults apply to saved jobs and the web UI. `esdiag process` on the
+command line has no selection, so it processes every source, including
+`syscalls/sar.txt` when present, whatever type the bundle was collected as.
+Only the text `sar.txt` is read; binary `saDD` and `sarDD` files are ignored.
+
+Saved jobs and the web UI submit every checked option, so a syscall option
+counts as explicitly selected only when the diagnostic type doesn't check it by
+default, such as `syscalls.sar` added to a `minimal` job.
 
 The report records each syscall source as follows:
 

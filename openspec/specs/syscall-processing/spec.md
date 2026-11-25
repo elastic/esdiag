@@ -34,7 +34,7 @@ The catalog SHALL be the only place a syscall output path is defined. Processors
 ### Requirement: Syscall processing selection
 Each processable syscall source implemented for an application SHALL be a processing option for that application, alongside its REST processing options, under the key `syscalls.<key>`. Syscall options SHALL never be required, so the user can always deselect them. Default membership SHALL come from the entry's tags: a diagnostic type includes `syscalls.<key>` by default when the entry carries that type's tag, and `custom` includes every option. When no processing selection is given at all, every processable syscall source for the application SHALL be processed in default mode.
 
-The resolved processing selection SHALL record which keys the user explicitly requested, distinct from keys added by diagnostic-type defaults, required locking, or dependency resolution. A syscall source is **explicitly requested** only when its key appears in the user-supplied selection list. Selection validation against collected REST sources SHALL ignore `syscalls.*` keys, because ESDiag collection does not produce syscall output.
+The resolved processing selection SHALL record which keys the user explicitly requested, distinct from keys added by diagnostic-type defaults, required locking, or dependency resolution. A syscall source is **explicitly requested** only when its key appears in the user-supplied selection list. A selection submitted as the full checked list, as the web form and saved-job signals submit it, SHALL record as explicitly requested only keys outside the diagnostic type's defaults, so that resaving an unchanged job keeps its provenance. Selection validation against collected REST sources SHALL ignore `syscalls.*` keys, because ESDiag collection does not produce syscall output.
 
 #### Scenario: Standard processing includes SAR by default
 - **GIVEN** an Elasticsearch bundle processed with diagnostic type `standard` and no explicit selection
@@ -65,6 +65,16 @@ The resolved processing selection SHALL record which keys the user explicitly re
 - **GIVEN** a collect-and-process job whose processing selection lists `syscalls.sar`
 - **WHEN** the selection is validated against the collected REST sources
 - **THEN** validation MUST NOT fail because `syscalls.sar` was not collected
+
+#### Scenario: Resaved job keeps default mode
+- **GIVEN** a saved `standard` job whose selection includes `syscalls.sar` by default
+- **WHEN** it is loaded into the job form and saved unchanged
+- **THEN** `syscalls.sar` MUST remain selected and MUST NOT be recorded as explicitly requested
+
+#### Scenario: Custom collect filters include SAR
+- **GIVEN** a `custom` collect-and-process job with include filters and no processing selection
+- **WHEN** its processing selection is derived from the collect filters
+- **THEN** `syscalls.sar` MUST be selected
 
 #### Scenario: Saved selection without explicit-request data
 - **GIVEN** a saved job whose stored processing selection predates explicit-request tracking
