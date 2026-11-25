@@ -115,8 +115,16 @@ impl DailyLogWriter {
                     compress_previous_logs(&dir, today);
                 }
             };
-            if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                handle.spawn_blocking(maintenance);
+            if tokio::runtime::Handle::try_current().is_ok() {
+                // Run rollover maintenance on a detached OS thread rather than
+                // Tokio's blocking pool so runtime shutdown cannot block waiting
+                // for large prior-day compression or stalled filesystem I/O.
+                if let Err(err) = std::thread::Builder::new()
+                    .name("esdiag-log-rollover".into())
+                    .spawn(maintenance)
+                {
+                    eprintln!("Failed to spawn file log rollover maintenance thread: {err}");
+                }
             } else {
                 maintenance();
             }
