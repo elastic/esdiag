@@ -212,13 +212,13 @@ impl ElasticsearchExporter {
         values: Vec<Arc<Value>>,
     ) -> Result<(BatchResponse, Option<eyre::Report>)> {
         let config = RetryConfig::from_env();
-        let mut retries: u16 = 0;
         // The documents still to send: the whole batch, then only those Elasticsearch throttled per item.
         let mut pending = values;
         // What the documents already answered for came to, across resends of the throttled ones.
         let mut answered: Option<BatchResponse> = None;
 
         for attempt in 0..=config.max_retries {
+            let retries = attempt;
             let can_retry = attempt < config.max_retries;
             let batch: Vec<BulkOperation<Arc<Value>>> = pending
                 .iter()
@@ -236,7 +236,7 @@ impl ElasticsearchExporter {
                 Err(e) => return finish_after_failure(&index, answered, pending.len(), None, e, retries),
             };
 
-            match parse_response(index.clone(), response, retries, can_retry).await {
+            let sleep_ms = match parse_response(index.clone(), response, retries, can_retry).await {
                 Ok((batch_response, throttled)) => {
                     match answered.as_mut() {
                         Some(answered) => answered.merge_resend(batch_response),
@@ -259,17 +259,7 @@ impl ElasticsearchExporter {
                         .iter()
                         .filter_map(|&item| pending.get(item).cloned())
                         .collect();
-                    if !self.backoff(sleep_ms).await {
-                        return finish_after_failure(
-                            &index,
-                            answered,
-                            pending.len(),
-                            None,
-                            cancelled_export(),
-                            retries,
-                        );
-                    }
-                    retries += 1;
+                    sleep_ms
                 }
                 Err(ExporterError::RateLimited) if can_retry => {
                     let sleep_ms = backoff_ms(attempt, &config);
@@ -278,17 +268,7 @@ impl ElasticsearchExporter {
                         u32::from(attempt) + 1,
                         config.max_retries,
                     );
-                    if !self.backoff(sleep_ms).await {
-                        return finish_after_failure(
-                            &index,
-                            answered,
-                            pending.len(),
-                            None,
-                            cancelled_export(),
-                            retries,
-                        );
-                    }
-                    retries += 1;
+                    sleep_ms
                 }
                 Err(ExporterError::RateLimited) => {
                     tracing::error!(
@@ -310,6 +290,9 @@ impl ElasticsearchExporter {
                 Err(ExporterError::Fatal { status, error }) => {
                     return finish_after_failure(&index, answered, pending.len(), status, error, retries);
                 }
+            };
+            if !self.backoff(sleep_ms).await {
+                return finish_after_failure(&index, answered, pending.len(), None, cancelled_export(), retries);
             }
         }
 
@@ -510,9 +493,20 @@ impl Export for ElasticsearchExporter {
         let doc_count = docs.len();
         let scope = self.scope.clone();
 
+        let token = scope.as_ref().map(|scope| scope.token().clone());
         let task = async move {
             // Acquire semaphore permit inside task - blocks if at limit (backpressure)
-            let _permit = semaphore.acquire().await.expect("Failed to acquire semaphore permit");
+            let acquire = semaphore.acquire();
+            let _permit = match &token {
+                // Other executions sharing this exporter may hold every permit.
+                Some(token) => tokio::select! {
+                    biased;
+                    _ = token.cancelled() => return,
+                    permit = acquire => permit,
+                },
+                None => acquire.await,
+            }
+            .expect("Failed to acquire semaphore permit");
             // A dropped receiver means the export was abandoned, such as a cancelled request.
             if tx.is_closed() {
                 return;
@@ -1641,5 +1635,32 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(5), scope.tracker().wait())
             .await
             .expect("the tracker empties once the request ends");
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_batch_stops_waiting_for_a_permit() {
+        let _lock = ENV_LOCK.lock().await;
+        let (url, mock) = mock_bulk_server(vec![]).await;
+        let scope = ExecutionScope::default();
+        let exporter = scoped_exporter(url, &scope);
+        let _held = exporter
+            .tx_limit
+            .clone()
+            .acquire_many_owned(exporter.tx_limit.available_permits() as u32)
+            .await
+            .expect("hold every permit");
+
+        let response = exporter
+            .batch_tx("test-index".to_string(), vec![json!({"x": 1})])
+            .await
+            .expect("batch queued");
+        scope.token().cancel();
+        scope.tracker().close();
+
+        tokio::time::timeout(Duration::from_secs(5), scope.tracker().wait())
+            .await
+            .expect("the queued batch leaves the tracker without a permit");
+        assert!(response.await.is_err(), "the batch was never answered");
+        assert!(mock.bulk_requests().is_empty());
     }
 }

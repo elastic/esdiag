@@ -15,7 +15,7 @@
 - Serve MCP statelessly, without server-held sessions, so service-mode replicas behind a load balancer need no session affinity.
 - Not included: MCP OAuth authorization, MCP over the desktop app's ephemeral-port server, and service-mode tools beyond `process`.
 
-Prerequisites, in stack order: `extract-gui-crate` ([#467](https://github.com/elastic/esdiag/pull/467)), `extract-command-operations`, and `add-mcp-stdio`, which provides the shared tool catalog in `esdiag-core`.
+Prerequisites, in stack order: `extract-gui-crate`, `extract-command-operations`, and `add-mcp-stdio`, which provides the shared tool catalog in `esdiag-core`.
 
 ## Capabilities
 

@@ -1,6 +1,6 @@
 ## Context
 
-See proposal.md for motivation. Current state that shapes the approach, assuming `extract-gui-crate` (#467), `extract-command-operations`, and `add-mcp-stdio` have merged:
+See proposal.md for motivation. Current state that shapes the approach, assuming `extract-gui-crate`, `extract-command-operations`, and `add-mcp-stdio` have merged:
 
 - `esdiag-gui` is outside the workspace `default-members`, so its tests run only with `cargo test --workspace` or `-p esdiag-gui`. It depends on `esdiag-core` with `features = ["server"]`, and its feature forwarding uses `esdiag-gui?/…` from the root.
 - Server handlers that need a keystore password for a job wrap the work in `with_scoped_keystore_password`. The server never calls `enable_keystore_password_prompt()`, so secret lookups never prompt.

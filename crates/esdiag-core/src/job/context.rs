@@ -101,7 +101,7 @@ pub struct ExecutionContext {
     pub inherited_platform: Option<Platform>,
     pub child_depth: u8,
     observer: Arc<dyn ExecutionObserver>,
-    scope: ExecutionScope,
+    scope: Option<ExecutionScope>,
 }
 
 impl Default for ExecutionContext {
@@ -117,7 +117,7 @@ impl Default for ExecutionContext {
             observer: SCOPED_OBSERVER
                 .try_with(Arc::clone)
                 .unwrap_or_else(|_| Arc::new(NoopObserver)),
-            scope: SCOPED_EXECUTION.try_with(Clone::clone).unwrap_or_default(),
+            scope: SCOPED_EXECUTION.try_with(Clone::clone).ok(),
         }
     }
 }
@@ -125,11 +125,6 @@ impl Default for ExecutionContext {
 impl ExecutionContext {
     pub fn with_identity(mut self, identity: ExecutionIdentity) -> Self {
         self.identity = identity;
-        self
-    }
-
-    pub fn with_scope(mut self, scope: ExecutionScope) -> Self {
-        self.scope = scope;
         self
     }
 
@@ -157,8 +152,11 @@ impl ExecutionContext {
     }
 
     pub(crate) fn resolve_document_exporter(&self, target: &ExportTarget) -> Result<DocumentExporter> {
-        self.resolve_unscoped_document_exporter(target)
-            .map(|exporter| exporter.with_scope(self.scope.clone()))
+        let exporter = self.resolve_unscoped_document_exporter(target)?;
+        Ok(match &self.scope {
+            Some(scope) => exporter.with_scope(scope.clone()),
+            None => exporter,
+        })
     }
 
     fn resolve_unscoped_document_exporter(&self, target: &ExportTarget) -> Result<DocumentExporter> {

@@ -88,10 +88,16 @@ impl AllowedHosts {
         let Ok(authority) = Authority::try_from(value) else {
             return false;
         };
+        self.allows(&authority, authority.port_u16())
+    }
+
+    /// Whether an entry matches `authority`'s host and, when the entry names
+    /// a port, `port`.
+    fn allows(&self, authority: &Authority, port: Option<u16>) -> bool {
         let host = normalize_host(authority.host());
         self.entries
             .iter()
-            .any(|entry| entry.host == host && entry.port.is_none_or(|port| authority.port_u16() == Some(port)))
+            .any(|entry| entry.host == host && entry.port.is_none_or(|allowed| port == Some(allowed)))
     }
 
     fn allows_origin(&self, value: &str) -> bool {
@@ -106,11 +112,7 @@ impl AllowedHosts {
             "https" => 443,
             _ => return false,
         };
-        let host = normalize_host(authority.host());
-        let port = authority.port_u16().unwrap_or(default_port);
-        self.entries
-            .iter()
-            .any(|entry| entry.host == host && entry.port.is_none_or(|allowed| allowed == port))
+        self.allows(authority, Some(authority.port_u16().unwrap_or(default_port)))
     }
 
     /// Remote clients are rejected when the server binds beyond loopback but

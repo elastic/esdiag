@@ -434,7 +434,16 @@ impl EsdiagMcp {
             Ok(identity) => identity,
             Err(rejected) => return Ok(rejected),
         };
-        let run = operations::job::job_run(params.name, operations::job::StdoutPolicy::Reject);
+        let stdout = operations::job::StdoutPolicy::Reject;
+        let requester = identity.clone();
+        let run = async move {
+            match requester {
+                Some(requester) => {
+                    operations::job::job_run_as(params.name, stdout, requester.user, requester.account).await
+                }
+                None => operations::job::job_run(params.name, stdout).await,
+            }
+        };
         long_running(&context, self.admitted(identity.as_ref(), run)).await
     }
 

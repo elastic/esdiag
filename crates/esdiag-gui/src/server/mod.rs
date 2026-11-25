@@ -275,18 +275,14 @@ impl ServerPolicy {
             tracing::warn!("Web feature 'mcp' ignored: the MCP endpoint is not available in this server host");
         }
 
-        #[cfg(not(feature = "keystore"))]
-        if web_features.contains(WebFeature::JobBuilder) {
+        if let Some(feature) = WebFeature::ALL
+            .into_iter()
+            .find(|&feature| web_features.contains(feature) && !feature.supported())
+        {
             return Err(eyre!(
-                "Web feature 'job-builder' requires a build with keystore support; supported feature names in this build: {}",
-                WebFeature::supported_values()
-            ));
-        }
-
-        #[cfg(not(feature = "mcp"))]
-        if web_features.contains(WebFeature::Mcp) {
-            return Err(eyre!(
-                "Web feature 'mcp' requires a build with MCP support; supported feature names in this build: {}",
+                "Web feature '{}' requires a build with {} support; supported feature names in this build: {}",
+                feature.as_str(),
+                feature.build_requirement(),
                 WebFeature::supported_values()
             ));
         }
@@ -444,7 +440,15 @@ impl WebFeature {
         }
     }
 
-    #[cfg_attr(all(feature = "keystore", feature = "mcp"), allow(dead_code))]
+    /// The build support a feature needs, named in its startup error.
+    fn build_requirement(self) -> &'static str {
+        match self {
+            Self::Advanced => "default",
+            Self::JobBuilder => "keystore",
+            Self::Mcp => "MCP",
+        }
+    }
+
     fn supported_values() -> String {
         Self::ALL
             .iter()

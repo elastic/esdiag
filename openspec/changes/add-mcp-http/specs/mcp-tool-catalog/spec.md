@@ -28,6 +28,7 @@
 Each tool SHALL publish a JSON Schema for its parameters, with parameter names in snake_case matching the CLI option names. Tools whose annotation list omits read-only SHALL be marked as not read-only. The server SHALL identify itself as `esdiag` with the binary's version during MCP initialization instead of offering a version tool.
 
 #### Scenario: Client reads the server version
+- **GIVEN** `esdiag mcp` or `/mcp` in either mode
 - **WHEN** an MCP client initializes a session
 - **THEN** the server information names `esdiag` and the same version `esdiag version` prints
 
@@ -51,23 +52,27 @@ Each tool SHALL publish a JSON Schema for its parameters, with parameter names i
 Tool parameters SHALL NOT accept passwords, API keys, keystore passwords, or Elastic Upload Service download tokens. The one exception is the `token` parameter of the `service`-mode `process` tool that `mcp-http-server` defines, which accepts only a download token, separate from its URL, because download tokens are short-lived and scoped to one upload. A URL or URL template parameter that embeds userinfo SHALL be rejected with `category: invalid_input` before the operation runs, and the result SHALL NOT repeat the credential. An Elastic Upload Service upload ID is not a credential. `host_add` and `host_update` SHALL accept authentication only as a `secret` reference to an existing keystore entry. Host results SHALL omit userinfo from saved URLs and URL templates. A tool that needs the keystore while it is locked SHALL fail with `category: keystore_failed` and a message directing the user to unlock it from a terminal, and SHALL NOT prompt for input.
 
 #### Scenario: Host add schema has no secret fields
+- **GIVEN** `esdiag mcp` or `/mcp` in `user` mode
 - **WHEN** a client lists tools
 - **THEN** the `host_add` and `host_update` input schemas contain a `secret` parameter
 - **AND** contain no `apikey`, `username`, or `password` parameter
 
 #### Scenario: Host target with embedded credentials
+- **GIVEN** `esdiag mcp` or `/mcp` in `user` mode
 - **WHEN** a client calls `host_add` with a target or URL template such as `https://elastic:secret@example.test:9200`
 - **THEN** the tool result is an error with `category: invalid_input`
 - **AND** the result does not contain the password
 - **AND** no host is saved
 
 #### Scenario: Authenticated download link
+- **GIVEN** `esdiag mcp` or `/mcp` in `user` mode
 - **WHEN** a client calls `process` with an Elastic Upload Service download URL that carries its token
 - **THEN** the tool result is an error with `category: invalid_input`
 - **AND** no processing starts
 
 #### Scenario: Local catalog offers no token parameter
-- **WHEN** a client lists tools from `esdiag mcp` or from `/mcp` in `user` mode
+- **GIVEN** `esdiag mcp` or `/mcp` in `user` mode
+- **WHEN** a client lists tools
 - **THEN** no tool input schema contains a `token` parameter
 
 #### Scenario: Saved URL credentials are not listed

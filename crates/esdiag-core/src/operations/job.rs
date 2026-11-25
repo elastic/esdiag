@@ -50,6 +50,30 @@ impl std::error::Error for SavedJobStdoutRejected {}
 /// copy of the job.
 pub async fn job_run(name: String, stdout: StdoutPolicy) -> Result<CommandOutcome> {
     let job = crate::job::load_saved_job(&name)?;
+    run_loaded(name, stdout, job).await
+}
+
+/// Runs a saved job on behalf of `user`, as web jobs do: the report records
+/// `user`, and `account` unless the saved job names its own.
+pub async fn job_run_as(
+    name: String,
+    stdout: StdoutPolicy,
+    user: String,
+    account: Option<String>,
+) -> Result<CommandOutcome> {
+    let mut job = crate::job::load_saved_job(&name)?;
+    requested_by(&mut job.identifiers, user, account);
+    run_loaded(name, stdout, job).await
+}
+
+fn requested_by(identifiers: &mut Identifiers, user: String, account: Option<String>) {
+    identifiers.user = Some(user);
+    if identifiers.account.is_none() {
+        identifiers.account = account;
+    }
+}
+
+async fn run_loaded(name: String, stdout: StdoutPolicy, job: Job) -> Result<CommandOutcome> {
     let writes_stdout = job_writes_stdout(&job);
     if writes_stdout && stdout == StdoutPolicy::Reject {
         return Err(SavedJobStdoutRejected { name }.into());
@@ -235,6 +259,22 @@ mod tests {
         assert!(saved_job_writes_stdout("stdout-job").expect("stdout job"));
         assert!(!saved_job_writes_stdout("collect-job").expect("collect job"));
         assert!(!saved_job_writes_stdout("missing").expect("missing job"));
+    }
+
+    #[test]
+    fn a_requested_job_records_the_requester_and_keeps_its_own_account() {
+        let mut saved = Identifiers {
+            user: Some("saver".to_string()),
+            account: Some("saved-account".to_string()),
+            ..Default::default()
+        };
+        requested_by(&mut saved, "alice".to_string(), Some("acme".to_string()));
+        assert_eq!(saved.user.as_deref(), Some("alice"));
+        assert_eq!(saved.account.as_deref(), Some("saved-account"));
+
+        let mut unnamed = Identifiers::default();
+        requested_by(&mut unnamed, "alice".to_string(), Some("acme".to_string()));
+        assert_eq!(unnamed.account.as_deref(), Some("acme"));
     }
 
     #[tokio::test]
