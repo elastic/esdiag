@@ -266,6 +266,10 @@
     },
     {
       "type": "index-pattern",
+      "id": "c8db3cfe-1ec8-4763-9714-e1109cf707ac"
+    },
+    {
+      "type": "index-pattern",
       "id": "cab5c85e-e296-56a8-a8db-ae3af0d095f3"
     },
     {
@@ -347,6 +351,10 @@
     {
       "type": "links",
       "id": "2b54a9e5-0ef5-4e6d-b293-1ed2e9075369"
+    },
+    {
+      "type": "links",
+      "id": "494ccfe4-71e4-45fe-ac56-3969d6247dd1"
     },
     {
       "type": "links",
@@ -447,6 +455,22 @@
     {
       "type": "dashboard",
       "id": "hosts-overview"
+    },
+    {
+      "type": "dashboard",
+      "id": "host-activity-cpu"
+    },
+    {
+      "type": "dashboard",
+      "id": "host-activity-storage"
+    },
+    {
+      "type": "dashboard",
+      "id": "host-activity-network"
+    },
+    {
+      "type": "dashboard",
+      "id": "host-activity-system"
     }
   ],
   "excludeExportDetails": true,

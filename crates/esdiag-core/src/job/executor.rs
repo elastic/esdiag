@@ -763,6 +763,7 @@ fn collect_process_selection(
         product: product.to_string(),
         diagnostic_type: diagnostic_type.to_string(),
         selected,
+        requested: Vec::new(),
     }))
 }
 
@@ -1742,6 +1743,7 @@ mod tests {
             product: "logstash".to_string(),
             diagnostic_type: "standard".to_string(),
             selected: vec!["node_stats".to_string()],
+            requested: Vec::new(),
         })
         .expect("canonical selection");
 
