@@ -211,6 +211,19 @@ pub(crate) fn parse_staged_daily_log_name(file_name: &str) -> Option<NaiveDate> 
     let (date_str, _) = without_suffix.split_once(".log.")?;
     NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()
 }
+
+/// Parses a Windows collision-recovery archive `esdiag-YYYY-MM-DD.log.<id>.gz`,
+/// returning its log date.
+pub(crate) fn parse_recovery_archive_name(file_name: &str) -> Option<NaiveDate> {
+    let rest = file_name.strip_prefix("esdiag-")?;
+    let without_suffix = rest.strip_suffix(".gz")?;
+    let (date_str, id) = without_suffix.split_once(".log.")?;
+    if id.is_empty() {
+        return None;
+    }
+    NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()
+}
+
 /// Compresses all uncompressed `esdiag-YYYY-MM-DD.log` files in `dir` with
 /// `date < today` into `esdiag-YYYY-MM-DD.log.gz` using atomic temp-file rename
 /// and `0600` permissions on Unix. Safe under concurrent processes.
@@ -258,10 +271,6 @@ fn compress_previous_logs_with_cancel(dir: &Path, today: NaiveDate, cancelled: &
             let staging_path = entry.path();
             let src_path = dir.join(daily_log_filename(date));
             let gz_path = dir.join(format!("{}.gz", daily_log_filename(date)));
-            if gz_path.exists() {
-                let _ = fs::remove_file(&staging_path);
-                continue;
-            }
             if let Err(err) = compress_staged_log(&staging_path, &src_path, &gz_path, cancelled) {
                 eprintln!("Failed to recover staged log file '{}': {err}", staging_path.display());
             }
@@ -411,20 +420,29 @@ fn compress_staged_log(
         return Err(err);
     }
 
-    if gz_path.exists() {
-        drop(input);
-        let _ = fs::remove_file(&tmp_path);
-        let _ = fs::remove_file(staging_path);
-        return Ok(());
-    }
-
-    if let Err(err) = fs::rename(&tmp_path, gz_path) {
+    let publish_result = if !gz_path.exists() {
+        fs::rename(&tmp_path, gz_path)
+    } else {
+        // Another run already published `gz_path`; publish this staged log
+        // under a unique recovery archive name so no entries are lost.
+        let recovery_name = format!(
+            "{}.{}-{}.gz",
+            src_path.file_name().and_then(|n| n.to_str()).unwrap_or("esdiag.log"),
+            std::process::id(),
+            Uuid::new_v4()
+        );
+        let recovery_path = gz_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(recovery_name);
+        fs::rename(&tmp_path, &recovery_path)
+    };
+    if let Err(err) = publish_result {
         drop(input);
         let _ = fs::remove_file(&tmp_path);
         restore_staged_log(staging_path, src_path);
         return Err(err);
     }
-
     drop(input);
     match fs::remove_file(staging_path) {
         Ok(()) => Ok(()),
@@ -540,10 +558,11 @@ fn prune_expired_logs_with_cancel(dir: &Path, today: NaiveDate, retention_days: 
         };
         let (date, is_compressed) = if let Some(parsed) = parse_daily_log_name(name_str) {
             parsed
-        } else if let Some(date) = parse_staged_daily_log_name(name_str) {
-            // Treat abandoned Windows `.compressing` staging files as expired
-            // when older than the retention window (active staging files are
-            // held with `share_mode(0)` so `remove_file` skips them with error 32).
+        } else if let Some(date) = parse_staged_daily_log_name(name_str).or_else(|| parse_recovery_archive_name(name_str)) {
+            // Treat abandoned Windows `.compressing` staging files and
+            // collision-recovery `.log.<id>.gz` archives as expired when older
+            // than the retention window (active staging files are held with
+            // `share_mode(0)` so `remove_file` skips them with error 32).
             (date, true)
         } else {
             continue;
@@ -751,16 +770,24 @@ mod tests {
         let parsed = super::parse_staged_daily_log_name("esdiag-2026-10-20.log.1234-uuid.compressing");
         assert_eq!(parsed, Some(d(2026, 10, 20)));
         assert_eq!(super::parse_staged_daily_log_name("notes.compressing"), None);
+        assert_eq!(
+            super::parse_recovery_archive_name("esdiag-2026-10-20.log.1234-uuid.gz"),
+            Some(d(2026, 10, 20))
+        );
+        assert_eq!(super::parse_recovery_archive_name("esdiag-2026-10-20.log.gz"), None);
 
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
         let expired_staged = dir.join("esdiag-2026-10-20.log.1234-uuid.compressing");
+        let expired_recovery = dir.join("esdiag-2026-10-20.log.1234-uuid.gz");
         let recent_staged = dir.join("esdiag-2026-11-23.log.1234-uuid.compressing");
         fs::write(&expired_staged, b"old").unwrap();
+        fs::write(&expired_recovery, b"old-gz").unwrap();
         fs::write(&recent_staged, b"recent").unwrap();
 
         prune_expired_logs(dir, d(2026, 11, 24), 30);
         assert!(!expired_staged.exists(), "expired abandoned staging file must be pruned");
+        assert!(!expired_recovery.exists(), "expired recovery archive must be pruned");
         assert!(recent_staged.exists(), "within-retention staging file must be preserved");
     }
 }
