@@ -37,7 +37,13 @@ impl LogsGuard {
             remote.flush_and_stop(timeout).await;
         }
         if let Some(file) = self.file.take() {
-            let _ = tokio::task::spawn_blocking(move || file.run_on_exit()).await;
+            let handle = tokio::task::spawn_blocking(move || file.run_on_exit());
+            if tokio::time::timeout(timeout, handle).await.is_err() {
+                eprintln!(
+                    "File log exit maintenance timed out after {}ms; remaining files will be processed on a later run",
+                    timeout.as_millis()
+                );
+            }
         }
     }
 }

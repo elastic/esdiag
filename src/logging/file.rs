@@ -109,10 +109,10 @@ impl DailyLogWriter {
             let retention_days = self.retention_days;
             let compress = self.compress_on_rollover;
             let maintenance = move || {
+                prune_expired_logs(&dir, today, retention_days);
                 if compress {
                     compress_previous_logs(&dir, today);
                 }
-                prune_expired_logs(&dir, today, retention_days);
             };
             if let Ok(handle) = tokio::runtime::Handle::try_current() {
                 handle.spawn_blocking(maintenance);
@@ -164,8 +164,8 @@ impl DailyLogMaintenance {
                 guard.current_date = today;
             }
         }
-        compress_previous_logs(&self.writer.dir, today);
         prune_expired_logs(&self.writer.dir, today, self.writer.retention_days);
+        compress_previous_logs(&self.writer.dir, today);
     }
 }
 

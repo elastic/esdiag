@@ -1098,19 +1098,34 @@ impl LocalState {
             // Keep `_lock_guard` open for the duration of the child process so
             // its shared advisory lock prevents another process from gzipping
             // and unlinking the daily log if compose spans UTC midnight.
-            let _lock_guard = esdiag::data::open_daily_log_file(&logs_dir, today)?;
-            let status = command
-                .stdin(Stdio::null())
-                .stdout(Stdio::from(_lock_guard.try_clone()?))
-                .stderr(Stdio::from(_lock_guard.try_clone()?))
-                .status()?;
-            return status.success().then_some(()).ok_or_else(|| {
-                eyre!(
-                    "`{runtime} compose {}` failed; see {}",
-                    arguments.join(" "),
-                    log.display()
-                )
-            });
+            // If the log directory is unwritable, warn and fall back to in-memory
+            // capture rather than aborting the local stack command.
+            match esdiag::data::open_daily_log_file(&logs_dir, today).and_then(|guard| {
+                let stdout = guard.try_clone()?;
+                let stderr = guard.try_clone()?;
+                Ok((guard, stdout, stderr))
+            }) {
+                Ok((_lock_guard, stdout, stderr)) => {
+                    let status = command
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::from(stdout))
+                        .stderr(Stdio::from(stderr))
+                        .status()?;
+                    return status.success().then_some(()).ok_or_else(|| {
+                        eyre!(
+                            "`{runtime} compose {}` failed; see {}",
+                            arguments.join(" "),
+                            log.display()
+                        )
+                    });
+                }
+                Err(err) => {
+                    eprintln!(
+                        "File logging unavailable for compose output at '{}': {err}",
+                        log.display()
+                    );
+                }
+            }
         }
         let output = command.stdin(Stdio::null()).output()?;
         if output.status.success() {
