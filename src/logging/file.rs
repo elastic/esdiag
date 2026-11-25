@@ -219,19 +219,46 @@ pub(crate) fn compress_previous_logs(dir: &Path, today: NaiveDate) {
     }
 }
 
-fn compress_single_log(src_path: &Path, gz_path: &Path) -> io::Result<()> {
-    let mut input = match OpenOptions::new().read(true).write(true).open(src_path) {
-        Ok(file) => file,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(()),
-        Err(err) => return Err(err),
-    };
-    // Skip files still locked by an active writer (e.g. a compose child or
-    // another CLI/serve process spanning UTC midnight).
-    match input.try_lock() {
-        Ok(()) => {}
-        Err(fs::TryLockError::WouldBlock) => return Ok(()),
-        Err(fs::TryLockError::Error(err)) => return Err(err),
+fn try_open_exclusive_for_maintenance(path: &Path) -> io::Result<Option<File>> {
+    #[cfg(unix)]
+    {
+        let file = match File::open(path) {
+            Ok(file) => file,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err),
+        };
+        match file.try_lock() {
+            Ok(()) => Ok(Some(file)),
+            Err(fs::TryLockError::WouldBlock) => Ok(None),
+            Err(fs::TryLockError::Error(err)) => Err(err),
+        }
     }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // `share_mode(0)` fails with ERROR_SHARING_VIOLATION (32) whenever any
+        // writer or redirected child still has the log file open.
+        match OpenOptions::new().read(true).write(true).share_mode(0).open(path) {
+            Ok(file) => Ok(Some(file)),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(err) if err.raw_os_error() == Some(32) => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        match File::open(path) {
+            Ok(file) => Ok(Some(file)),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+}
+
+fn compress_single_log(src_path: &Path, gz_path: &Path) -> io::Result<()> {
+    let Some(mut input) = try_open_exclusive_for_maintenance(src_path)? else {
+        return Ok(());
+    };
 
     let tmp_name = format!(
         "{}.{}-{}.tmp",
@@ -314,17 +341,14 @@ pub(crate) fn prune_expired_logs(dir: &Path, today: NaiveDate, retention_days: u
         }
         let path = entry.path();
         if !is_compressed {
-            let Ok(file) = OpenOptions::new().read(true).write(true).open(&path) else {
-                continue;
-            };
-            match file.try_lock() {
-                Ok(()) => {}
-                Err(fs::TryLockError::WouldBlock) => continue,
+            let file = match try_open_exclusive_for_maintenance(&path) {
+                Ok(Some(file)) => file,
+                Ok(None) => continue,
                 Err(err) => {
                     eprintln!("Failed to lock expired log file '{}': {err}", path.display());
                     continue;
                 }
-            }
+            };
             // On Windows, an open handle prevents `remove_file`; on Unix, keep
             // the exclusive lock held across `remove_file` so writers cannot
             // race in between unlock and unlink.
@@ -333,8 +357,14 @@ pub(crate) fn prune_expired_logs(dir: &Path, today: NaiveDate, retention_days: u
             if let Err(err) = fs::remove_file(&path)
                 && err.kind() != io::ErrorKind::NotFound
             {
+                #[cfg(windows)]
+                if err.raw_os_error() == Some(32) {
+                    continue;
+                }
                 eprintln!("Failed to remove expired log file '{}': {err}", path.display());
             }
+            #[cfg(not(windows))]
+            drop(file);
             continue;
         }
         if let Err(err) = fs::remove_file(&path)

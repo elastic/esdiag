@@ -168,34 +168,38 @@ pub fn daily_log_filename(date: chrono::NaiveDate) -> String {
 }
 
 /// Opens the daily log file `dir/esdiag-YYYY-MM-DD.log` for appending, creating
-/// `dir` if needed, enforcing owner-only (`0600` on Unix) permissions, and
-/// acquiring a shared advisory lock so concurrent processes cannot compress or
-/// unlink the file while this handle is open.
+/// `dir` if needed and enforcing owner-only (`0600` on Unix) permissions.
+///
+/// On Unix, acquires a shared advisory lock and verifies the inode still
+/// matches the pathname so concurrent processes cannot compress or unlink the
+/// file while this handle is open. On Windows, open handles already coordinate
+/// via OS share modes without blocking writes on the handle itself.
 pub fn open_daily_log_file(dir: &Path, date: chrono::NaiveDate) -> Result<std::fs::File> {
     std::fs::create_dir_all(dir)?;
     let path = dir.join(daily_log_filename(date));
-    for _ in 0..8 {
-        let mut options = OpenOptions::new();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        for _ in 0..8 {
+            let mut options = OpenOptions::new();
             options.mode(0o600);
-        }
-        let file = options.read(true).create(true).append(true).open(&path)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
+            let file = options.create(true).append(true).open(&path)?;
             file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+            file.lock_shared()?;
+            if locked_handle_matches_path(&file, &path)? {
+                return Ok(file);
+            }
         }
-        file.lock_shared()?;
-        if locked_handle_matches_path(&file, &path)? {
-            return Ok(file);
-        }
+        Err(eyre::eyre!(
+            "Daily log file '{}' was concurrently rotated while opening",
+            path.display()
+        ))
     }
-    Err(eyre::eyre!(
-        "Daily log file '{}' was concurrently rotated while opening",
-        path.display()
-    ))
+    #[cfg(not(unix))]
+    {
+        let file = OpenOptions::new().create(true).append(true).open(&path)?;
+        Ok(file)
+    }
 }
 
 #[cfg(unix)]
@@ -207,11 +211,6 @@ fn locked_handle_matches_path(file: &std::fs::File, path: &Path) -> Result<bool>
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(err) => Err(err.into()),
     }
-}
-
-#[cfg(not(unix))]
-fn locked_handle_matches_path(_file: &std::fs::File, path: &Path) -> Result<bool> {
-    Ok(path.exists())
 }
 
 /// Opens the run log for appending, optionally truncating it first. The log is
@@ -467,27 +466,41 @@ mod tests {
         assert_eq!(super::default_logs_dir().unwrap(), home.join("logs"));
     }
 
-    #[cfg(unix)]
     #[test]
-    fn open_daily_log_file_creates_date_named_owner_only_file() {
-        use std::{io::Write, os::unix::fs::PermissionsExt};
+    fn open_daily_log_file_appends_through_handle_and_clone() {
+        use std::io::Write;
 
         let env = crate::TestEnv::new();
         let dir = env.tmp.path().join("daily-logs");
         let date = chrono::NaiveDate::from_ymd_opt(2026, 11, 24).unwrap();
         let expected = dir.join("esdiag-2026-11-24.log");
 
-        super::open_daily_log_file(&dir, date)
-            .unwrap()
-            .write_all(b"first\n")
-            .unwrap();
-        std::fs::set_permissions(&expected, std::fs::Permissions::from_mode(0o644)).unwrap();
+        {
+            let mut first = super::open_daily_log_file(&dir, date).unwrap();
+            first.write_all(b"first\n").unwrap();
+            let mut cloned = first.try_clone().unwrap();
+            cloned.write_all(b"cloned\n").unwrap();
+        }
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&expected, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+
         super::open_daily_log_file(&dir, date)
             .unwrap()
             .write_all(b"second\n")
             .unwrap();
 
-        assert_eq!(std::fs::metadata(&expected).unwrap().permissions().mode() & 0o777, 0o600);
-        assert_eq!(std::fs::read_to_string(&expected).unwrap(), "first\nsecond\n");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&expected).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        assert_eq!(
+            std::fs::read_to_string(&expected).unwrap(),
+            "first\ncloned\nsecond\n"
+        );
     }
 }
