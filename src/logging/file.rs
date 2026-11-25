@@ -245,6 +245,7 @@ fn compress_previous_logs_with_cancel(dir: &Path, today: NaiveDate, cancelled: &
     }
 }
 
+#[cfg(not(windows))]
 fn try_open_exclusive_for_maintenance(path: &Path) -> io::Result<Option<File>> {
     #[cfg(unix)]
     {
@@ -275,19 +276,7 @@ fn try_open_exclusive_for_maintenance(path: &Path) -> io::Result<Option<File>> {
         }
         Ok(None)
     }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::OpenOptionsExt;
-        // `share_mode(0)` fails with ERROR_SHARING_VIOLATION (32) whenever any
-        // writer or redirected child still has the log file open.
-        match OpenOptions::new().read(true).write(true).share_mode(0).open(path) {
-            Ok(file) => Ok(Some(file)),
-            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(err) if err.raw_os_error() == Some(32) => Ok(None),
-            Err(err) => Err(err),
-        }
-    }
-    #[cfg(not(any(unix, windows)))]
+    #[cfg(not(unix))]
     {
         match File::open(path) {
             Ok(file) => Ok(Some(file)),
@@ -297,6 +286,103 @@ fn try_open_exclusive_for_maintenance(path: &Path) -> io::Result<Option<File>> {
     }
 }
 
+#[cfg(windows)]
+fn restore_staged_log(staging_path: &Path, src_path: &Path) {
+    // `hard_link` fails without overwriting if a writer created a new `src_path`.
+    if fs::hard_link(staging_path, src_path).is_ok() {
+        let _ = fs::remove_file(staging_path);
+    }
+}
+
+#[cfg(windows)]
+fn compress_single_log(src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) -> io::Result<()> {
+    let staging_name = format!(
+        "{}.{}-{}.compressing",
+        src_path.file_name().and_then(|n| n.to_str()).unwrap_or("esdiag.log"),
+        std::process::id(),
+        Uuid::new_v4()
+    );
+    let staging_path = src_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(staging_name);
+
+    // Atomically detach `src_path` before reading it. Active writers open
+    // daily logs without `FILE_SHARE_DELETE`, so this fails with
+    // `ERROR_SHARING_VIOLATION` (32) whenever any writer still holds the file
+    // and eliminates any race between publishing `.gz` and deleting the source.
+    match fs::rename(src_path, &staging_path) {
+        Ok(()) => {}
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(err) if err.raw_os_error() == Some(32) => return Ok(()),
+        Err(err) => return Err(err),
+    }
+
+    let tmp_name = format!(
+        "{}.{}-{}.tmp",
+        gz_path.file_name().and_then(|n| n.to_str()).unwrap_or("esdiag.log.gz"),
+        std::process::id(),
+        Uuid::new_v4()
+    );
+    let tmp_path = gz_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(tmp_name);
+
+    let mut was_cancelled = false;
+    let compress_result = (|| -> io::Result<()> {
+        let mut input = File::open(&staging_path)?;
+        let tmp_file = OpenOptions::new().write(true).create_new(true).open(&tmp_path)?;
+        let mut encoder = GzEncoder::new(tmp_file, Compression::default());
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            if cancelled.load(Ordering::Relaxed) {
+                was_cancelled = true;
+                return Ok(());
+            }
+            let read = input.read(&mut buf)?;
+            if read == 0 {
+                break;
+            }
+            encoder.write_all(&buf[..read])?;
+        }
+        let file = encoder.finish()?;
+        file.sync_all()?;
+        Ok(())
+    })();
+
+    if was_cancelled {
+        let _ = fs::remove_file(&tmp_path);
+        restore_staged_log(&staging_path, src_path);
+        return Ok(());
+    }
+
+    if let Err(err) = compress_result {
+        let _ = fs::remove_file(&tmp_path);
+        restore_staged_log(&staging_path, src_path);
+        return Err(err);
+    }
+
+    if gz_path.exists() {
+        let _ = fs::remove_file(&tmp_path);
+        let _ = fs::remove_file(&staging_path);
+        return Ok(());
+    }
+
+    if let Err(err) = fs::rename(&tmp_path, gz_path) {
+        let _ = fs::remove_file(&tmp_path);
+        restore_staged_log(&staging_path, src_path);
+        return Err(err);
+    }
+
+    match fs::remove_file(&staging_path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
+#[cfg(not(windows))]
 fn compress_single_log(src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) -> io::Result<()> {
     let Some(mut input) = try_open_exclusive_for_maintenance(src_path)? else {
         return Ok(());
@@ -365,8 +451,6 @@ fn compress_single_log(src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) 
         let _ = fs::remove_file(&tmp_path);
         return Err(err);
     }
-    #[cfg(windows)]
-    drop(input);
 
     match fs::remove_file(src_path) {
         Ok(()) => Ok(()),
@@ -409,6 +493,7 @@ fn prune_expired_logs_with_cancel(dir: &Path, today: NaiveDate, retention_days: 
             continue;
         }
         let path = entry.path();
+        #[cfg(not(windows))]
         if !is_compressed {
             let file = match try_open_exclusive_for_maintenance(&path) {
                 Ok(Some(file)) => file,
@@ -418,27 +503,26 @@ fn prune_expired_logs_with_cancel(dir: &Path, today: NaiveDate, retention_days: 
                     continue;
                 }
             };
-            // On Windows, an open handle prevents `remove_file`; on Unix, keep
-            // the exclusive lock held across `remove_file` so writers cannot
-            // race in between unlock and unlink.
-            #[cfg(windows)]
-            drop(file);
+            // Keep the exclusive lock held across `remove_file` so writers
+            // cannot race in between unlock and unlink.
             if let Err(err) = fs::remove_file(&path)
                 && err.kind() != io::ErrorKind::NotFound
             {
-                #[cfg(windows)]
-                if err.raw_os_error() == Some(32) {
-                    continue;
-                }
                 eprintln!("Failed to remove expired log file '{}': {err}", path.display());
             }
-            #[cfg(not(windows))]
             drop(file);
             continue;
         }
+        // On Windows, active daily logs are opened without `FILE_SHARE_DELETE`,
+        // so `remove_file` atomically fails with `ERROR_SHARING_VIOLATION` (32)
+        // while any writer is open.
         if let Err(err) = fs::remove_file(&path)
             && err.kind() != io::ErrorKind::NotFound
         {
+            #[cfg(windows)]
+            if err.raw_os_error() == Some(32) {
+                continue;
+            }
             eprintln!("Failed to remove expired log file '{}': {err}", path.display());
         }
     }

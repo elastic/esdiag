@@ -195,7 +195,22 @@ pub fn open_daily_log_file(dir: &Path, date: chrono::NaiveDate) -> Result<std::f
             path.display()
         ))
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // Allow concurrent readers and writers while preventing rename/delete
+        // (`FILE_SHARE_DELETE` omitted) so maintenance atomically skips active
+        // daily logs via `ERROR_SHARING_VIOLATION`.
+        const FILE_SHARE_READ: u32 = 0x0000_0001;
+        const FILE_SHARE_WRITE: u32 = 0x0000_0002;
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .open(&path)?;
+        Ok(file)
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let file = OpenOptions::new().create(true).append(true).open(&path)?;
         Ok(file)
