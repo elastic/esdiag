@@ -67,7 +67,7 @@ impl IndexSettingsDocument {
         }
     }
 
-    pub fn is_write_index(self, is_write_index: Option<bool>) -> Self {
+    pub fn write_index(self, is_write_index: Option<bool>) -> Self {
         Self { is_write_index, ..self }
     }
 }
