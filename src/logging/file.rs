@@ -84,28 +84,27 @@ impl DailyLogWriter {
     }
 
     fn write_bytes(&self, buf: &[u8]) -> io::Result<usize> {
-        let today = (self.clock)();
-        let mut rolled_over = false;
-
-        let written = {
+        let (written, rolled_over_date) = {
             let mut guard = self.inner.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            if guard.current_date != today {
+            let today = (self.clock)();
+            let mut rolled_over_date = None;
+            if today > guard.current_date {
                 let _ = guard.file.flush();
                 match open_daily_log_file(&self.dir, today) {
                     Ok(new_file) => {
                         guard.file = new_file;
                         guard.current_date = today;
-                        rolled_over = true;
+                        rolled_over_date = Some(today);
                     }
                     Err(err) => {
                         eprintln!("Failed to rotate daily log file to {}: {err}", daily_log_filename(today));
                     }
                 }
             }
-            guard.file.write(buf)?
+            (guard.file.write(buf)?, rolled_over_date)
         };
 
-        if rolled_over {
+        if let Some(today) = rolled_over_date {
             let dir = self.dir.clone();
             let retention_days = self.retention_days;
             let compress = self.compress_on_rollover;
@@ -222,16 +221,32 @@ pub(crate) fn compress_previous_logs(dir: &Path, today: NaiveDate) {
 fn try_open_exclusive_for_maintenance(path: &Path) -> io::Result<Option<File>> {
     #[cfg(unix)]
     {
-        let file = match File::open(path) {
-            Ok(file) => file,
-            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(err) => return Err(err),
-        };
-        match file.try_lock() {
-            Ok(()) => Ok(Some(file)),
-            Err(fs::TryLockError::WouldBlock) => Ok(None),
-            Err(fs::TryLockError::Error(err)) => Err(err),
+        use std::os::unix::fs::MetadataExt;
+        for _ in 0..8 {
+            let file = match File::open(path) {
+                Ok(file) => file,
+                Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+                Err(err) => return Err(err),
+            };
+            match file.try_lock() {
+                Ok(()) => {
+                    let fd_meta = file.metadata()?;
+                    let path_meta = match fs::metadata(path) {
+                        Ok(meta) => meta,
+                        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+                        Err(err) => return Err(err),
+                    };
+                    if fd_meta.dev() == path_meta.dev() && fd_meta.ino() == path_meta.ino() {
+                        return Ok(Some(file));
+                    }
+                    // Path was replaced between open and lock; drop the stale
+                    // handle and retry against the current pathname.
+                }
+                Err(fs::TryLockError::WouldBlock) => return Ok(None),
+                Err(fs::TryLockError::Error(err)) => return Err(err),
+            }
         }
+        Ok(None)
     }
     #[cfg(windows)]
     {
@@ -319,7 +334,9 @@ fn compress_single_log(src_path: &Path, gz_path: &Path) -> io::Result<()> {
 /// Deletes `esdiag-YYYY-MM-DD.log` and `esdiag-YYYY-MM-DD.log.gz` files in
 /// `dir` whose date is strictly older than `today - retention_days`.
 pub(crate) fn prune_expired_logs(dir: &Path, today: NaiveDate, retention_days: u32) {
-    let cutoff = today - Duration::days(i64::from(retention_days));
+    let Some(cutoff) = today.checked_sub_signed(Duration::days(i64::from(retention_days))) else {
+        return;
+    };
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(err) => {
@@ -505,5 +522,16 @@ mod tests {
         compress_previous_logs(&dir, today);
         assert!(!dir.join("esdiag-2026-11-23.log").exists());
         assert!(dir.join("esdiag-2026-11-23.log.gz").exists());
+    }
+
+    #[test]
+    fn prune_expired_logs_does_not_panic_on_u32_max_retention() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        let old = dir.join("esdiag-2026-10-20.log.gz");
+        fs::write(&old, b"old").unwrap();
+
+        prune_expired_logs(dir, d(2026, 11, 24), u32::MAX);
+        assert!(old.exists(), "huge retention window must preserve files without panicking");
     }
 }

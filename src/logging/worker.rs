@@ -52,9 +52,11 @@ impl WorkerHandle {
         if let Some(tx) = self.shutdown_tx.take() {
             let _ = tx.send(());
         }
-        if let Some(handle) = self.join_handle.take()
-            && timeout(max_wait, handle).await.is_err()
+        if let Some(mut handle) = self.join_handle.take()
+            && timeout(max_wait, &mut handle).await.is_err()
         {
+            handle.abort();
+            let _ = handle.await;
             eprintln!(
                 "Remote logs exporter flush timed out after {}ms; some log events may not have been delivered",
                 max_wait.as_millis()
@@ -401,5 +403,26 @@ mod tests {
             last_warn.is_some(),
             "HTTP 200 bulk response with errors=true must trigger rate-limited warning"
         );
+    }
+
+    #[tokio::test]
+    async fn flush_and_stop_aborts_worker_on_timeout() {
+        let (shutdown_tx, _shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let finished_flag = std::sync::Arc::clone(&finished);
+        let join_handle = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            finished_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+        let abort_check = join_handle.abort_handle();
+        let handle = super::WorkerHandle {
+            shutdown_tx: Some(shutdown_tx),
+            join_handle: Some(join_handle),
+            dropped: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        };
+
+        handle.flush_and_stop(Duration::from_millis(20)).await;
+        assert!(abort_check.is_finished(), "timed-out worker task must be aborted and awaited");
+        assert!(!finished.load(std::sync::atomic::Ordering::SeqCst));
     }
 }
