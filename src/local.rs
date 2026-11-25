@@ -287,7 +287,8 @@ impl LocalState {
         self.user = if mode == StackMode::Full { host_user()? } else { None };
         self.values.remove("ESDIAG_USER");
         self.write()?;
-        if let Ok(log) = esdiag::data::last_run_path(esdiag::data::RUN_LOG) {
+        if let Some(logs_dir) = esdiag::data::resolve_logs_dir() {
+            let log = logs_dir.join(esdiag::data::daily_log_filename(chrono::Utc::now().date_naive()));
             eprintln!(
                 "Starting the local ESDiag stack. Details are logged to {}",
                 log.display()
@@ -1085,24 +1086,48 @@ impl LocalState {
         Ok((runtime.to_string(), command))
     }
 
-    /// Runs a lifecycle action with its compose output appended to the run log.
+    /// Runs a lifecycle action with its compose output appended to the active
+    /// daily log file when file logging is enabled, or captured in memory when
+    /// file logging is disabled.
     fn compose_logged(&self, message: &str, arguments: &[&str]) -> Result<()> {
         progress(message);
-        let log = esdiag::data::last_run_path(esdiag::data::RUN_LOG)?;
-        let file = esdiag::data::open_run_log(false)?;
         let (runtime, mut command) = self.compose_command(arguments)?;
-        let status = command
-            .stdin(Stdio::null())
-            .stdout(Stdio::from(file.try_clone()?))
-            .stderr(Stdio::from(file))
-            .status()?;
-        status.success().then_some(()).ok_or_else(|| {
-            eyre!(
-                "`{runtime} compose {}` failed; see {}",
-                arguments.join(" "),
-                log.display()
-            )
-        })
+        if let Some(logs_dir) = esdiag::data::resolve_logs_dir() {
+            let today = chrono::Utc::now().date_naive();
+            let log = logs_dir.join(esdiag::data::daily_log_filename(today));
+            let file = esdiag::data::open_daily_log_file(&logs_dir, today)?;
+            let status = command
+                .stdin(Stdio::null())
+                .stdout(Stdio::from(file.try_clone()?))
+                .stderr(Stdio::from(file))
+                .status()?;
+            return status.success().then_some(()).ok_or_else(|| {
+                eyre!(
+                    "`{runtime} compose {}` failed; see {}",
+                    arguments.join(" "),
+                    log.display()
+                )
+            });
+        }
+        let output = command.stdin(Stdio::null()).output()?;
+        if output.status.success() {
+            return Ok(());
+        }
+        let combined = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let tail: Vec<&str> = combined.lines().rev().take(20).collect::<Vec<_>>().into_iter().rev().collect();
+        let detail = tail.join("\n");
+        if detail.is_empty() {
+            Err(eyre!("`{runtime} compose {}` failed", arguments.join(" ")))
+        } else {
+            Err(eyre!(
+                "`{runtime} compose {}` failed:\n{detail}",
+                arguments.join(" ")
+            ))
+        }
     }
 
     fn compose(&self, arguments: &[&str]) -> Result<()> {

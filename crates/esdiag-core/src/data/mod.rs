@@ -30,7 +30,7 @@ pub mod settings;
 mod uri;
 
 pub use application::Application;
-pub use application_config::{ApplicationConfig, JobConfig, OnboardingWorkflow, OutputConfig};
+pub use application_config::{ApplicationConfig, JobConfig, LogsConfig, OnboardingWorkflow, OutputConfig};
 pub use auth::{Auth, AuthType};
 pub use credential::Credential;
 pub(crate) use elastic_context::ElasticContextTarget;
@@ -69,7 +69,11 @@ use crate::env;
 use eyre::{Result, eyre};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-use std::{fs::OpenOptions, io::Write, path::PathBuf};
+use std::{
+    fs::OpenOptions,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 pub fn collect_application(app: Option<Application>) -> Result<Application> {
     match app {
@@ -92,7 +96,10 @@ pub fn is_collectable_app(app: Option<Application>) -> bool {
     )
 }
 
-/// File name of the per-run log written to the `last_run` directory.
+/// Default file log retention window in days.
+pub const DEFAULT_LOGS_RETENTION_DAYS: u32 = 30;
+
+/// File name of the legacy per-run log written to the `last_run` directory.
 pub const RUN_LOG: &str = "esdiag.log";
 
 /// Path of `filename` inside the `last_run` directory, creating the directory.
@@ -100,6 +107,84 @@ pub fn last_run_path(filename: &str) -> Result<PathBuf> {
     let path = env::runtime_config_dir()?.join("last_run").join(filename);
     std::fs::create_dir_all(path.parent().expect("last_run directory"))?;
     Ok(path)
+}
+
+/// Returns the default directory for opt-in daily file logs (`~/.esdiag/logs`,
+/// respecting `ESDIAG_HOME`).
+pub fn default_logs_dir() -> Result<PathBuf> {
+    Ok(env::runtime_config_dir()?.join("logs"))
+}
+
+/// Resolves the configured file logging directory.
+///
+/// Precedence:
+/// 1. `ESDIAG_LOGS_PATH` environment variable (empty/whitespace explicitly disables).
+/// 2. `logs.path` in `~/.esdiag/esdiag.yml`.
+/// 3. `None` (file logging disabled by default).
+pub fn resolve_logs_dir() -> Option<PathBuf> {
+    if let Some(raw) = std::env::var_os("ESDIAG_LOGS_PATH") {
+        let trimmed = raw.to_string_lossy();
+        if trimmed.trim().is_empty() {
+            return None;
+        }
+        return Some(PathBuf::from(raw));
+    }
+    ApplicationConfig::load()
+        .ok()
+        .and_then(|config| config.logs.path)
+        .filter(|path| !path.as_os_str().is_empty())
+}
+
+/// Resolves the configured file log retention window in days.
+///
+/// Precedence:
+/// 1. `ESDIAG_LOGS_RETENTION_DAYS` (positive integer; invalid/zero warns and falls back).
+/// 2. `logs.retention_days` in `~/.esdiag/esdiag.yml` (if positive).
+/// 3. [`DEFAULT_LOGS_RETENTION_DAYS`] (30 days).
+pub fn resolve_logs_retention_days() -> u32 {
+    if let Ok(raw) = std::env::var("ESDIAG_LOGS_RETENTION_DAYS") {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            match trimmed.parse::<u32>() {
+                Ok(days) if days > 0 => return days,
+                _ => {
+                    eprintln!(
+                        "Invalid ESDIAG_LOGS_RETENTION_DAYS value '{trimmed}'; falling back to configured or default retention"
+                    );
+                }
+            }
+        }
+    }
+    ApplicationConfig::load()
+        .ok()
+        .and_then(|config| config.logs.retention_days)
+        .filter(|&days| days > 0)
+        .unwrap_or(DEFAULT_LOGS_RETENTION_DAYS)
+}
+
+/// Returns the daily log filename for `date`: `esdiag-YYYY-MM-DD.log`.
+pub fn daily_log_filename(date: chrono::NaiveDate) -> String {
+    format!("esdiag-{}.log", date.format("%Y-%m-%d"))
+}
+
+/// Opens the daily log file `dir/esdiag-YYYY-MM-DD.log` for appending, creating
+/// `dir` if needed and enforcing owner-only (`0600` on Unix) permissions.
+pub fn open_daily_log_file(dir: &Path, date: chrono::NaiveDate) -> Result<std::fs::File> {
+    std::fs::create_dir_all(dir)?;
+    let path = dir.join(daily_log_filename(date));
+    let mut options = OpenOptions::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.create(true).append(true).open(&path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(file)
 }
 
 /// Opens the run log for appending, optionally truncating it first. The log is
@@ -302,5 +387,80 @@ mod tests {
             assert!(error.contains("Web UI submission"));
             assert!(!error.contains("not yet implemented"));
         }
+    }
+
+    #[test]
+    fn resolve_logs_dir_defaults_to_none_and_respects_precedence() {
+        let mut env = crate::TestEnv::new();
+        env.remove("ESDIAG_LOGS_PATH");
+        assert_eq!(super::resolve_logs_dir(), None);
+
+        let mut config = super::ApplicationConfig::new();
+        let config_dir = env.tmp.path().join("config-logs");
+        config.logs.path = Some(config_dir.clone());
+        config.save().unwrap();
+        assert_eq!(super::resolve_logs_dir(), Some(config_dir));
+
+        let env_dir = env.tmp.path().join("env-logs");
+        env.set_path("ESDIAG_LOGS_PATH", env_dir.clone());
+        assert_eq!(super::resolve_logs_dir(), Some(env_dir));
+
+        env.set("ESDIAG_LOGS_PATH", "");
+        assert_eq!(super::resolve_logs_dir(), None);
+    }
+
+    #[test]
+    fn resolve_logs_retention_days_defaults_to_30_and_respects_precedence() {
+        let mut env = crate::TestEnv::new();
+        env.remove("ESDIAG_LOGS_RETENTION_DAYS");
+        assert_eq!(super::resolve_logs_retention_days(), 30);
+
+        let mut config = super::ApplicationConfig::new();
+        config.logs.retention_days = Some(14);
+        config.save().unwrap();
+        assert_eq!(super::resolve_logs_retention_days(), 14);
+
+        env.set("ESDIAG_LOGS_RETENTION_DAYS", "7");
+        assert_eq!(super::resolve_logs_retention_days(), 7);
+
+        env.set("ESDIAG_LOGS_RETENTION_DAYS", "0");
+        assert_eq!(super::resolve_logs_retention_days(), 14);
+
+        let mut default_cfg = super::ApplicationConfig::new();
+        default_cfg.logs.retention_days = None;
+        default_cfg.save().unwrap();
+        assert_eq!(super::resolve_logs_retention_days(), 30);
+    }
+
+    #[test]
+    fn default_logs_dir_respects_esdiag_home() {
+        let mut env = crate::TestEnv::new();
+        let home = env.tmp.path().join("custom-home");
+        env.set_path("ESDIAG_HOME", home.clone());
+        assert_eq!(super::default_logs_dir().unwrap(), home.join("logs"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn open_daily_log_file_creates_date_named_owner_only_file() {
+        use std::{io::Write, os::unix::fs::PermissionsExt};
+
+        let env = crate::TestEnv::new();
+        let dir = env.tmp.path().join("daily-logs");
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 11, 24).unwrap();
+        let expected = dir.join("esdiag-2026-11-24.log");
+
+        super::open_daily_log_file(&dir, date)
+            .unwrap()
+            .write_all(b"first\n")
+            .unwrap();
+        std::fs::set_permissions(&expected, std::fs::Permissions::from_mode(0o644)).unwrap();
+        super::open_daily_log_file(&dir, date)
+            .unwrap()
+            .write_all(b"second\n")
+            .unwrap();
+
+        assert_eq!(std::fs::metadata(&expected).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(std::fs::read_to_string(&expected).unwrap(), "first\nsecond\n");
     }
 }

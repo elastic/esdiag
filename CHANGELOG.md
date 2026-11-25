@@ -12,6 +12,8 @@ published release notes, maintenance branches, and tagged history.
 
 ### Added
 
+- Added a native Elasticsearch logs exporter (`ESDIAG_LOGS_URL`, `ESDIAG_LOGS_APIKEY`, `ESDIAG_LOGS_USERNAME`, `ESDIAG_LOGS_PASSWORD`, `ESDIAG_LOGS_INSECURE`, `ESDIAG_LOGS_HOST`, `ESDIAG_LOGS_DATA_STREAM`, and `esdiag.yml` `logs.host`) that ships structured tracing logs asynchronously via `_bulk` `create` to `logs-esdiag-default` (#475).
+- Added opt-in daily-rotating file logging (`ESDIAG_LOGS_PATH`, `ESDIAG_LOGS_RETENTION_DAYS`, and `esdiag.yml` `logs.path` / `logs.retention_days`) writing `esdiag-YYYY-MM-DD.log` files with 30-day default retention and gzip compression of prior days' logs on rollover in `serve` mode and on exit for one-shot commands (#475).
 - Added `esdiag mcp`, a local stdio MCP server that offers host, output, keystore status, collect, process, send, job, Agent Builder, and setup commands as tools with structured results, progress notifications, and safety annotations, and registered it in the Claude Code and Codex plugins (#307).
 - Added `esdiag setup completions <shell>` to install bash, zsh, fish, and PowerShell completion scripts for the running binary, or print them with `--print`.
 - Added `esdiag setup env [--env-file <path>]` to install assets into the deployment that `ESDIAG_OUTPUT_*`, `ESDIAG_KIBANA_URL`, and `ESDIAG_KIBANA_SPACE` declare, and `esdiag setup context [name]` to install assets into the services an Elastic CLI `.elasticrc` context defines. Both set up whichever of Elasticsearch and Kibana the source declares (#431).
@@ -28,6 +30,7 @@ published release notes, maintenance branches, and tagged history.
 
 ### Changed
 
+- **Breaking:** File logging is now disabled by default instead of unconditionally writing `~/.esdiag/last_run/esdiag.log`. Set `ESDIAG_LOGS_PATH` or `logs.path` in `~/.esdiag/esdiag.yml` to enable daily file logging (#475).
 - **Breaking:** `esdiag setup` now requires a subcommand (#431):
   - `esdiag setup <output>` becomes `esdiag setup output <output>`, which installs Elasticsearch assets and the assets of the output's linked Kibana viewer.
   - `esdiag setup <elasticsearch-host>` and `esdiag setup <kibana-host>` become `esdiag setup elasticsearch <host>` and `esdiag setup kibana <host>`. Each installs only that service's assets and rejects a saved host of the other app.

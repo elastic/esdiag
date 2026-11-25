@@ -672,7 +672,7 @@ async fn async_main() -> Result<ExitCode> {
     let Some(cli) = parse_cli()? else {
         return Ok(ExitCode::SUCCESS);
     };
-    init_tracing(resolve_tracing_filter(&cli), resolve_log_file_filter(&cli));
+    let logs_guard = init_tracing(&cli);
     let stdout_owned = command_owns_stdout(&cli);
     let no_command = cli.command.is_none();
     if !no_command && !logs_to_terminal(&cli) {
@@ -685,27 +685,37 @@ async fn async_main() -> Result<ExitCode> {
         tracing::error!("{}", panic);
     }));
 
-    clear_last_run_files()?;
-
-    let format = cli.format;
-    let setup_command = matches!(cli.command, Some(Commands::Setup { .. }));
-    match run(cli, format).await {
-        Ok(result) => {
-            if let CommandOutcome::Completed(outcome) = result {
-                write_terminal_outcome(format, &outcome)?;
+    let outcome = match clear_last_run_files() {
+        Err(e) => Err(e),
+        Ok(()) => {
+            let format = cli.format;
+            let setup_command = matches!(cli.command, Some(Commands::Setup { .. }));
+            match run(cli, format).await {
+                Ok(result) => {
+                    if let CommandOutcome::Completed(outcome) = result {
+                        write_terminal_outcome(format, &outcome)
+                            .map(|()| ExitCode::SUCCESS)
+                            .map_err(Into::into)
+                    } else {
+                        Ok(ExitCode::SUCCESS)
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("{}", e);
+                    if !stdout_owned && !no_command {
+                        let failure = command_failure(&e, setup_command);
+                        write_terminal_outcome(format, &failure)
+                            .map(|()| ExitCode::FAILURE)
+                            .map_err(Into::into)
+                    } else {
+                        Err(eyre!(e))
+                    }
+                }
             }
-            Ok(ExitCode::SUCCESS)
         }
-        Err(e) => {
-            tracing::error!("{}", e);
-            if !stdout_owned && !no_command {
-                let failure = command_failure(&e, setup_command);
-                write_terminal_outcome(format, &failure)?;
-                return Ok(ExitCode::FAILURE);
-            }
-            Err(eyre!(e))
-        }
-    }
+    };
+    logs_guard.shutdown(esdiag::logging::DEFAULT_SHUTDOWN_TIMEOUT).await;
+    outcome
 }
 
 fn parse_cli() -> Result<Option<Cli>> {
@@ -880,33 +890,66 @@ Named contexts are read from .elasticrc, .elasticrc.json, .elasticrc.yaml,
 .elasticrc.yml, or ELASTIC_CLI_CONFIG_FILE."#
 }
 
-fn init_tracing(terminal_filter: EnvFilter, file_filter: Option<EnvFilter>) {
+fn is_serve_command(cli: &Cli) -> bool {
+    #[cfg(feature = "server")]
+    {
+        matches!(cli.command, Some(Commands::Serve { .. }))
+    }
+    #[cfg(not(feature = "server"))]
+    {
+        let _ = cli;
+        false
+    }
+}
+
+fn init_tracing(cli: &Cli) -> esdiag::logging::LogsGuard {
     // Bridge `log` records from dependencies when available, but tolerate hosts that
     // already installed a global logger before invoking this binary.
     if let Err(err) = tracing_log::LogTracer::init() {
         eprintln!("tracing log bridge already initialized: {err}");
     }
 
+    let terminal_filter = resolve_tracing_filter(cli);
+    let sink_filter = resolve_sink_filter(cli);
+
     let terminal = fmt::layer()
         .with_ansi(std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none())
         .with_writer(std::io::stderr)
         .with_filter(terminal_filter);
-    let file = file_filter.and_then(|filter| match esdiag::data::open_run_log(true) {
-        Ok(file) => Some(
-            fmt::layer()
-                .with_ansi(false)
-                .with_writer(std::sync::Mutex::new(file))
-                .with_filter(filter),
-        ),
-        Err(err) => {
-            eprintln!("Could not open the run log: {err}");
-            None
+
+    let mut file_maintenance = None;
+    let file = esdiag::data::resolve_logs_dir().and_then(|dir| {
+        let retention_days = esdiag::data::resolve_logs_retention_days();
+        let compress_on_rollover = is_serve_command(cli);
+        match esdiag::logging::DailyLogWriter::open(dir, retention_days, compress_on_rollover) {
+            Ok((writer, maintenance)) => {
+                file_maintenance = Some(maintenance);
+                Some(
+                    fmt::layer()
+                        .with_ansi(false)
+                        .with_writer(writer)
+                        .with_filter(sink_filter.clone()),
+                )
+            }
+            Err(err) => {
+                eprintln!("Could not open the daily log file: {err}");
+                None
+            }
         }
     });
-    let subscriber = tracing_subscriber::registry().with(terminal).with(file);
+
+    let (remote_layer, remote_handle) = esdiag::logging::init_remote_logs_layer();
+    let remote = remote_layer.map(|layer| layer.with_filter(sink_filter));
+
+    let subscriber = tracing_subscriber::registry()
+        .with(terminal)
+        .with(file)
+        .with(remote);
     if let Err(err) = tracing::subscriber::set_global_default(subscriber) {
         eprintln!("tracing subscriber already initialized: {err}");
     }
+
+    esdiag::logging::LogsGuard::new(remote_handle, file_maintenance)
 }
 
 fn is_agent_mode(cli: &Cli) -> bool {
@@ -992,13 +1035,11 @@ fn resolve_tracing_filter(cli: &Cli) -> EnvFilter {
     }
 }
 
-fn resolve_log_file_filter(cli: &Cli) -> Option<EnvFilter> {
-    if logs_to_terminal(cli) {
-        None
-    } else if cli.debug {
-        Some(EnvFilter::new("debug"))
+fn resolve_sink_filter(cli: &Cli) -> EnvFilter {
+    if cli.debug {
+        EnvFilter::new("debug")
     } else {
-        Some(EnvFilter::try_from_env("LOG_LEVEL").unwrap_or_else(|_| EnvFilter::new(LOG_LEVEL)))
+        EnvFilter::try_from_env("LOG_LEVEL").unwrap_or_else(|_| EnvFilter::new(LOG_LEVEL))
     }
 }
 
@@ -2887,7 +2928,7 @@ mod tests {
         Cli, Commands, ConfiguredDefaultJob, HostCommands, KeystoreCommands, cli_command, command_owns_stdout,
         configured_default_job, default_diagnostic_user_from, detected_esdiag_local_preset, elastic_cli_help_text,
         ensure_output_deployment_valid, is_agent_mode, keep_default_job, local_core_stack_start_args,
-        missing_extension_process_input, needs_processing_default_job, resolve_log_file_filter,
+        missing_extension_process_input, needs_processing_default_job, resolve_sink_filter,
         resolve_secret_input_with_prompt, resolve_tracing_filter, saved_job_fits_workflow,
         should_error_for_missing_subcommand, should_run_output_setup, should_start_local_core_stack,
         validate_extension_profile,
@@ -3959,27 +4000,18 @@ mod tests {
 
         if std::env::var_os("LOG_LEVEL").is_none() {
             assert_eq!(resolve_tracing_filter(&cli).to_string(), "warn");
-            assert_eq!(
-                resolve_log_file_filter(&cli)
-                    .map(|filter| filter.to_string())
-                    .as_deref(),
-                Some("info")
-            );
+            assert_eq!(resolve_sink_filter(&cli).to_string(), "info");
         }
-        assert_eq!(
-            resolve_log_file_filter(&debug)
-                .map(|filter| filter.to_string())
-                .as_deref(),
-            Some("debug")
-        );
+        assert_eq!(resolve_sink_filter(&debug).to_string(), "debug");
     }
 
     #[cfg(feature = "server")]
     #[test]
-    fn serve_logs_to_stderr_without_a_run_log() {
+    fn serve_uses_info_filter_for_optional_sinks() {
         let serve = Cli::parse_from(["esdiag", "serve"]);
-
-        assert!(resolve_log_file_filter(&serve).is_none());
+        if std::env::var_os("LOG_LEVEL").is_none() {
+            assert_eq!(resolve_sink_filter(&serve).to_string(), "info");
+        }
     }
 
     #[test]

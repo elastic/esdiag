@@ -9,3 +9,4 @@
 pub use esdiag_core::*;
 #[cfg(feature = "server")]
 pub use esdiag_gui::server;
+pub mod logging;

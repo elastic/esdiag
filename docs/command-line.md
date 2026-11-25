@@ -42,10 +42,12 @@ experimental Elastic CLI extension.
 finite commands. YAML is the default.
 
 Finite commands write one result to stdout. Short progress messages, warnings,
-and errors go to stderr. Each command's full log, including container runtime
-output from `esdiag local`, goes to `~/.esdiag/last_run/esdiag.log`, which is
-replaced on the next run. `--debug` adds debug detail to the log and the
-terminal. `esdiag serve` and `esdiag mcp` log to stderr instead.
+and errors go to stderr. Local file logging is disabled by default; set
+`ESDIAG_LOGS_PATH` (or `logs.path` in `~/.esdiag/esdiag.yml`) to write daily
+`esdiag-YYYY-MM-DD.log` files (including container runtime output from
+`esdiag local`). `--debug` adds debug detail to stderr, file logs, and remote
+Elasticsearch log shipping. `esdiag serve` and `esdiag mcp` log to stderr at
+`info` / `warn` by default.
 Processing results include `outcome`, `documents_failed`, and `indexing_failures`
 with destination data stream names and rejection counts, including documents
 redirected to a failure store. `output` identifies the resolved
@@ -84,7 +86,8 @@ By default, ESDiag stores user state in `~/.esdiag`:
 | `esdiag.yml` | Non-secret user defaults. |
 | `settings.yml` | Saved UI settings. |
 | `jobs.yml` | Saved jobs. |
-| `last_run/` | The last command's `esdiag.log` and debug files. |
+| `logs/` | Default opt-in daily log directory (`esdiag-YYYY-MM-DD.log`, `.log.gz`) when configured. |
+| `last_run/` | Last command's debug artifacts (no longer writes `esdiag.log` by default). |
 
 `ESDIAG_HOSTS` and `ESDIAG_KEYSTORE` override the paths to `hosts.yml` and
 `secrets.yml`.
@@ -101,9 +104,45 @@ not receive one, and the deployment for `esdiag setup env`:
 ESDiag uses one complete output definition. It does not combine endpoints or
 credentials from command arguments, environment variables, and `esdiag.yml`.
 
-`LOG_LEVEL` sets the log level for the run log and the terminal. Without it, the
-run log records `info` and the terminal shows warnings and errors.
+`LOG_LEVEL` sets the log level for the terminal and any enabled file or remote
+log sinks. Without it, enabled file and remote sinks record `info`, while the
+terminal shows warnings and errors for finite commands (`info` for `serve`).
 `ESDIAG_KEYSTORE_PASSWORD` supplies a keystore password for non-interactive use.
+
+### Application log shipping and file logging
+
+ESDiag can ship its own structured tracing logs directly to an Elasticsearch
+data stream (default `logs-esdiag-default`) without a separate log shipper, and
+can optionally persist daily-rotating local log files.
+
+Remote Elasticsearch log shipping is configured in strict precedence order:
+
+1. Environment URL: `ESDIAG_LOGS_URL` with optional `ESDIAG_LOGS_APIKEY` or
+   `ESDIAG_LOGS_USERNAME` + `ESDIAG_LOGS_PASSWORD`, and optional
+   `ESDIAG_LOGS_INSECURE=true` to disable TLS verification.
+2. Saved host via environment: `ESDIAG_LOGS_HOST=<name>` referencing a saved
+   Elasticsearch host in `hosts.yml` with role `send`.
+3. Saved host via `~/.esdiag/esdiag.yml`: `logs.host`.
+4. Disabled when none are set (never falls back to `ESDIAG_OUTPUT_URL` or
+   `output.default`).
+
+Set `ESDIAG_LOGS_DATA_STREAM` to override the default `logs-esdiag-default`
+data stream. Saved-host credentials are resolved non-interactively via
+`ESDIAG_KEYSTORE_PASSWORD` or an active `esdiag keystore unlock` lease; remote
+delivery failures never fail the primary command.
+
+Local file logging is opt-in (disabled by default):
+
+- `ESDIAG_LOGS_PATH` (or `logs.path` in `esdiag.yml`): directory for daily UTC
+  `esdiag-YYYY-MM-DD.log` files (owner-only `0600` on Unix). Setting
+  `ESDIAG_LOGS_PATH=""` explicitly disables file logging even if `logs.path` is
+  configured.
+- `ESDIAG_LOGS_RETENTION_DAYS` (or `logs.retention_days` in `esdiag.yml`):
+  retention window in days (default `30`). Files older than the window are
+  pruned on daily rollover and exit.
+- Previous days' `.log` files are gzipped to `.log.gz` asynchronously on daily
+  rollover in `esdiag serve` and on process exit for one-shot commands (never
+  on startup).
 
 ### Elastic CLI extension
 
