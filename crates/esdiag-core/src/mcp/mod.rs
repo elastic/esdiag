@@ -547,8 +547,9 @@ async fn process_upload(host: Arc<dyn McpHost>, uri: Uri, identity: RequestIdent
     }
 }
 
-/// A local call's report user and account: the parameters when given, else
-/// the request identity.
+/// A local call's report user and account. A request identity is always the
+/// user, as for web jobs, and supplies the account when none is given;
+/// without one, the parameters stand.
 fn identified(
     identity: &Option<RequestIdentity>,
     user: Option<String>,
@@ -556,7 +557,7 @@ fn identified(
 ) -> (Option<String>, Option<String>) {
     match identity {
         Some(identity) => (
-            user.or_else(|| Some(identity.user.clone())),
+            Some(identity.user.clone()),
             account.or_else(|| identity.account.clone()),
         ),
         None => (user, account),

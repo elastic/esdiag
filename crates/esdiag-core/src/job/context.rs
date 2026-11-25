@@ -91,6 +91,11 @@ pub async fn with_scoped_execution<F: Future>(scope: ExecutionScope, future: F) 
     SCOPED_EXECUTION.scope(scope, future).await
 }
 
+/// The scope set by [`with_scoped_execution`] for the current task, if any.
+pub(crate) fn current_scope() -> Option<ExecutionScope> {
+    SCOPED_EXECUTION.try_with(Clone::clone).ok()
+}
+
 #[derive(Clone)]
 pub struct ExecutionContext {
     pub inputs: InputResolver,
@@ -117,7 +122,7 @@ impl Default for ExecutionContext {
             observer: SCOPED_OBSERVER
                 .try_with(Arc::clone)
                 .unwrap_or_else(|_| Arc::new(NoopObserver)),
-            scope: SCOPED_EXECUTION.try_with(Clone::clone).ok(),
+            scope: current_scope(),
         }
     }
 }

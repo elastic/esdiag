@@ -594,6 +594,21 @@ fn operator() -> Option<RequestIdentity> {
     })
 }
 
+#[test]
+fn the_request_identity_is_the_report_user() {
+    let (user, account) = super::identified(&operator(), Some("mallory".into()), None);
+    assert_eq!(user.as_deref(), Some("operator@example.com"));
+    assert_eq!(account.as_deref(), Some("acme"));
+
+    let (user, account) = super::identified(&operator(), Some("mallory".into()), Some("globex".into()));
+    assert_eq!(user.as_deref(), Some("operator@example.com"));
+    assert_eq!(account.as_deref(), Some("globex"), "a supplied account is kept");
+
+    let (user, account) = super::identified(&None, Some("alice".into()), None);
+    assert_eq!(user.as_deref(), Some("alice"), "stdio keeps the supplied user");
+    assert_eq!(account, None);
+}
+
 #[tokio::test]
 async fn a_completed_call_releases_its_slot_after_tracked_tasks_end() {
     let host = FakeHost::new(None);

@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use super::AllowedHosts;
+use super::{AllowedHosts, GuiMcpHost};
 use crate::{
     data::{KnownHostBuilder, Uri},
     exporter::Exporter,
@@ -11,7 +11,11 @@ use crate::{
 use axum::http::header;
 use esdiag_core::{
     es_mock::{BulkReply, ElasticsearchMock},
-    mcp::{EsdiagMcp, McpPolicy, host::StdioHost, upload_link},
+    mcp::{
+        EsdiagMcp, McpPolicy,
+        host::{McpHost, StdioHost},
+        upload_link,
+    },
 };
 use rmcp::ServiceExt;
 use serde_json::{Value, json};
@@ -619,6 +623,22 @@ async fn shutdown_during_a_download_closes_it() {
     );
     endpoint.wait_for_free_slot().await;
     upload_link::allow_test_origin(None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_request_dropped_during_admission_releases_its_slot() {
+    let _env = identified_env();
+    let endpoint = Endpoint::service(Exporter::default()).await;
+    let state = Arc::clone(&endpoint.server.state);
+    let stats = state.stats.write().await;
+
+    let host = GuiMcpHost(Arc::clone(&state));
+    let admission = tokio::time::timeout(Duration::from_millis(100), host.admit(OPERATOR.to_string())).await;
+    assert!(admission.is_err(), "admission waits on the stats lock");
+    assert_eq!(state.active_jobs_for(OPERATOR).await, 1, "the slot was taken");
+
+    drop(stats);
+    endpoint.wait_for_free_slot().await;
 }
 
 struct StalledExport {

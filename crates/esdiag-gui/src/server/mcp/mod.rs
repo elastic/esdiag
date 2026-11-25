@@ -208,12 +208,14 @@ impl McpHost for GuiMcpHost {
     }
 
     fn admit(&self, owner: String) -> BoxFuture<'_, std::result::Result<AdmissionGuard, JobAdmissionError>> {
-        Box::pin(async move {
-            if let Err(err) = self.0.record_job_started(&owner).await {
-                self.0.record_job_rejected().await;
+        let state = Arc::clone(&self.0);
+        // Admission runs in its own task: a request dropped mid-admission
+        // drops the undelivered guard there, which releases the slot.
+        let admission = tokio::spawn(async move {
+            if let Err(err) = state.record_job_started(&owner).await {
+                state.record_job_rejected().await;
                 return Err(err);
             }
-            let state = Arc::clone(&self.0);
             Ok(AdmissionGuard::new(move |record| async move {
                 match record {
                     AdmissionRecord::Failed => state.record_failure(&owner).await,
@@ -222,7 +224,8 @@ impl McpHost for GuiMcpHost {
                     }
                 }
             }))
-        })
+        });
+        Box::pin(async move { admission.await.expect("MCP admission task panicked") })
     }
 
     fn exporter(&self) -> BoxFuture<'_, Result<Exporter>> {
