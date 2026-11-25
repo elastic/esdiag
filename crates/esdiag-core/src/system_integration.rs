@@ -178,10 +178,9 @@ mod tests {
         ));
         let bytes = std::fs::read(path).unwrap();
         assert_eq!(&bytes[..2], &[0xff, 0xfe]);
-        let units: Vec<u16> = bytes[2..]
-            .chunks_exact(2)
-            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-            .collect();
+        let (chunks, remainder) = bytes[2..].as_chunks::<2>();
+        assert!(remainder.is_empty());
+        let units: Vec<u16> = chunks.iter().copied().map(u16::from_le_bytes).collect();
         assert_eq!(String::from_utf16(&units).unwrap(), value);
         assert!(!write_clipboard("/bin/false", &[], "", false));
     }

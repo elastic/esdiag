@@ -240,6 +240,7 @@ pub struct WelcomePage {
     pub message: String,
 }
 
+#[cfg(all(feature = "keystore", feature = "setup"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WelcomeStage {
     Identity,

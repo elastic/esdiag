@@ -10,17 +10,18 @@ use axum::{
     Router,
     body::Bytes,
     extract::{Path, State},
-    http::{StatusCode, header},
-    response::IntoResponse,
-    routing::{get, head, post},
+    http::StatusCode,
+    routing::{head, post},
 };
+#[cfg(feature = "agent")]
+use axum::{http::header, response::IntoResponse, routing::get};
 use std::{
     fs,
     io::Write,
     path::Path as FsPath,
     process::Command,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicUsize, Ordering},
     },
 };
@@ -33,9 +34,11 @@ struct UploadCalls {
     finalize: Arc<AtomicUsize>,
 }
 
+#[cfg(feature = "agent")]
 #[derive(Clone, Default)]
-struct AgentBuilderRequests(Arc<Mutex<Option<serde_json::Value>>>);
+struct AgentBuilderRequests(Arc<std::sync::Mutex<Option<serde_json::Value>>>);
 
+#[cfg(feature = "agent")]
 async fn agent_builder_details() -> impl IntoResponse {
     axum::Json(serde_json::json!({
         "id": "elastic-ai-agent",
@@ -43,6 +46,7 @@ async fn agent_builder_details() -> impl IntoResponse {
     }))
 }
 
+#[cfg(feature = "agent")]
 async fn agent_builder_ask(State(requests): State<AgentBuilderRequests>, body: Bytes) -> impl IntoResponse {
     *requests.0.lock().expect("record Agent Builder request") =
         Some(serde_json::from_slice(&body).expect("Agent Builder JSON request"));

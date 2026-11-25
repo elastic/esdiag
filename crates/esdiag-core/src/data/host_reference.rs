@@ -87,10 +87,13 @@ impl Display for HostReference {
 #[cfg(test)]
 mod tests {
     use super::HostReference;
-    use crate::data::{Application, Auth, HostRole, HostRoute, KnownHost};
+    use crate::data::{Application, HostRole, KnownHost};
+    #[cfg(feature = "elasticrc")]
+    use crate::data::{Auth, HostRoute};
     use std::collections::BTreeMap;
     use url::Url;
 
+    #[cfg(feature = "elasticrc")]
     fn write_config(env: &mut crate::TestEnv, contents: &str) {
         let config_file = env.tmp.path().join("elasticrc.yml");
         std::fs::write(&config_file, contents).expect("write config");

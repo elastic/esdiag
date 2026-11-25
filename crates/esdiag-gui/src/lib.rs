@@ -8,7 +8,11 @@
 
 #[cfg(test)]
 use esdiag_core::TestEnv;
-use esdiag_core::{client, data, exporter, job, onboarding, processor, receiver, setup};
+#[cfg(feature = "keystore")]
+use esdiag_core::onboarding;
+#[cfg(all(feature = "keystore", feature = "setup"))]
+use esdiag_core::{client, setup};
+use esdiag_core::{data, exporter, job, processor, receiver};
 
 /// Desktop app that wraps the embedded web server in a Tauri window
 #[cfg(feature = "desktop")]
