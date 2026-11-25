@@ -134,6 +134,17 @@ impl Endpoint {
         format!("http://127.0.0.1:{}/mcp", self.port)
     }
 
+    /// Waits for the configured owner's job slot to be released.
+    async fn wait_for_free_slot(&self) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while self.server.state.active_jobs_for(OPERATOR).await > 0 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the owner's slot is released");
+    }
+
     fn post(&self, body: Value) -> reqwest::RequestBuilder {
         self.client
             .post(self.url())
@@ -415,6 +426,19 @@ async fn the_identity_aware_proxy_header_is_required() {
 
     assert!(mcp.status().is_client_error(), "{}", mcp.status());
     assert_eq!(mcp.status(), index.status());
+
+    let rebound = endpoint
+        .post(initialize())
+        .header(header::HOST, "attacker.example")
+        .send()
+        .await
+        .expect("request");
+    assert_eq!(rebound.status(), reqwest::StatusCode::FORBIDDEN);
+    let body = rebound.text().await.expect("body");
+    assert!(
+        body.contains("Host header is not allowed"),
+        "the host check runs first: {body}"
+    );
 }
 
 #[tokio::test]
@@ -593,6 +617,7 @@ async fn shutdown_during_a_download_closes_it() {
         result.is_none_or(|result| result["structuredContent"]["result"] != "diagnostic_processed"),
         "the call is not reported as successful"
     );
+    endpoint.wait_for_free_slot().await;
     upload_link::allow_test_origin(None);
 }
 
@@ -682,7 +707,20 @@ async fn shutdown_during_an_export_sends_no_further_bulk_request() {
         result.is_none_or(|result| result["structuredContent"]["result"] != "diagnostic_processed"),
         "the call is not reported as successful"
     );
-    stalled.assert_no_further_bulk_requests().await;
+    let stopped = stalled.assert_no_further_bulk_requests().await;
+    assert_eq!(
+        stalled.endpoint.server.state.active_jobs_for(OPERATOR).await,
+        1,
+        "the slot is held while the request is in flight"
+    );
+
     stalled.release.notify_one();
+    stalled.endpoint.wait_for_free_slot().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        stalled.mock.bulk_requests().len(),
+        stopped,
+        "the released request starts no further sub-batch"
+    );
     upload_link::allow_test_origin(None);
 }

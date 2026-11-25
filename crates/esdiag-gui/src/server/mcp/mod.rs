@@ -10,7 +10,7 @@ use axum::{
     Router,
     extract::{Request, State},
     http::{HeaderMap, StatusCode, header, uri::Authority},
-    middleware::{self, Next},
+    middleware::Next,
     response::{IntoResponse, Response},
 };
 use esdiag_core::mcp::{
@@ -168,8 +168,13 @@ fn normalize_host(host: &str) -> String {
     host.trim_start_matches('[').trim_end_matches(']').to_ascii_lowercase()
 }
 
-/// Rejects `/mcp` requests whose `Host`, or `Origin` when present, is not allowed.
-async fn mcp_host_guard(State(allowed): State<Arc<AllowedHosts>>, request: Request, next: Next) -> Response {
+/// Rejects `/mcp` requests whose `Host`, or `Origin` when present, is not
+/// allowed. Layered outside request authentication, so a disallowed host gets
+/// 403 whatever the authentication provider would answer.
+pub(crate) async fn host_guard(State(allowed): State<Arc<AllowedHosts>>, request: Request, next: Next) -> Response {
+    if request.uri().path() != PATH {
+        return next.run(request).await;
+    }
     let host = request
         .headers()
         .get(header::HOST)
@@ -225,11 +230,14 @@ impl McpHost for GuiMcpHost {
     }
 }
 
+const PATH: &str = "/mcp";
+
 /// The `/mcp` route: one `EsdiagMcp` shared by every request, so requests
-/// share its configuration-write lock and host.
+/// share its configuration-write lock and host. Mount [`host_guard`] with
+/// `allowed` outside the authentication layer.
 pub(crate) fn router(
     state: Arc<ServerState>,
-    allowed: AllowedHosts,
+    allowed: &AllowedHosts,
     shutdown: CancellationToken,
 ) -> Router<Arc<ServerState>> {
     let host: Arc<dyn McpHost> = Arc::new(GuiMcpHost(Arc::clone(&state)));
@@ -249,9 +257,7 @@ pub(crate) fn router(
         Arc::new(NeverSessionManager::default()),
         config,
     );
-    Router::new()
-        .route_service("/mcp", service)
-        .route_layer(middleware::from_fn_with_state(Arc::new(allowed), mcp_host_guard))
+    Router::new().route_service(PATH, service)
 }
 
 #[cfg(test)]

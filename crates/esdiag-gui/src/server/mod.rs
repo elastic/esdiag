@@ -531,6 +531,8 @@ pub struct Server {
     server_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
     pub rx: Option<UploadReceiver>,
     shutdown_tx: Option<watch::Sender<bool>>,
+    #[cfg(test)]
+    state: Arc<ServerState>,
 }
 
 #[derive(Default)]
@@ -651,13 +653,16 @@ impl Server {
                 let _ = stopping.wait_for(|stopped| *stopped).await;
                 cancel.cancel();
             });
-            Some(mcp::router(state.clone(), allowed, shutdown))
+            let route = mcp::router(state.clone(), &allowed, shutdown);
+            Some((route, Arc::new(allowed)))
         } else {
             None
         };
 
         let handle = axum_server::Handle::new();
         let handle_clone = handle.clone();
+        #[cfg(test)]
+        let test_state = Arc::clone(&state);
 
         // Start the Axum server
         let server_handle = tokio::spawn(async move {
@@ -767,9 +772,9 @@ impl Server {
             };
 
             #[cfg(feature = "mcp")]
-            let app = match mcp_route {
-                Some(route) => app.merge(route),
-                None => app,
+            let (app, mcp_allowed_hosts) = match mcp_route {
+                Some((route, allowed)) => (app.merge(route), Some(allowed)),
+                None => (app, None),
             };
 
             let app = if route_policy.requires_authentication() {
@@ -779,6 +784,12 @@ impl Server {
                 ))
             } else {
                 app
+            };
+
+            #[cfg(feature = "mcp")]
+            let app = match mcp_allowed_hosts {
+                Some(allowed) => app.layer(middleware::from_fn_with_state(allowed, mcp::host_guard)),
+                None => app,
             };
 
             let app = app
@@ -822,6 +833,8 @@ impl Server {
                 server_handle: Some(Arc::new(server_handle)),
                 rx: Some(rx_clone),
                 shutdown_tx: Some(shutdown_tx),
+                #[cfg(test)]
+                state: test_state,
             },
             bound_addr,
         ))
@@ -917,6 +930,11 @@ impl ServerState {
             })
             .to_string(),
         )
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn active_jobs_for(&self, owner: &str) -> usize {
+        self.active_jobs_by_owner.lock().await.get(owner).copied().unwrap_or(0)
     }
 
     pub async fn record_job_started(&self, owner: &str) -> std::result::Result<(), JobAdmissionError> {

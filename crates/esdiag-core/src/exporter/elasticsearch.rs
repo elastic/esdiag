@@ -120,14 +120,15 @@ impl ElasticsearchExporter {
     }
 
     /// Waits out a retry backoff. Returns `false`, at once, if the execution
-    /// is or becomes cancelled, so no further request is sent.
+    /// is or becomes cancelled, and checks again as the wait ends, so no
+    /// resend starts after cancellation.
     async fn backoff(&self, sleep_ms: u64) -> bool {
         let sleep = tokio::time::sleep(Duration::from_millis(sleep_ms));
         match &self.scope {
             Some(scope) => tokio::select! {
                 biased;
                 _ = scope.token().cancelled() => false,
-                _ = sleep => true,
+                _ = sleep => !scope.token().is_cancelled(),
             },
             None => {
                 sleep.await;
