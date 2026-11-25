@@ -361,7 +361,10 @@ where
             }),
         );
         doc.insert("log".to_string(), Value::Object(log_obj));
-        doc.insert("message".to_string(), Value::String(visitor.message.unwrap_or_default()));
+        doc.insert(
+            "message".to_string(),
+            Value::String(visitor.message.unwrap_or_default()),
+        );
         doc.insert(
             "service".to_string(),
             json!({

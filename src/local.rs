@@ -1136,15 +1136,19 @@ impl LocalState {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        let tail: Vec<&str> = combined.lines().rev().take(20).collect::<Vec<_>>().into_iter().rev().collect();
+        let tail: Vec<&str> = combined
+            .lines()
+            .rev()
+            .take(20)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
         let detail = tail.join("\n");
         if detail.is_empty() {
             Err(eyre!("`{runtime} compose {}` failed", arguments.join(" ")))
         } else {
-            Err(eyre!(
-                "`{runtime} compose {}` failed:\n{detail}",
-                arguments.join(" ")
-            ))
+            Err(eyre!("`{runtime} compose {}` failed:\n{detail}", arguments.join(" ")))
         }
     }
 

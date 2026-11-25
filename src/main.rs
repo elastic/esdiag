@@ -941,10 +941,7 @@ fn init_tracing(cli: &Cli) -> esdiag::logging::LogsGuard {
     let (remote_layer, remote_handle) = esdiag::logging::init_remote_logs_layer();
     let remote = remote_layer.map(|layer| layer.with_filter(sink_filter));
 
-    let subscriber = tracing_subscriber::registry()
-        .with(terminal)
-        .with(file)
-        .with(remote);
+    let subscriber = tracing_subscriber::registry().with(terminal).with(file).with(remote);
     if let Err(err) = tracing::subscriber::set_global_default(subscriber) {
         eprintln!("tracing subscriber already initialized: {err}");
     }
@@ -2928,10 +2925,9 @@ mod tests {
         Cli, Commands, ConfiguredDefaultJob, HostCommands, KeystoreCommands, cli_command, command_owns_stdout,
         configured_default_job, default_diagnostic_user_from, detected_esdiag_local_preset, elastic_cli_help_text,
         ensure_output_deployment_valid, is_agent_mode, keep_default_job, local_core_stack_start_args,
-        missing_extension_process_input, needs_processing_default_job, resolve_sink_filter,
-        resolve_secret_input_with_prompt, resolve_tracing_filter, saved_job_fits_workflow,
-        should_error_for_missing_subcommand, should_run_output_setup, should_start_local_core_stack,
-        validate_extension_profile,
+        missing_extension_process_input, needs_processing_default_job, resolve_secret_input_with_prompt,
+        resolve_sink_filter, resolve_tracing_filter, saved_job_fits_workflow, should_error_for_missing_subcommand,
+        should_run_output_setup, should_start_local_core_stack, validate_extension_profile,
     };
     #[cfg(feature = "server")]
     use super::{resolve_serve_bind, resolve_serve_exporter, resolve_serve_runtime_mode};

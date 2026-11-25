@@ -2,8 +2,8 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-use esdiag::es_mock::ElasticsearchMock;
 use chrono::Utc;
+use esdiag::es_mock::ElasticsearchMock;
 use std::fs;
 use std::process::Command;
 
@@ -22,7 +22,11 @@ fn cli_creates_no_log_file_by_default_and_writes_daily_log_and_gzips_prior_when_
         .env_remove("ESDIAG_LOGS_HOST")
         .output()
         .expect("run esdiag");
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(
         !home.join("last_run").join("esdiag.log").exists(),
         "default run must not create last_run/esdiag.log"
@@ -47,7 +51,11 @@ fn cli_creates_no_log_file_by_default_and_writes_daily_log_and_gzips_prior_when_
         .env_remove("ESDIAG_LOGS_HOST")
         .output()
         .expect("run esdiag with logs path");
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let today_name = format!("esdiag-{}.log", Utc::now().date_naive().format("%Y-%m-%d"));
     let today_log = logs_dir.join(&today_name);
@@ -88,7 +96,11 @@ async fn cli_flushes_tracing_logs_to_remote_elasticsearch_before_exit() {
     .await
     .expect("join");
 
-    assert!(status.status.success(), "stderr: {}", String::from_utf8_lossy(&status.stderr));
+    assert!(
+        status.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&status.stderr)
+    );
 
     let requests = mock.bulk_requests();
     assert!(!requests.is_empty(), "expected at least one flushed _bulk request");

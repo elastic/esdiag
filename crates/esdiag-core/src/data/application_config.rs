@@ -220,7 +220,9 @@ impl ApplicationConfig {
                 .get(logs_host_name)
                 .ok_or_else(|| eyre!("Configured logs host '{logs_host_name}' was not found"))?;
             if !logs_host.has_role(HostRole::Send) {
-                return Err(eyre!("Configured logs host '{logs_host_name}' must include role 'send'"));
+                return Err(eyre!(
+                    "Configured logs host '{logs_host_name}' must include role 'send'"
+                ));
             }
             if logs_host.app() != Some(Application::Elasticsearch) {
                 return Err(eyre!(
@@ -481,7 +483,10 @@ mod tests {
 
         for (host, expected) in [
             ("missing", "Configured logs host 'missing' was not found"),
-            ("collect-es", "Configured logs host 'collect-es' must include role 'send'"),
+            (
+                "collect-es",
+                "Configured logs host 'collect-es' must include role 'send'",
+            ),
             ("viewer-kb", "Configured logs host 'viewer-kb' must include role 'send'"),
         ] {
             let config = ApplicationConfig {

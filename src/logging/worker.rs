@@ -170,7 +170,11 @@ async fn flush_batch(
     let operations: Vec<BulkOperation<Value>> = docs.into_iter().map(|doc| BulkOperation::create(doc).into()).collect();
 
     let result = timeout(request_timeout, async {
-        let response = client.bulk(BulkParts::Index(data_stream)).body(operations).send().await?;
+        let response = client
+            .bulk(BulkParts::Index(data_stream))
+            .body(operations)
+            .send()
+            .await?;
         let status = response.status_code();
         if !status.is_success() {
             return Ok::<_, elasticsearch::Error>((status, None));
@@ -301,7 +305,12 @@ mod tests {
         assert_eq!(requests[0].path_index, "logs-esdiag-default");
         assert_eq!(requests[0].authorization.as_deref(), Some("ApiKey test-logs-key"));
         assert_eq!(requests[0].actions.len(), 2);
-        assert!(requests[0].actions.iter().all(|a| a.op == "create" && a.pipeline.is_none()));
+        assert!(
+            requests[0]
+                .actions
+                .iter()
+                .all(|a| a.op == "create" && a.pipeline.is_none())
+        );
         assert_eq!(requests[1].actions.len(), 1);
         assert_eq!(requests[1].documents[0]["message"], "msg-2");
     }
@@ -422,7 +431,10 @@ mod tests {
         };
 
         handle.flush_and_stop(Duration::from_millis(20)).await;
-        assert!(abort_check.is_finished(), "timed-out worker task must be aborted and awaited");
+        assert!(
+            abort_check.is_finished(),
+            "timed-out worker task must be aborted and awaited"
+        );
         assert!(!finished.load(std::sync::atomic::Ordering::SeqCst));
     }
 }

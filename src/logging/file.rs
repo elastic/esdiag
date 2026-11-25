@@ -98,7 +98,10 @@ impl DailyLogWriter {
                         rolled_over_date = Some(today);
                     }
                     Err(err) => {
-                        eprintln!("Failed to rotate daily log file to {}: {err}", daily_log_filename(today));
+                        eprintln!(
+                            "Failed to rotate daily log file to {}: {err}",
+                            daily_log_filename(today)
+                        );
                     }
                 }
             }
@@ -335,10 +338,7 @@ fn compress_single_log(src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) 
         std::process::id(),
         Uuid::new_v4()
     );
-    let staging_path = src_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(staging_name);
+    let staging_path = src_path.parent().unwrap_or_else(|| Path::new(".")).join(staging_name);
 
     // Atomically detach `src_path` before reading it. Active writers open
     // daily logs without `FILE_SHARE_DELETE`, so this fails with
@@ -355,12 +355,7 @@ fn compress_single_log(src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) 
 }
 
 #[cfg(windows)]
-fn compress_staged_log(
-    staging_path: &Path,
-    src_path: &Path,
-    gz_path: &Path,
-    cancelled: &AtomicBool,
-) -> io::Result<()> {
+fn compress_staged_log(staging_path: &Path, src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) -> io::Result<()> {
     use std::os::windows::fs::OpenOptionsExt;
 
     // Claim exclusive ownership of the staging file (`share_mode(0)`) so
@@ -380,10 +375,7 @@ fn compress_staged_log(
         std::process::id(),
         Uuid::new_v4()
     );
-    let tmp_path = gz_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(tmp_name);
+    let tmp_path = gz_path.parent().unwrap_or_else(|| Path::new(".")).join(tmp_name);
 
     let mut was_cancelled = false;
     let compress_result = (|| -> io::Result<()> {
@@ -431,10 +423,7 @@ fn compress_staged_log(
             std::process::id(),
             Uuid::new_v4()
         );
-        let recovery_path = gz_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(recovery_name);
+        let recovery_path = gz_path.parent().unwrap_or_else(|| Path::new(".")).join(recovery_name);
         fs::rename(&tmp_path, &recovery_path)
     };
     if let Err(err) = publish_result {
@@ -464,10 +453,7 @@ fn compress_single_log(src_path: &Path, gz_path: &Path, cancelled: &AtomicBool) 
         std::process::id(),
         Uuid::new_v4()
     );
-    let tmp_path = gz_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(tmp_name);
+    let tmp_path = gz_path.parent().unwrap_or_else(|| Path::new(".")).join(tmp_name);
 
     let mut options = OpenOptions::new();
     #[cfg(unix)]
@@ -543,7 +529,10 @@ fn prune_expired_logs_with_cancel(dir: &Path, today: NaiveDate, retention_days: 
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(err) => {
-            eprintln!("Failed to read logs directory '{}' for retention pruning: {err}", dir.display());
+            eprintln!(
+                "Failed to read logs directory '{}' for retention pruning: {err}",
+                dir.display()
+            );
             return;
         }
     };
@@ -558,7 +547,9 @@ fn prune_expired_logs_with_cancel(dir: &Path, today: NaiveDate, retention_days: 
         };
         let (date, is_compressed) = if let Some(parsed) = parse_daily_log_name(name_str) {
             parsed
-        } else if let Some(date) = parse_staged_daily_log_name(name_str).or_else(|| parse_recovery_archive_name(name_str)) {
+        } else if let Some(date) =
+            parse_staged_daily_log_name(name_str).or_else(|| parse_recovery_archive_name(name_str))
+        {
             // Treat abandoned Windows `.compressing` staging files and
             // collision-recovery `.log.<id>.gz` archives as expired when older
             // than the retention window (active staging files are held with
@@ -673,13 +664,19 @@ mod tests {
 
         let (writer, _maintenance) = DailyLogWriter::open_with_clock(dir.clone(), 30, true, clock_fn).unwrap();
         writer.make_writer().write_all(b"day one\n").unwrap();
-        assert_eq!(fs::read_to_string(dir.join("esdiag-2026-11-24.log")).unwrap(), "day one\n");
+        assert_eq!(
+            fs::read_to_string(dir.join("esdiag-2026-11-24.log")).unwrap(),
+            "day one\n"
+        );
 
         // Advance day and write again -> rotates to Nov 25 and gzips Nov 24.
         *clock.lock().unwrap() = d(2026, 11, 25);
         writer.make_writer().write_all(b"day two\n").unwrap();
 
-        assert_eq!(fs::read_to_string(dir.join("esdiag-2026-11-25.log")).unwrap(), "day two\n");
+        assert_eq!(
+            fs::read_to_string(dir.join("esdiag-2026-11-25.log")).unwrap(),
+            "day two\n"
+        );
         assert!(!dir.join("esdiag-2026-11-24.log").exists());
         assert!(dir.join("esdiag-2026-11-24.log.gz").exists());
     }
@@ -746,7 +743,10 @@ mod tests {
         fs::write(&old, b"old").unwrap();
 
         prune_expired_logs(dir, d(2026, 11, 24), u32::MAX);
-        assert!(old.exists(), "huge retention window must preserve files without panicking");
+        assert!(
+            old.exists(),
+            "huge retention window must preserve files without panicking"
+        );
     }
 
     #[test]
@@ -786,8 +786,14 @@ mod tests {
         fs::write(&recent_staged, b"recent").unwrap();
 
         prune_expired_logs(dir, d(2026, 11, 24), 30);
-        assert!(!expired_staged.exists(), "expired abandoned staging file must be pruned");
+        assert!(
+            !expired_staged.exists(),
+            "expired abandoned staging file must be pruned"
+        );
         assert!(!expired_recovery.exists(), "expired recovery archive must be pruned");
-        assert!(recent_staged.exists(), "within-retention staging file must be preserved");
+        assert!(
+            recent_staged.exists(),
+            "within-retention staging file must be preserved"
+        );
     }
 }
