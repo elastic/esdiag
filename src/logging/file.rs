@@ -153,8 +153,18 @@ impl DailyLogMaintenance {
     /// Flushes the active daily log file, gzips previous days' `.log` files,
     /// and prunes files older than `retention_days`.
     pub fn run_on_exit(&self) {
-        self.writer.flush_active();
         let today = (self.writer.clock)();
+        // Rotate off any prior day's file before running maintenance so our own
+        // shared advisory lock does not block compressing yesterday's log.
+        if let Ok(mut guard) = self.writer.inner.lock() {
+            let _ = guard.file.flush();
+            if guard.current_date < today
+                && let Ok(new_file) = open_daily_log_file(&self.writer.dir, today)
+            {
+                guard.file = new_file;
+                guard.current_date = today;
+            }
+        }
         compress_previous_logs(&self.writer.dir, today);
         prune_expired_logs(&self.writer.dir, today, self.writer.retention_days);
     }
@@ -215,6 +225,13 @@ fn compress_single_log(src_path: &Path, gz_path: &Path) -> io::Result<()> {
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(err) => return Err(err),
     };
+    // Skip files still locked by an active writer (e.g. a compose child or
+    // another CLI/serve process spanning UTC midnight).
+    match input.try_lock() {
+        Ok(()) => {}
+        Err(fs::TryLockError::WouldBlock) => return Ok(()),
+        Err(fs::TryLockError::Error(err)) => return Err(err),
+    }
 
     let tmp_name = format!(
         "{}.{}-{}.tmp",
@@ -409,5 +426,25 @@ mod tests {
 
         compress_previous_logs(dir, d(2026, 11, 24));
         assert_eq!(fs::read(&gz).unwrap(), b"existing-gz");
+    }
+
+    #[test]
+    fn compress_skips_file_held_open_by_active_writer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("logs");
+        let yesterday = d(2026, 11, 23);
+        let today = d(2026, 11, 24);
+
+        let mut active_writer = esdiag_core::data::open_daily_log_file(&dir, yesterday).unwrap();
+        active_writer.write_all(b"still writing\n").unwrap();
+
+        compress_previous_logs(&dir, today);
+        assert!(dir.join("esdiag-2026-11-23.log").exists());
+        assert!(!dir.join("esdiag-2026-11-23.log.gz").exists());
+
+        drop(active_writer);
+        compress_previous_logs(&dir, today);
+        assert!(!dir.join("esdiag-2026-11-23.log").exists());
+        assert!(dir.join("esdiag-2026-11-23.log.gz").exists());
     }
 }

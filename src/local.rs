@@ -1095,11 +1095,14 @@ impl LocalState {
         if let Some(logs_dir) = esdiag::data::resolve_logs_dir() {
             let today = chrono::Utc::now().date_naive();
             let log = logs_dir.join(esdiag::data::daily_log_filename(today));
-            let file = esdiag::data::open_daily_log_file(&logs_dir, today)?;
+            // Keep `_lock_guard` open for the duration of the child process so
+            // its shared advisory lock prevents another process from gzipping
+            // and unlinking the daily log if compose spans UTC midnight.
+            let _lock_guard = esdiag::data::open_daily_log_file(&logs_dir, today)?;
             let status = command
                 .stdin(Stdio::null())
-                .stdout(Stdio::from(file.try_clone()?))
-                .stderr(Stdio::from(file))
+                .stdout(Stdio::from(_lock_guard.try_clone()?))
+                .stderr(Stdio::from(_lock_guard.try_clone()?))
                 .status()?;
             return status.success().then_some(()).ok_or_else(|| {
                 eyre!(

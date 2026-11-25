@@ -168,7 +168,9 @@ pub fn daily_log_filename(date: chrono::NaiveDate) -> String {
 }
 
 /// Opens the daily log file `dir/esdiag-YYYY-MM-DD.log` for appending, creating
-/// `dir` if needed and enforcing owner-only (`0600` on Unix) permissions.
+/// `dir` if needed, enforcing owner-only (`0600` on Unix) permissions, and
+/// acquiring a shared advisory lock so concurrent processes cannot compress or
+/// unlink the file while this handle is open.
 pub fn open_daily_log_file(dir: &Path, date: chrono::NaiveDate) -> Result<std::fs::File> {
     std::fs::create_dir_all(dir)?;
     let path = dir.join(daily_log_filename(date));
@@ -184,6 +186,7 @@ pub fn open_daily_log_file(dir: &Path, date: chrono::NaiveDate) -> Result<std::f
         use std::os::unix::fs::PermissionsExt;
         file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
     }
+    let _ = file.lock_shared();
     Ok(file)
 }
 

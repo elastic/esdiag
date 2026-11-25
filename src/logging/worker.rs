@@ -167,22 +167,33 @@ async fn flush_batch(
 
     let operations: Vec<BulkOperation<Value>> = docs.into_iter().map(|doc| BulkOperation::create(doc).into()).collect();
 
-    let result = timeout(
-        request_timeout,
-        client.bulk(BulkParts::Index(data_stream)).body(operations).send(),
-    )
+    let result = timeout(request_timeout, async {
+        let response = client.bulk(BulkParts::Index(data_stream)).body(operations).send().await?;
+        let status = response.status_code();
+        if !status.is_success() {
+            return Ok::<_, elasticsearch::Error>((status, None));
+        }
+        let body = response.json::<Value>().await?;
+        Ok((status, Some(body)))
+    })
     .await;
 
     match result {
-        Ok(Ok(response)) => {
-            let status = response.status_code();
-            if !status.is_success() {
+        Ok(Ok((status, _))) if !status.is_success() => {
+            warn_rate_limited(
+                last_warn,
+                &format!("Remote logs exporter received HTTP {status} writing to '{data_stream}'"),
+            );
+        }
+        Ok(Ok((_, Some(body)))) => {
+            if let Some(summary) = summarize_bulk_item_errors(&body) {
                 warn_rate_limited(
                     last_warn,
-                    &format!("Remote logs exporter received HTTP {status} writing to '{data_stream}'"),
+                    &format!("Remote logs exporter bulk item errors writing to '{data_stream}': {summary}"),
                 );
             }
         }
+        Ok(Ok((_, None))) => {}
         Ok(Err(err)) => {
             warn_rate_limited(
                 last_warn,
@@ -199,6 +210,39 @@ async fn flush_batch(
             );
         }
     }
+}
+
+fn summarize_bulk_item_errors(body: &Value) -> Option<String> {
+    if !body.get("errors").and_then(Value::as_bool).unwrap_or(false) {
+        return None;
+    }
+    let items = body.get("items").and_then(Value::as_array)?;
+    let mut failed = 0usize;
+    let mut first_detail: Option<String> = None;
+    for item in items {
+        let Some(entry) = item.as_object().and_then(|obj| obj.values().next()) else {
+            continue;
+        };
+        let status = entry.get("status").and_then(Value::as_u64).unwrap_or(0);
+        let has_error = entry.get("error").is_some() || status >= 300;
+        if has_error {
+            failed += 1;
+            if first_detail.is_none() {
+                let reason = entry
+                    .get("error")
+                    .and_then(|err| err.get("reason").and_then(Value::as_str).or_else(|| err.as_str()))
+                    .unwrap_or("unknown error");
+                first_detail = Some(format!("status {status} ({reason})"));
+            }
+        }
+    }
+    if failed == 0 {
+        return Some("errors=true with no failing item details".to_string());
+    }
+    Some(format!(
+        "{failed} item(s) rejected (first: {})",
+        first_detail.unwrap_or_else(|| "unknown".to_string())
+    ))
 }
 
 fn warn_rate_limited(last_warn: &mut Option<Instant>, message: &str) {
@@ -328,5 +372,34 @@ mod tests {
         tx.try_send(json!({"@timestamp": "2026-11-24T00:00:00Z", "message": "unreachable"}))
             .expect("enqueue");
         handle.flush_and_stop(Duration::from_secs(2)).await;
+    }
+
+    #[tokio::test]
+    async fn bulk_item_errors_are_detected_without_failing_worker() {
+        let mock = ElasticsearchMock::new().bulk_replies([BulkReply::Items(vec![json!({
+            "_index": "logs-esdiag-default",
+            "status": 429,
+            "error": { "type": "es_rejected_execution_exception", "reason": "queue full" }
+        })])]);
+        let base_url = mock.serve().await;
+        let client = ElasticsearchBuilder::new(Url::parse(&base_url).expect("mock url"))
+            .build()
+            .expect("client");
+
+        let mut batch = vec![json!({"@timestamp": "2026-11-24T00:00:00Z", "message": "item-err"})];
+        let mut last_warn = None;
+        super::flush_batch(
+            &client,
+            "logs-esdiag-default",
+            &mut batch,
+            Duration::from_secs(2),
+            &mut last_warn,
+        )
+        .await;
+
+        assert!(
+            last_warn.is_some(),
+            "HTTP 200 bulk response with errors=true must trigger rate-limited warning"
+        );
     }
 }
