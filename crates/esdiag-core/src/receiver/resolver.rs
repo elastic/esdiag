@@ -156,7 +156,7 @@ impl InputResolver {
                 None,
             )),
             Uri::ServiceLink(url) if materialize_remote => {
-                let bytes = UploadServiceDownloader::try_from(url.clone())?.download_bytes()?;
+                let bytes = UploadServiceDownloader::try_from(url.clone())?.download_bytes().await?;
                 let temp_dir =
                     std::env::temp_dir().join(format!("esdiag-input-{}", uuid::Uuid::new_v4().as_u64_pair().0));
                 tokio::fs::create_dir_all(&temp_dir).await?;
@@ -175,7 +175,7 @@ impl InputResolver {
                 ))
             }
             _ => Ok(ResolvedInput::new(
-                Receiver::try_from_with_scrub(uri.clone(), scrubbed_override, filename_hint)?,
+                Receiver::prepare(uri.clone(), scrubbed_override, filename_hint).await?,
                 None,
                 None,
                 None,

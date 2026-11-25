@@ -279,6 +279,15 @@ impl Exporter {
         self.clone()
     }
 
+    /// Only the Elasticsearch exporter sends requests outside the caller's
+    /// future, so the others ignore the scope.
+    fn with_scope(self, scope: crate::job::context::ExecutionScope) -> Self {
+        match self {
+            Exporter::Elasticsearch(exporter) => Exporter::Elasticsearch(exporter.with_scope(scope)),
+            other => other,
+        }
+    }
+
     pub fn target_uri(&self) -> String {
         match self {
             Exporter::Archive(exporter) => path_to_file_uri(Path::new(&exporter.to_string()), false),

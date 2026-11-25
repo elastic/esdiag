@@ -46,6 +46,9 @@ pub enum BulkReply {
     /// Reject the whole request with a non-JSON body and no Elasticsearch
     /// product header, as an intermediate proxy would.
     Proxy(u16, &'static str),
+    /// Record the request, then hold it open until the test notifies, and
+    /// answer as [`BulkReply::Created`].
+    Held(Arc<tokio::sync::Notify>),
 }
 
 /// Scripted answer for one `_doc` request. Requests beyond the script get
@@ -471,15 +474,23 @@ async fn bulk(
         Err(response) => return response,
     };
 
+    let mut reply = {
+        let mut recorded = mock.lock();
+        recorded.bulk.push(BulkRequest {
+            path_index,
+            authorization,
+            actions: actions.clone(),
+            documents,
+        });
+        recorded.bulk_replies.pop_front().unwrap_or(BulkReply::Created)
+    };
+    if let BulkReply::Held(release) = reply {
+        release.notified().await;
+        reply = BulkReply::Created;
+    }
     let mut recorded = mock.lock();
-    recorded.bulk.push(BulkRequest {
-        path_index,
-        authorization,
-        actions: actions.clone(),
-        documents,
-    });
-    let reply = recorded.bulk_replies.pop_front().unwrap_or(BulkReply::Created);
     let items: Vec<Value> = match reply {
+        BulkReply::Held(_) => unreachable!("held replies are answered as created"),
         BulkReply::Status(code) => return status_error(code),
         BulkReply::Proxy(code, body) => {
             let status = StatusCode::from_u16(code).expect("valid HTTP status");

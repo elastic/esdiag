@@ -30,6 +30,7 @@ pub struct ArchiveBytesReceiver {
     subdir: Option<PathBuf>,
     source_product: Arc<OnceLock<&'static str>>,
     scrubbed: bool,
+    filename: Option<String>,
 }
 
 impl ArchiveBytesReceiver {
@@ -52,7 +53,7 @@ impl Receive for ArchiveBytesReceiver {
     }
 
     fn filename(&self) -> Option<String> {
-        None
+        self.filename.clone()
     }
 
     /// Read the type's file from the in-memory archive
@@ -160,6 +161,7 @@ impl TryFrom<Bytes> for ArchiveBytesReceiver {
             subdir: None,
             source_product: Arc::new(OnceLock::new()),
             scrubbed: false,
+            filename: None,
         })
     }
 }
@@ -192,6 +194,7 @@ impl ArchiveBytesReceiver {
             subdir: Some(PathBuf::from(work_dir)),
             source_product: Arc::new(OnceLock::new()),
             scrubbed: self.scrubbed,
+            filename: self.filename.clone(),
         }
     }
 
@@ -275,5 +278,9 @@ impl ArchiveBytesReceiver {
 
     pub fn set_scrubbed(&mut self, scrubbed: bool) {
         self.scrubbed = scrubbed;
+    }
+
+    pub fn set_filename(&mut self, filename: Option<String>) {
+        self.filename = filename;
     }
 }

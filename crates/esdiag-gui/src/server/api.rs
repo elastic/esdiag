@@ -5,13 +5,12 @@
 use super::{ApiKeyRequest, ServerState, UploadServiceRequest};
 use crate::{
     data::{Auth, KnownHostBuilder, Uri},
-    exporter::DocumentExporter,
     job::{
         context::{ExecutionContext, ExecutionIdentity},
-        executor::execute_with_context,
-        model::{BindingKey, ExportTarget, Input, Job, Process},
+        model::{BindingKey, Input},
         outcome::ExecutionOutcome,
     },
+    operations::process::process_prepared,
     processor::{DiagnosticOutcome, Identifiers, new_job_id},
     receiver::Receiver,
 };
@@ -40,23 +39,9 @@ async fn execute_synchronous_processing(
     input: Input,
     mut context: ExecutionContext,
 ) -> eyre::Result<ExecutionOutcome> {
-    let output_binding = BindingKey::try_new(format!("sync-api-output-{job_id}"))?;
     let exporter = state.exporter.read().await.clone();
-    context.bind_document_exporter(output_binding.clone(), DocumentExporter::try_from(exporter)?);
     context = context.with_identity(ExecutionIdentity::new(job_id, owner));
-    let job = Job::try_new(
-        metadata,
-        input,
-        None,
-        Some(Process {
-            selection: None,
-            export: ExportTarget::Binding {
-                binding: output_binding,
-            },
-        }),
-        None,
-    )?;
-    let outcome = execute_with_context(job, context).await;
+    let outcome = process_prepared(input, exporter, metadata, context).await?;
     if !outcome.failed() {
         Ok(outcome)
     } else {

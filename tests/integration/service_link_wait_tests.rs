@@ -281,7 +281,7 @@ async fn service_link_async_when_wait_for_completion_is_false() {
     server.shutdown().await;
 }
 
-/// Verifies that `Receiver::try_from` returns an error when the upload service
+/// Verifies that `Receiver::prepare` returns an error when the upload service
 /// returns non-zip bytes, covering the receiver creation failure branch in the
 /// `wait_for_completion` sync path.
 #[tokio::test(flavor = "multi_thread")]
@@ -294,10 +294,10 @@ async fn receiver_fails_when_download_returns_non_zip_bytes() {
         Url::parse(&format!("http://token:{mock_token}@{mock_addr}/d/mock-diagnostic")).expect("valid mock URL");
     let uri = Uri::ServiceLink(mock_url);
 
-    let result = Receiver::try_from(uri);
+    let result = Receiver::prepare(uri, None, None).await;
     assert!(
         result.is_err(),
-        "Receiver::try_from should fail when download returns non-zip bytes"
+        "Receiver::prepare should fail when download returns non-zip bytes"
     );
 
     let _ = shutdown_tx.send(());

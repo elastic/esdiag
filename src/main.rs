@@ -162,9 +162,16 @@ enum Commands {
             help = "Identity header for authenticated service requests"
         )]
         identity_header: Option<String>,
-        /// Optional comma-separated web feature allowlist (advanced, job-builder)
+        /// Optional comma-separated web feature allowlist (advanced, job-builder, mcp)
         #[arg(long, value_name = "FEATURES")]
         web_features: Option<String>,
+        /// Comma-separated Host allowlist for the /mcp endpoint
+        #[arg(
+            long,
+            value_name = "HOSTS",
+            long_help = "Comma-separated host names or host:port authorities accepted in the Host header of /mcp requests. Defaults to ESDIAG_MCP_ALLOWED_HOSTS, then localhost,127.0.0.1,::1."
+        )]
+        mcp_allowed_hosts: Option<String>,
         /// Open the user-mode web onboarding flow on startup
         #[arg(long, hide = true)]
         onboarding: bool,
@@ -1087,6 +1094,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandOutcome> {
                 auth_provider,
                 identity_header,
                 web_features,
+                mcp_allowed_hosts,
                 onboarding,
                 kibana,
             } => {
@@ -1142,6 +1150,8 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandOutcome> {
                         identity_header: identity_header.as_deref(),
                         web_features: web_features.as_deref(),
                         onboarding,
+                        mcp_endpoint: true,
+                        mcp_allowed_hosts: mcp_allowed_hosts.as_deref(),
                         ..ServerStartOptions::default()
                     },
                 )
@@ -1417,7 +1427,8 @@ async fn serve_mcp() -> Result<CommandOutcome> {
     use rmcp::ServiceExt;
 
     tracing::info!("Starting ESDiag MCP server on stdio");
-    let service = esdiag::mcp::EsdiagMcp::new(esdiag::mcp::McpPolicy::Local)
+    let host = std::sync::Arc::new(esdiag::mcp::host::StdioHost);
+    let service = esdiag::mcp::EsdiagMcp::new(esdiag::mcp::McpPolicy::Local(host))
         .serve(rmcp::transport::stdio_pipes())
         .await
         .map_err(|err| eyre!("MCP session initialization failed: {err}"))?;
@@ -4082,6 +4093,19 @@ mod tests {
         match cli.command {
             Some(Commands::Serve { web_features, .. }) => {
                 assert_eq!(web_features.as_deref(), Some("advanced,job-builder"));
+            }
+            other => panic!("expected serve command, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn serve_parses_mcp_allowed_hosts_flag() {
+        let cli = Cli::parse_from(["esdiag", "serve", "--mcp-allowed-hosts", "esdiag.example.com"]);
+
+        match cli.command {
+            Some(Commands::Serve { mcp_allowed_hosts, .. }) => {
+                assert_eq!(mcp_allowed_hosts.as_deref(), Some("esdiag.example.com"));
             }
             other => panic!("expected serve command, got {other:?}"),
         }

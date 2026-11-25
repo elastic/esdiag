@@ -6,21 +6,30 @@
 //! [`crate::operations`] function as its CLI command and returns the same
 //! typed outcome `--format json` emits.
 
+/// The process serving tool calls: identity, admission, and its exporter.
+pub mod host;
 mod params;
 #[cfg(test)]
 mod tests;
+/// The service-mode upload link parser.
+pub mod upload_link;
 
 #[cfg(feature = "setup")]
 use crate::cli_output::command_failure;
 use crate::{
-    cli_output::{CliFailure, CliFailureCategory, CommandOutcome, structured_failure},
-    data::{Application, HostRole, KnownHostCliUpdate, embeds_url_userinfo, get_keystore_password},
+    cli_output::{CliFailure, CliFailureCategory, CliOutcome, CommandOutcome, structured_failure},
+    data::{Application, HostRole, KnownHostCliUpdate, Uri, embeds_url_userinfo, get_keystore_password},
     job::{
-        context::{ExecutionObserver, with_scoped_observer},
+        context::{
+            ExecutionContext, ExecutionIdentity, ExecutionObserver, with_scoped_execution, with_scoped_observer,
+        },
+        model::{BindingKey, Input},
         outcome::ExecutionEvent,
     },
     operations,
+    processor::{Identifiers, new_job_id},
 };
+use host::{AdmissionRecord, McpHost, RequestIdentity};
 use params::*;
 use rmcp::{
     ErrorData, Peer, RoleServer, ServerHandler,
@@ -33,18 +42,23 @@ use rmcp::{
 };
 use std::{future::Future, pin::pin, str::FromStr, sync::Arc};
 use tokio::sync::{Mutex, mpsc};
+use upload_link::UploadLink;
 
 /// Which tools a transport offers and how their parameters are constrained.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone)]
 pub enum McpPolicy {
-    /// A local client on the user's machine: the full catalog.
-    Local,
+    /// A client acting as the user who runs the server: the full catalog.
+    Local(Arc<dyn McpHost>),
+    /// A shared server: only `process` from an Elastic Upload Service link
+    /// into the host's exporter.
+    Service(Arc<dyn McpHost>),
 }
 
 /// The ESDiag MCP server handler.
 #[derive(Clone)]
 pub struct EsdiagMcp {
     tool_router: ToolRouter<Self>,
+    host: Arc<dyn McpHost>,
     /// Held while a tool changes hosts, saved jobs, or the output context;
     /// those files are read-modify-write without locking.
     config_writes: Arc<Mutex<()>>,
@@ -52,22 +66,61 @@ pub struct EsdiagMcp {
 
 impl EsdiagMcp {
     pub fn new(policy: McpPolicy) -> Self {
-        let tool_router = Self::core_tools();
-        #[cfg(feature = "keystore")]
-        let tool_router = tool_router + Self::job_tools();
-        #[cfg(feature = "agent")]
-        let tool_router = tool_router + Self::agent_tools();
-        #[cfg(feature = "setup")]
-        let tool_router = tool_router + Self::setup_tools();
-        match policy {
-            McpPolicy::Local => {}
-        }
+        let (tool_router, host) = match policy {
+            McpPolicy::Local(host) => {
+                let tool_router = Self::core_tools();
+                #[cfg(feature = "keystore")]
+                let tool_router = tool_router + Self::job_tools();
+                #[cfg(feature = "agent")]
+                let tool_router = tool_router + Self::agent_tools();
+                #[cfg(feature = "setup")]
+                let tool_router = tool_router + Self::setup_tools();
+                (tool_router, host)
+            }
+            McpPolicy::Service(host) => (Self::service_tools(), host),
+        };
         Self {
             tool_router,
+            host,
             config_writes: Arc::default(),
         }
     }
+
+    /// The identity the host resolves for this request's HTTP headers; stdio
+    /// requests carry none.
+    fn request_identity(
+        &self,
+        context: &RequestContext<RoleServer>,
+    ) -> Result<Option<RequestIdentity>, CallToolResult> {
+        let headers = context
+            .extensions
+            .get::<http::request::Parts>()
+            .map(|parts| parts.headers.clone())
+            .unwrap_or_default();
+        self.host.identity(&headers).map_err(|error| {
+            failure_result(CliFailure::new(
+                CliFailureCategory::AuthenticationFailed,
+                format!("request identity could not be resolved: {error}"),
+            ))
+        })
+    }
+
+    /// Runs a local job `operation` under an admission for `identity` and
+    /// its execution scope.
+    async fn admitted<F>(&self, identity: Option<&RequestIdentity>, operation: F) -> eyre::Result<CommandOutcome>
+    where
+        F: Future<Output = eyre::Result<CommandOutcome>>,
+    {
+        let owner = identity.map_or_else(|| LOCAL_OWNER.to_string(), |identity| identity.user.clone());
+        let mut guard = self.host.admit(owner).await?;
+        let result = with_scoped_execution(guard.scope(), Box::pin(operation)).await;
+        guard.finish(AdmissionRecord::from_command(&result));
+        result
+    }
 }
+
+/// The admission owner of a local call whose host resolves no identity.
+const LOCAL_OWNER: &str = "local";
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for EsdiagMcp {
@@ -143,15 +196,20 @@ impl EsdiagMcp {
         {
             return Ok(rejected);
         }
+        let identity = match self.request_identity(&context) {
+            Ok(identity) => identity,
+            Err(rejected) => return Ok(rejected),
+        };
+        let (user, account) = identified(&identity, params.user, params.account);
         let input = operations::process::ProcessInput {
             input: params.input,
             output: params.output,
             #[cfg(feature = "agent")]
             ask: params.ask,
-            account: params.account,
+            account,
             case: params.case,
             opportunity: params.opportunity,
-            user: params.user,
+            user,
             sources: None,
             scrubbed: params.scrubbed,
             #[cfg(feature = "keystore")]
@@ -167,7 +225,8 @@ impl EsdiagMcp {
         let lock = self.save_job_lock(input.save_job.is_some());
         #[cfg(not(feature = "keystore"))]
         let lock = None;
-        long_running(&context, holding(lock, operations::process::process(input))).await
+        let operation = holding(lock, operations::process::process(input));
+        long_running(&context, self.admitted(identity.as_ref(), operation)).await
     }
 
     /// Collect a diagnostic archive from a saved host, as `esdiag collect`. Reports progress.
@@ -185,6 +244,11 @@ impl EsdiagMcp {
         if let Some(rejected) = reject_url_credentials(&[("host", Some(&params.host))]) {
             return Ok(rejected);
         }
+        let identity = match self.request_identity(&context) {
+            Ok(identity) => identity,
+            Err(rejected) => return Ok(rejected),
+        };
+        let (user, account) = identified(&identity, params.user, params.account);
         let input = operations::collect::CollectInput {
             host: params.host,
             output: params.output,
@@ -192,10 +256,10 @@ impl EsdiagMcp {
             include: params.include,
             exclude: params.exclude,
             sources: None,
-            account: params.account,
+            account,
             case: params.case,
             opportunity: params.opportunity,
-            user: params.user,
+            user,
             send_id: params.send,
             #[cfg(feature = "keystore")]
             save_job: params.save_job,
@@ -204,7 +268,8 @@ impl EsdiagMcp {
         let lock = self.save_job_lock(input.save_job.is_some());
         #[cfg(not(feature = "keystore"))]
         let lock = None;
-        long_running(&context, holding(lock, operations::collect::collect(input))).await
+        let operation = holding(lock, operations::collect::collect(input));
+        long_running(&context, self.admitted(identity.as_ref(), operation)).await
     }
 
     /// Send a raw diagnostic archive to Elastic Upload Service, as `esdiag send`. Reports progress.
@@ -365,8 +430,12 @@ impl EsdiagMcp {
         Parameters(params): Parameters<NameParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
+        let identity = match self.request_identity(&context) {
+            Ok(identity) => identity,
+            Err(rejected) => return Ok(rejected),
+        };
         let run = operations::job::job_run(params.name, operations::job::StdoutPolicy::Reject);
-        long_running(&context, run).await
+        long_running(&context, self.admitted(identity.as_ref(), run)).await
     }
 
     /// Delete a saved job, as `esdiag job delete`.
@@ -389,6 +458,99 @@ impl EsdiagMcp {
     /// before running.
     fn save_job_lock(&self, saves_job: bool) -> Option<Arc<Mutex<()>>> {
         saves_job.then(|| Arc::clone(&self.config_writes))
+    }
+}
+
+#[tool_router(router = service_tools)]
+impl EsdiagMcp {
+    /// Process one diagnostic from an Elastic Upload Service link into this server's exporter. Reports progress.
+    #[tool(
+        name = "process",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn service_process(
+        &self,
+        Parameters(params): Parameters<ServiceProcessParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let link = match UploadLink::parse(&params.url, &params.token) {
+            Ok(link) => link,
+            Err(message) => {
+                return Ok(failure_result(CliFailure::new(
+                    CliFailureCategory::InvalidInput,
+                    message,
+                )));
+            }
+        };
+        let identity = match self.request_identity(&context) {
+            Ok(Some(identity)) => identity,
+            Ok(None) => {
+                return Ok(failure_result(CliFailure::new(
+                    CliFailureCategory::AuthenticationFailed,
+                    "the request has no identity",
+                )));
+            }
+            Err(rejected) => return Ok(rejected),
+        };
+        let host = Arc::clone(&self.host);
+        long_running(&context, process_upload(host, link.into_uri(), identity)).await
+    }
+}
+
+/// Processes `uri` into the host exporter under an admission for `identity`;
+/// the admission and its execution scope are owned by this future.
+async fn process_upload(host: Arc<dyn McpHost>, uri: Uri, identity: RequestIdentity) -> eyre::Result<CommandOutcome> {
+    let mut guard = host.admit(identity.user.clone()).await?;
+    let result = with_scoped_execution(
+        guard.scope(),
+        Box::pin(async {
+            let exporter = host.exporter().await?;
+            let output = exporter.to_string();
+            let binding = BindingKey::try_new("mcp-upload-input")?;
+            let mut context =
+                ExecutionContext::default().with_identity(ExecutionIdentity::new(new_job_id(), &identity.user));
+            context.inputs.bind_uri(binding.clone(), uri, None);
+            let identifiers = Identifiers::new(identity.account.clone(), None, None, None, Some(identity.user.clone()));
+            let outcome =
+                operations::process::process_prepared(Input::LoadBinding { binding }, exporter, identifiers, context)
+                    .await?;
+            let record = AdmissionRecord::from_execution(&outcome);
+            let mut diagnostic = operations::process::processed_diagnostic(outcome)?
+                .ok_or_else(|| eyre::eyre!("Process completed without a diagnostic report"))?;
+            diagnostic.output = output;
+            Ok((record, diagnostic))
+        }),
+    )
+    .await;
+    match result {
+        Ok((record, diagnostic)) => {
+            guard.finish(record);
+            Ok(CommandOutcome::Completed(CliOutcome::DiagnosticProcessed {
+                diagnostic,
+            }))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// A local call's report user and account: the parameters when given, else
+/// the request identity.
+fn identified(
+    identity: &Option<RequestIdentity>,
+    user: Option<String>,
+    account: Option<String>,
+) -> (Option<String>, Option<String>) {
+    match identity {
+        Some(identity) => (
+            user.or_else(|| Some(identity.user.clone())),
+            account.or_else(|| identity.account.clone()),
+        ),
+        None => (user, account),
     }
 }
 

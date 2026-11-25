@@ -706,6 +706,40 @@ fn resolve_scrub_detect_name(path: &str, hint: Option<&str>) -> String {
 }
 
 impl Receiver {
+    /// Builds the receiver for `uri`, downloading an Elastic Upload Service
+    /// link asynchronously so dropping the future closes the connection.
+    /// Every other URI is built by [`Receiver::try_from_with_scrub`].
+    pub async fn prepare(
+        uri: Uri,
+        scrubbed_override: Option<bool>,
+        auto_detect_filename: Option<&str>,
+    ) -> std::result::Result<Self, eyre::Report> {
+        let Uri::ServiceLink(url) = uri else {
+            return Self::try_from_with_scrub(uri, scrubbed_override, auto_detect_filename);
+        };
+        let scrub_mode = ScrubMode::from(scrubbed_override);
+        let detect_name = auto_detect_filename.filter(|value| !value.is_empty());
+        let filename = detect_name.map(str::to_string).or_else(|| {
+            url.path_segments()
+                .and_then(|mut segments| segments.next_back())
+                .filter(|segment| !segment.is_empty())
+                .map(str::to_string)
+        });
+        let mut receiver = UploadServiceDownloader::try_from(url)?.download().await?;
+        receiver.set_filename(filename);
+        let scrubbed = should_enable_scrubbed(scrub_mode, detect_name);
+        if let Some(name) = detect_name {
+            tracing::debug!(
+                "Scrub normalization {} for service link (detect name: {}, mode: {})",
+                if scrubbed { "enabled" } else { "disabled" },
+                name,
+                scrub_mode_label(scrub_mode)
+            );
+        }
+        receiver.set_scrubbed(scrubbed);
+        Ok(Receiver::ArchiveBytes(receiver))
+    }
+
     pub fn try_from_with_scrub(
         uri: Uri,
         scrubbed_override: Option<bool>,
@@ -762,22 +796,10 @@ impl Receiver {
                     }
                 }
             }
-            Uri::ServiceLink(url) => {
-                let detect_name = auto_detect_filename
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_string);
-                let mut receiver = UploadServiceDownloader::try_from(url)?.download()?;
-                let scrubbed = should_enable_scrubbed(scrub_mode, detect_name.as_deref());
-                if let Some(name) = detect_name.as_deref() {
-                    tracing::debug!(
-                        "Scrub normalization {} for service link (detect name: {}, mode: {})",
-                        if scrubbed { "enabled" } else { "disabled" },
-                        name,
-                        scrub_mode_label(scrub_mode)
-                    );
-                }
-                receiver.set_scrubbed(scrubbed);
-                Receiver::ArchiveBytes(receiver)
+            Uri::ServiceLink(_) => {
+                return Err(eyre!(
+                    "Elastic Upload Service links are downloaded asynchronously; build the receiver with Receiver::prepare"
+                ));
             }
             _ => return Err(eyre!("Unsupported URI: {uri}")),
         };
@@ -822,8 +844,40 @@ mod tests {
         DirectoryReceiver, Receiver, ScrubMode, is_source_instance_path, may_contain_source_instance,
         resolve_scrub_detect_name, should_enable_scrubbed,
     };
-    use crate::data::{Application, KnownHostBuilder};
+    use crate::data::{Application, KnownHostBuilder, Uri};
+    use std::time::Duration;
+    use tokio::io::AsyncReadExt;
     use url::Url;
+
+    #[test]
+    fn try_from_with_scrub_rejects_a_bare_service_link() {
+        let url = Url::parse("https://token:secret@upload.elastic.co/d/abc").unwrap();
+        let error = Receiver::try_from_with_scrub(Uri::ServiceLink(url), None, None)
+            .err()
+            .expect("service links need the async constructor");
+        assert!(error.to_string().contains("Receiver::prepare"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn dropping_prepare_closes_a_stalled_download() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = Url::parse(&format!("http://token:secret@{addr}/d/stalled.zip")).unwrap();
+        let prepare = tokio::spawn(Receiver::prepare(Uri::ServiceLink(url), None, None));
+        let (mut socket, _) = tokio::time::timeout(Duration::from_secs(5), listener.accept())
+            .await
+            .expect("the download connects")
+            .unwrap();
+        let mut request = [0u8; 1024];
+        assert!(socket.read(&mut request).await.unwrap() > 0, "the request was sent");
+
+        prepare.abort();
+        let mut rest = Vec::new();
+        let read = tokio::time::timeout(Duration::from_secs(5), socket.read_to_end(&mut rest))
+            .await
+            .expect("dropping the future closes the connection");
+        assert!(read.is_ok());
+    }
 
     #[test]
     fn source_probe_handles_whitespace_across_buffers_without_consuming_json() {

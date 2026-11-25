@@ -17,25 +17,21 @@ pub struct UploadServiceDownloader {
 impl UploadServiceDownloader {
     /// Downloads a file from the Elastic Upload Service given a URL and token
     /// The URL format of `https://upload.elastic.co/...` will have been validated previously.
-    pub fn download(self) -> Result<ArchiveBytesReceiver> {
-        ArchiveBytesReceiver::try_from(self.download_bytes()?)
+    pub async fn download(self) -> Result<ArchiveBytesReceiver> {
+        ArchiveBytesReceiver::try_from(self.download_bytes().await?)
     }
 
-    pub fn download_bytes(self) -> Result<Bytes> {
-        // Using block_in_place allows a synchronous file download inside an async runtime
-        tokio::task::block_in_place(|| {
-            let client = reqwest::blocking::Client::new();
-            let mut headers = reqwest::header::HeaderMap::new();
-            headers.insert("Authorization", reqwest::header::HeaderValue::from_str(&self.token)?);
-            let request = client.get(self.url.clone()).headers(headers);
-            let response = request.send()?;
-            let bytes = response.bytes()?;
-            tracing::debug!("Downloaded archive size: {} bytes", bytes.len());
-            match bytes.len() {
-                0 => Err(eyre!("Downloaded empty file, check upload link expiration")),
-                _ => Ok(bytes),
-            }
-        })
+    /// Dropping the returned future closes the download connection.
+    pub async fn download_bytes(self) -> Result<Bytes> {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("Authorization", reqwest::header::HeaderValue::from_str(&self.token)?);
+        let response = reqwest::Client::new().get(self.url).headers(headers).send().await?;
+        let bytes = response.bytes().await?;
+        tracing::debug!("Downloaded archive size: {} bytes", bytes.len());
+        match bytes.len() {
+            0 => Err(eyre!("Downloaded empty file, check upload link expiration")),
+            _ => Ok(bytes),
+        }
     }
 }
 

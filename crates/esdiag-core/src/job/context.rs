@@ -15,6 +15,7 @@ use crate::{
 };
 use eyre::{Result, eyre};
 use std::{collections::HashMap, sync::Arc};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExecutionIdentity {
@@ -51,8 +52,29 @@ impl ExecutionObserver for NoopObserver {
     fn observe(&self, _event: &ExecutionEvent) {}
 }
 
+/// Work an execution runs outside its own future, such as the bulk requests
+/// its exporter spawns, and the token that tells that work to stop. Dropping
+/// the execution's future cannot reach these tasks or wait for them, so the
+/// owner cancels the token and waits on the tracker instead. Clones share both.
+#[derive(Clone, Debug, Default)]
+pub struct ExecutionScope {
+    tracker: TaskTracker,
+    token: CancellationToken,
+}
+
+impl ExecutionScope {
+    pub fn tracker(&self) -> &TaskTracker {
+        &self.tracker
+    }
+
+    pub fn token(&self) -> &CancellationToken {
+        &self.token
+    }
+}
+
 tokio::task_local! {
     static SCOPED_OBSERVER: Arc<dyn ExecutionObserver>;
+    static SCOPED_EXECUTION: ExecutionScope;
 }
 
 /// Runs `future` so every [`ExecutionContext::default`] created on its task
@@ -60,6 +82,13 @@ tokio::task_local! {
 /// their own context.
 pub async fn with_scoped_observer<F: Future>(observer: Arc<dyn ExecutionObserver>, future: F) -> F::Output {
     SCOPED_OBSERVER.scope(observer, future).await
+}
+
+/// Runs `future` so every [`ExecutionContext::default`] created on its task
+/// tracks its work in `scope`, letting a caller stop and wait for operations
+/// that build their own context.
+pub async fn with_scoped_execution<F: Future>(scope: ExecutionScope, future: F) -> F::Output {
+    SCOPED_EXECUTION.scope(scope, future).await
 }
 
 #[derive(Clone)]
@@ -72,6 +101,7 @@ pub struct ExecutionContext {
     pub inherited_platform: Option<Platform>,
     pub child_depth: u8,
     observer: Arc<dyn ExecutionObserver>,
+    scope: ExecutionScope,
 }
 
 impl Default for ExecutionContext {
@@ -87,6 +117,7 @@ impl Default for ExecutionContext {
             observer: SCOPED_OBSERVER
                 .try_with(Arc::clone)
                 .unwrap_or_else(|_| Arc::new(NoopObserver)),
+            scope: SCOPED_EXECUTION.try_with(Clone::clone).unwrap_or_default(),
         }
     }
 }
@@ -94,6 +125,11 @@ impl Default for ExecutionContext {
 impl ExecutionContext {
     pub fn with_identity(mut self, identity: ExecutionIdentity) -> Self {
         self.identity = identity;
+        self
+    }
+
+    pub fn with_scope(mut self, scope: ExecutionScope) -> Self {
+        self.scope = scope;
         self
     }
 
@@ -121,6 +157,11 @@ impl ExecutionContext {
     }
 
     pub(crate) fn resolve_document_exporter(&self, target: &ExportTarget) -> Result<DocumentExporter> {
+        self.resolve_unscoped_document_exporter(target)
+            .map(|exporter| exporter.with_scope(self.scope.clone()))
+    }
+
+    fn resolve_unscoped_document_exporter(&self, target: &ExportTarget) -> Result<DocumentExporter> {
         match target {
             ExportTarget::Binding { binding } => self.document_exporters.get(binding).cloned().ok_or_else(|| {
                 eyre!(

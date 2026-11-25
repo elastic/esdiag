@@ -619,6 +619,9 @@ pub fn structured_failure(error: &eyre::Report) -> CliFailure {
         return CliFailure::new(CliFailureCategory::NotFound, "saved job was not found")
             .resource(missing_job.name.clone());
     }
+    if let Some(rejected) = error.downcast_ref::<crate::job::admission::JobAdmissionError>() {
+        return CliFailure::new(CliFailureCategory::Conflict, rejected.to_string());
+    }
     #[cfg(feature = "keystore")]
     if let Some(rejected) = error.downcast_ref::<crate::operations::job::SavedJobStdoutRejected>() {
         return CliFailure::new(CliFailureCategory::InvalidInput, rejected.to_string());

@@ -8,7 +8,10 @@
 //! cannot accidentally write processed documents into a raw collection bundle.
 
 use super::Exporter;
-use crate::data::{KnownHost, Uri};
+use crate::{
+    data::{KnownHost, Uri},
+    job::context::ExecutionScope,
+};
 use eyre::{Result, eyre};
 
 #[derive(Clone, Default)]
@@ -19,6 +22,14 @@ pub struct DocumentExporter {
 impl DocumentExporter {
     pub(crate) fn into_inner(self) -> Exporter {
         self.inner
+    }
+
+    /// Tracks the requests this exporter spawns in `scope` and stops sending
+    /// when its token is cancelled.
+    pub(crate) fn with_scope(self, scope: ExecutionScope) -> Self {
+        Self {
+            inner: self.inner.with_scope(scope),
+        }
     }
 }
 
