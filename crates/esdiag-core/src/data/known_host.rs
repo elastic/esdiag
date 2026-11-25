@@ -1019,6 +1019,15 @@ impl KnownHost {
         Ok(())
     }
 
+    /// Checks the roles and, for a template, the name under which `hosts.yml`
+    /// would hold this host. Unlike [`Self::into_persistable`], it does not
+    /// look at the credential, so it can run before a secret is read.
+    pub fn validate_shape(&self, name: &str) -> Result<()> {
+        let mut host = self.clone();
+        host.normalize_and_validate_roles(name)?;
+        host.validate_template_host_name(name)
+    }
+
     /// Returns this host as `hosts.yml` may hold it under `name`, or why it
     /// cannot be saved. Makes no network call and writes nothing.
     pub fn into_persistable(mut self, name: &str) -> Result<Self> {

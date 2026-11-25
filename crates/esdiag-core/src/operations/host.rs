@@ -55,16 +55,12 @@ pub async fn host_add(input: HostAddInput) -> Result<CommandOutcome> {
     if KnownHost::get_known(&name).is_some() {
         return Err(eyre!("Host '{name}' already exists"));
     }
+    // A host with an unsupported role or name is refused before a secret is read.
+    host_from_add_target(app, &target, url_template, &without_secret(&update), None)?.validate_shape(&name)?;
     let mut lookup = resolve_add_host_secret_auth(&name, &mut update, keystore_password)?;
     let unasked_source = lookup.unasked_source(keystore_password);
     let secret_auth = lookup.auth.take();
-    let host = if url_template {
-        build_host_from_definition(app, &target, true, &update, secret_auth)?
-    } else if let Some(host) = KnownHost::resolve_template_reference(&target)? {
-        host.merge_cli_update(&update, secret_auth)?
-    } else {
-        build_host_from_definition(app, &target, false, &update, secret_auth)?
-    };
+    let host = host_from_add_target(app, &target, url_template, &update, secret_auth)?;
     save_host(
         &name,
         host.clone(),
@@ -92,6 +88,10 @@ pub async fn host_update(input: HostUpdateInput) -> Result<CommandOutcome> {
         ));
     }
     let existing = KnownHost::get_known(&name).ok_or_else(|| eyre!("Host '{name}' not found"))?;
+    // A host with an unsupported role is refused before a secret is read.
+    existing
+        .merge_cli_update(&without_secret(&update), None)?
+        .validate_shape(&name)?;
     let mut lookup = resolve_host_secret_auth(update.secret.as_deref(), keystore_password)?;
     let unasked_source = lookup.unasked_source(keystore_password);
     let host = existing.merge_cli_update(&update, lookup.auth.take())?;
@@ -154,6 +154,31 @@ pub async fn host_auth(target: String) -> Result<CommandOutcome> {
         name: target,
         message: None,
     }))
+}
+
+/// The host that `host add` defines from `target`.
+fn host_from_add_target(
+    app: Option<Application>,
+    target: &str,
+    url_template: bool,
+    update: &KnownHostCliUpdate,
+    secret_auth: Option<SecretAuth>,
+) -> Result<KnownHost> {
+    if url_template {
+        build_host_from_definition(app, target, true, update, secret_auth)
+    } else if let Some(host) = KnownHost::resolve_template_reference(target)? {
+        host.merge_cli_update(update, secret_auth)
+    } else {
+        build_host_from_definition(app, target, false, update, secret_auth)
+    }
+}
+
+/// `update` without its secret reference, for checks made before the secret is read.
+fn without_secret(update: &KnownHostCliUpdate) -> KnownHostCliUpdate {
+    KnownHostCliUpdate {
+        secret: None,
+        ..update.clone()
+    }
 }
 
 fn infer_product_from_url(url: &Url) -> Option<Application> {
@@ -642,20 +667,55 @@ mod tests {
         .save("prod-es")
         .expect("save host");
 
-        let error = host_update(HostUpdateInput {
-            name: "prod-es".to_string(),
-            update: KnownHostCliUpdate {
-                roles: Some(vec![HostRole::View]),
+        // A same-name secret exists, so `host add` would look it up.
+        upsert_secret_auth("new-es", SecretAuth::apikey("new-key"), "pw").expect("save secret");
+        let view_role = |secret: Option<&str>| KnownHostCliUpdate {
+            roles: Some(vec![HostRole::View]),
+            secret: secret.map(str::to_string),
+            ..Default::default()
+        };
+        let role_error = "role 'view' is only valid for Kibana hosts";
+
+        for secret in [None, Some("prod-es")] {
+            let error = host_update(HostUpdateInput {
+                name: "prod-es".to_string(),
+                update: view_role(secret),
+                keystore_password: counting_source,
+            })
+            .await
+            .expect_err("update to a role the app does not support");
+            assert!(error.to_string().contains(role_error), "{secret:?}: {error}");
+        }
+
+        let add = |name: &str, target: String, url_template: bool, update: KnownHostCliUpdate| HostAddInput {
+            name: name.to_string(),
+            app: Some(Application::Elasticsearch),
+            target,
+            url_template,
+            update,
+            keystore_password: counting_source,
+        };
+        let error = host_add(add("new-es", url.clone(), false, view_role(None)))
+            .await
+            .expect_err("add with a role the app does not support");
+        assert!(error.to_string().contains(role_error), "{error}");
+
+        let error = host_add(add(
+            "Bad_Template",
+            format!("{url}/deployments/{{id}}/"),
+            true,
+            KnownHostCliUpdate {
+                secret: Some("prod-es".to_string()),
                 ..Default::default()
             },
-            keystore_password: counting_source,
-        })
+        ))
         .await
-        .expect_err("update to a role the app does not support");
+        .expect_err("add a template with a name that cannot be a URL scheme");
         assert!(
-            error.to_string().contains("role 'view' is only valid for Kibana hosts"),
+            error.to_string().contains("must start with a lowercase ASCII letter"),
             "{error}"
         );
+
         assert_eq!(CALLS.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
