@@ -103,8 +103,9 @@ fn parse_report_date(token: &str, collected: Option<NaiveDate>) -> Option<(Naive
     }
 }
 
-/// Expand a two-digit year to the century that does not place the report
-/// after the collection year.
+/// Expand a two-digit year to the century closest to the collection year,
+/// preferring the earlier one on a tie. The host clock can be ahead of the
+/// collection date, so a report may fall in the following year.
 fn expand_year(token: &str, collected: Option<NaiveDate>) -> Option<i32> {
     let year: i32 = token.parse().ok()?;
     match token.len() {
@@ -112,12 +113,10 @@ fn expand_year(token: &str, collected: Option<NaiveDate>) -> Option<i32> {
         2 => {
             let collected_year = collected.map(|date| date.year()).unwrap_or(2000 + year);
             let century = collected_year - collected_year.rem_euclid(100);
-            let candidate = century + year;
-            Some(if candidate > collected_year {
-                candidate - 100
-            } else {
-                candidate
-            })
+            [century - 100, century, century + 100]
+                .into_iter()
+                .map(|century| century + year)
+                .min_by_key(|candidate| ((candidate - collected_year).abs(), *candidate > collected_year))
         }
         _ => None,
     }
@@ -206,5 +205,11 @@ mod tests {
         assert_eq!(report_date("12/31/25", Some(date(2026, 1, 1))), date(2025, 12, 31));
         assert_eq!(report_date("08/05/26", Some(date(2026, 8, 5))), date(2026, 8, 5));
         assert_eq!(report_date("12/31/99", Some(date(2000, 1, 1))), date(1999, 12, 31));
+        assert_eq!(
+            report_date("01/01/26", Some(date(2025, 12, 31))),
+            date(2026, 1, 1),
+            "a host clock ahead of the collection date stays in the next year"
+        );
+        assert_eq!(report_date("01/01/00", Some(date(1999, 12, 31))), date(2000, 1, 1));
     }
 }

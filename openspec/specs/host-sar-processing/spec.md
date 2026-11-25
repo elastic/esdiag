@@ -265,6 +265,11 @@ The system SHALL accept row timestamps in these forms: `HH:MM:SS AM|PM`, `HH:MM:
 - **WHEN** the header is parsed
 - **THEN** the report date MUST be `2025-12-31`
 
+#### Scenario: Host clock ahead across new year
+- **GIVEN** a header date `01/01/26` and a collection date of `2025-12-31`
+- **WHEN** the header is parsed
+- **THEN** the report date MUST be `2026-01-01`, in the century closest to the collection year
+
 ### Requirement: Header-driven column parsing
 The system SHALL resolve each value by the column name in the current section's header, never by a fixed position. It SHALL accept known sysstat aliases for the same metric:
 - `%user` for `%usr`.
