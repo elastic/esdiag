@@ -102,6 +102,11 @@ stdout, because stdout belongs to the protocol. Choose a directory or a saved
 output host instead. Logs go to stderr; set `LOG_LEVEL` or pass
 `esdiag --debug mcp` for more detail.
 
+Clients ask before calling a tool that is not read only. Non-interactive runs
+such as `codex exec` cannot ask, so they refuse those tools unless you approve
+them in advance, for example with
+`-c 'mcp_servers.esdiag.tools.process.approval_mode="approve"'`.
+
 Commands that need a terminal or start long-lived services are not tools:
 `serve`, `init`, `local`, `keystore add`, `keystore update`,
 `keystore remove`, and `setup skills`, `completions`, `env`, and `context`.

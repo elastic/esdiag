@@ -36,5 +36,5 @@
 ## 6. Verification
 
 - [x] 6.1 Run `cargo test --workspace` (which includes `esdiag-gui`) and `cargo clippy --workspace --all-targets --all-features`; tests pass and clippy reports no warnings beyond the base branch's count
-- [ ] 6.2 Run `esdiag serve --web-features advanced,mcp`, register `http://127.0.0.1:2501/mcp` in Claude Code and Codex, and confirm `host_list` and a `process` call with progress work without a session ID
+- [x] 6.2 Run `esdiag serve --web-features advanced,mcp`, register `http://127.0.0.1:2501/mcp` in Claude Code and Codex, and confirm `host_list` and a `process` call with progress work without a session ID
 - [ ] 6.3 Run `esdiag serve --mode service --web-features mcp` with an output exporter, call `process` with an Elastic Upload Service URL and its token, and confirm the diagnostic lands in the startup exporter with the request identity
