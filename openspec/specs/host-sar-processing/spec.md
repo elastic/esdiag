@@ -188,7 +188,7 @@ Correlated nodes SHALL be recorded as multi-valued `elasticsearch.node.id` and `
 
 The system SHALL apply these methods in order and use the first that matches at least one node:
 1. **`listen_socket`**: the node's transport or HTTP publish `ip:port` equals a listening socket with a concrete, non-loopback address in `syscalls/ss.txt`, or in `syscalls/netstat.txt` when `ss.txt` is absent.
-2. **`k8s_node_name`**: the node attribute `k8s_node_name` equals the SAR hostname, case-insensitively, by full name or by short name (the first label).
+2. **`k8s_node_name`**: the node attribute `k8s_node_name` equals the SAR hostname, case-insensitively, by full name; or, when no node matches by full name, by short name (the first label), only when every short-name match shares the same full `k8s_node_name`.
 3. **`hostname`**: the SAR hostname equals the node's `host`, `name`, or HTTP publish hostname, case-insensitively, by full name; or, by short name, only when every short-name match shares the same full host value.
 4. **`manifest_host`**: the collection target host recorded in the bundle manifest matches the node's `host`, `ip`, or HTTP publish hostname. A loopback or `localhost` target SHALL never match.
 
@@ -214,6 +214,11 @@ SAR documents SHALL NOT carry the single-node `node.*` enrichment fields.
 - **WHEN** the file is processed
 - **THEN** both nodes MUST be correlated with `elasticsearch.node.match` = `k8s_node_name`
 - **AND** every SAR document MUST carry `kubernetes.node.name` = `worker-3`
+
+#### Scenario: Ambiguous Kubernetes short name
+- **GIVEN** a SAR hostname `worker-3` and nodes with `k8s_node_name` values `worker-3.dc1.example.com` and `worker-3.dc2.example.com`, but no listening-socket match
+- **WHEN** Kubernetes node-name correlation runs
+- **THEN** no node MUST be correlated by `k8s_node_name`, and the next method MUST be tried
 
 #### Scenario: Ambiguous short hostname
 - **GIVEN** a SAR hostname `es-01` and nodes with `host` values `es-01.dc1.example.com` and `es-01.dc2.example.com`

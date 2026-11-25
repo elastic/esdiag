@@ -163,7 +163,7 @@ that run on the host. `elasticsearch.node.match` records how ESDiag found them:
 | Value | Evidence |
 |---|---|
 | `listen_socket` | A TCP listening socket in `syscalls/ss.txt` or `syscalls/netstat.txt` matches a node's transport or HTTP publish address. Co-located nodes on one IP are told apart by port. |
-| `k8s_node_name` | The SAR hostname, or its short name, equals a node's `k8s_node_name` attribute (ECK). `kubernetes.node.name` is set too. |
+| `k8s_node_name` | The SAR hostname equals a node's `k8s_node_name` attribute (ECK), or its short name does and every match names the same Kubernetes node. `kubernetes.node.name` is set too. |
 | `hostname` | The SAR hostname equals a node's host, name, or HTTP publish host, or matches one of them unambiguously by short name. |
 | `manifest_host` | The bundle manifest's collection target equals a node's host, IP, or HTTP publish host. |
 | `none` | No evidence. `elasticsearch.node.id` and `elasticsearch.node.name` are omitted. |

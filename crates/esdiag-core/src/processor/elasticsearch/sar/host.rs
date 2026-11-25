@@ -146,14 +146,28 @@ impl NodeCorrelation {
         }
 
         let hostname = input.hostname;
-        let k8s_matches = |k8s: &str| {
-            k8s.eq_ignore_ascii_case(hostname) || short_name(k8s).eq_ignore_ascii_case(short_name(hostname))
+        let by_k8s_name = |matches: &dyn Fn(&str) -> bool| -> Vec<&NodeEndpoint> {
+            input
+                .nodes
+                .iter()
+                .filter(|node| node.k8s_node_name.as_deref().is_some_and(matches))
+                .collect()
         };
-        let by_k8s: Vec<&NodeEndpoint> = input
-            .nodes
-            .iter()
-            .filter(|node| node.k8s_node_name.as_deref().is_some_and(k8s_matches))
-            .collect();
+        let mut by_k8s = by_k8s_name(&|k8s| k8s.eq_ignore_ascii_case(hostname));
+        if by_k8s.is_empty() {
+            let short = short_name(hostname);
+            by_k8s = by_k8s_name(&|k8s| short_name(k8s).eq_ignore_ascii_case(short));
+            fn k8s_name(node: &NodeEndpoint) -> &str {
+                node.k8s_node_name.as_deref().unwrap_or_default()
+            }
+            if let Some(first) = by_k8s.first()
+                && !by_k8s
+                    .iter()
+                    .all(|node| k8s_name(node).eq_ignore_ascii_case(k8s_name(first)))
+            {
+                by_k8s.clear();
+            }
+        }
         if let Some(first) = by_k8s.first() {
             let kubernetes_node = first.k8s_node_name.clone();
             return NodeCorrelation {
@@ -375,12 +389,36 @@ mod tests {
             endpoint("c", "10.244.2.7", "10.244.2.7:9300"),
         ];
         nodes[0].k8s_node_name = Some("worker-3".to_string());
-        nodes[1].k8s_node_name = Some("WORKER-3.cluster.example.com".to_string());
+        nodes[1].k8s_node_name = Some("WORKER-3".to_string());
         nodes[2].k8s_node_name = Some("worker-4".to_string());
         let correlation = correlate("worker-3", &nodes, &[], None);
         assert_eq!(correlation.method, MatchMethod::K8sNodeName);
         assert_eq!(ids(&correlation), ["a", "b"]);
         assert_eq!(correlation.kubernetes_node.as_deref(), Some("worker-3"));
+    }
+
+    #[test]
+    fn kubernetes_short_names_match_only_one_qualified_node() {
+        let mut nodes = [
+            endpoint("a", "10.244.1.5", "10.244.1.5:9300"),
+            endpoint("b", "10.244.1.6", "10.244.1.6:9300"),
+            endpoint("c", "10.244.2.7", "10.244.2.7:9300"),
+        ];
+        nodes[0].k8s_node_name = Some("worker-3.dc1.example.com".to_string());
+        nodes[1].k8s_node_name = Some("worker-3.dc1.example.com".to_string());
+        nodes[2].k8s_node_name = Some("worker-3.dc2.example.com".to_string());
+
+        let exact = correlate("WORKER-3.dc1.example.com", &nodes, &[], None);
+        assert_eq!(exact.method, MatchMethod::K8sNodeName);
+        assert_eq!(ids(&exact), ["a", "b"], "exact names take precedence over short names");
+
+        let spanning = correlate("worker-3", &nodes, &[], None);
+        assert_ne!(spanning.method, MatchMethod::K8sNodeName, "short name spans two nodes");
+        assert!(spanning.kubernetes_node.is_none());
+
+        let one_node = correlate("worker-3", &nodes[..2], &[], None);
+        assert_eq!(one_node.method, MatchMethod::K8sNodeName);
+        assert_eq!(ids(&one_node), ["a", "b"]);
     }
 
     #[test]
