@@ -396,6 +396,47 @@ impl KnownHostCliUpdate {
     }
 }
 
+/// A proposed save whose name, roles and viewer links have been checked.
+pub(crate) struct HostSaveDraft {
+    name: String,
+    host: KnownHost,
+}
+
+impl HostSaveDraft {
+    pub(crate) fn set_default_secret(&mut self, secret: String) {
+        self.host.set_secret_reference(secret);
+    }
+
+    pub(crate) fn into_persistable(mut self) -> Result<PersistableHost> {
+        self.host.normalize_persisted_credential(&self.name)?;
+        Ok(PersistableHost {
+            name: self.name,
+            host: self.host,
+        })
+    }
+}
+
+/// A host that passed persistence checks against the saved records.
+pub(crate) struct PersistableHost {
+    name: String,
+    host: KnownHost,
+}
+
+impl PersistableHost {
+    pub(crate) fn host(&self) -> &KnownHost {
+        &self.host
+    }
+
+    pub(crate) fn save(self) -> Result<String> {
+        // Re-read after the connection test so it doesn't overwrite changes
+        // saved by another command while the request was in flight.
+        let mut hosts = KnownHost::parse_hosts_yml()?;
+        normalize_other_saved_hosts(&mut hosts, &self.name)?;
+        insert_saved_host(&mut hosts, self.name, self.host)?;
+        write_normalized_hosts(&hosts)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KnownHostSummary {
     pub app: String,
@@ -1019,7 +1060,36 @@ impl KnownHost {
         Ok(())
     }
 
-    pub fn save(mut self, name: &str) -> Result<String> {
+    pub(crate) fn prepare_save(
+        mut self,
+        name: String,
+        mut hosts: BTreeMap<String, KnownHost>,
+    ) -> Result<HostSaveDraft> {
+        self.normalize_roles_and_validate_template_name(&name)?;
+        normalize_other_saved_hosts(&mut hosts, &name)?;
+        insert_saved_host(&mut hosts, name.clone(), self)?;
+        let host = hosts.remove(&name).expect("proposed host was inserted");
+        Ok(HostSaveDraft { name, host })
+    }
+
+    fn normalize_roles_and_validate_template_name(&mut self, name: &str) -> Result<()> {
+        self.normalize_and_validate_roles(name)?;
+        self.validate_template_host_name(name)
+    }
+
+    fn normalize_persisted_credential(&mut self, name: &str) -> Result<()> {
+        self.credential = self.credential.persisted().map_err(|err| match err {
+            PersistError::Legacy => eyre!(
+                "Host '{name}' still contains plaintext credentials. Run `esdiag keystore migrate` first."
+            ),
+            PersistError::Runtime => eyre!(
+                "Host '{name}' requires a secret reference before it can be saved. Store the credential with `esdiag keystore add <id>` and use `--secret <id>`."
+            ),
+        })?;
+        Ok(())
+    }
+
+    pub fn save(self, name: &str) -> Result<String> {
         // parse the ~/.esdiag/hosts.yml file into a HashMap<String, Host>
         let mut hosts = match KnownHost::parse_hosts_yml() {
             Ok(hosts) => hosts,
@@ -1028,18 +1098,16 @@ impl KnownHost {
                 return Err(eyre!("Error parsing hosts.yml"));
             }
         };
-        self.normalize_and_validate_roles(name)?;
-        self.validate_template_host_name(name)?;
-        self.credential = self.credential.persisted().map_err(|_| {
-            eyre!(
-                "Host '{name}' requires a secret reference before it can be saved. Use `--secret <id>` to persist auth, or `--nosave` for transient validation."
-            )
-        })?;
-        hosts.insert(name.to_owned(), self);
-        KnownHost::write_hosts_yml(&hosts)
+        let mut host = self;
+        host.normalize_roles_and_validate_template_name(name)?;
+        host.normalize_persisted_credential(name)?;
+        normalize_other_saved_hosts(&mut hosts, name)?;
+        insert_saved_host(&mut hosts, name.to_owned(), host)?;
+        write_normalized_hosts(&hosts)
     }
 
-    pub fn merge_cli_update(&self, update: &KnownHostCliUpdate, secret_auth: Option<SecretAuth>) -> Result<Self> {
+    /// Applies a host update without resolving the referenced secret.
+    pub fn merge_cli_update(&self, update: &KnownHostCliUpdate) -> Result<Self> {
         let app = self.app();
         let url = self.concrete_url().cloned();
         let url_template = self.url_template.clone();
@@ -1050,8 +1118,6 @@ impl KnownHost {
             .unwrap_or_else(|| self.accept_invalid_certs());
 
         let credential = if let Some(secret_id) = &update.secret {
-            secret_auth
-                .ok_or_else(|| eyre!("Invalid KnownHost configuration: missing secret auth for secret update"))?;
             Some(Credential::Keystore(secret_id.clone()))
         } else if let Some(apikey) = &update.apikey {
             Some(Credential::runtime(Auth::Apikey(apikey.clone())))
@@ -1282,29 +1348,14 @@ impl KnownHost {
     }
 
     pub fn write_hosts_yml(hosts: &BTreeMap<String, KnownHost>) -> Result<String> {
-        let path = KnownHost::get_hosts_path();
-        reject_new_reserved_names(hosts)?;
         let mut hosts = hosts.clone();
-        for (name, host) in hosts.iter_mut() {
-            host.normalize_and_validate_roles(name)?;
-            host.validate_template_host_name(name)?;
-            host.credential = host.credential.persisted().map_err(|err| match err {
-                PersistError::Legacy => eyre!(
-                    "Host '{name}' still contains plaintext credentials. Run `esdiag keystore migrate` first."
-                ),
-                PersistError::Runtime => eyre!(
-                    "Host '{name}' carries runtime credentials, which are never saved. Store them in the keystore and reference them with `--secret <id>`."
-                ),
-            })?;
+        reject_new_reserved_names(&hosts)?;
+        for (name, host) in &mut hosts {
+            host.normalize_roles_and_validate_template_name(name)?;
+            host.normalize_persisted_credential(name)?;
         }
         validate_viewer_links(&hosts)?;
-        tracing::debug!(
-            "Writing hosts: {} to {:?}",
-            hosts.clone().into_keys().collect::<Vec<String>>().join(", "),
-            path
-        );
-        super::keystore::write_yaml_atomic(&path, &hosts)?;
-        Ok(format!("{}", path.display()))
+        write_normalized_hosts(&hosts)
     }
 
     fn set_accept_invalid_certs(&mut self, accept_invalid_certs: bool) {
@@ -1480,6 +1531,41 @@ fn userinfo_span(value: &str) -> Option<std::ops::Range<usize>> {
     Some(start..start + at + 1)
 }
 
+fn normalize_other_saved_hosts(hosts: &mut BTreeMap<String, KnownHost>, replacing: &str) -> Result<()> {
+    for (name, host) in hosts {
+        if name != replacing {
+            host.validate_template_host_name(name)?;
+            host.normalize_persisted_credential(name)?;
+        }
+    }
+    Ok(())
+}
+
+fn insert_saved_host(hosts: &mut BTreeMap<String, KnownHost>, name: String, host: KnownHost) -> Result<()> {
+    if HostReference::is_reserved_name(&name) {
+        check_reserved_saved_name(&name, hosts.contains_key(&name))?;
+    }
+    hosts.insert(name, host);
+    validate_viewer_links(hosts)
+}
+
+fn write_normalized_hosts(hosts: &BTreeMap<String, KnownHost>) -> Result<String> {
+    let path = KnownHost::get_hosts_path();
+    tracing::debug!("Writing hosts: {:?} to {:?}", hosts.keys().collect::<Vec<_>>(), path);
+    super::keystore::write_yaml_atomic(&path, hosts)?;
+    Ok(path.display().to_string())
+}
+
+fn check_reserved_saved_name(name: &str, exists: bool) -> Result<()> {
+    if !exists {
+        return Err(eyre!(
+            "Host name '{name}' is reserved for Elastic CLI context references. Choose a name that does not start with '.'."
+        ));
+    }
+    tracing::warn!("Saved host '{name}' is shadowed by Elastic CLI context references; rename it to use it");
+    Ok(())
+}
+
 /// Reject host names that a host reference would read as an Elastic CLI
 /// context. Names already in `hosts.yml` are kept so an older file stays
 /// editable; they are unreachable by reference and only warn.
@@ -1493,12 +1579,7 @@ fn reject_new_reserved_names(hosts: &BTreeMap<String, KnownHost>) -> Result<()> 
     }
     let existing = KnownHost::parse_hosts_yml().unwrap_or_default();
     for name in reserved {
-        if !existing.contains_key(name) {
-            return Err(eyre!(
-                "Host name '{name}' is reserved for Elastic CLI context references. Choose a name that does not start with '.'."
-            ));
-        }
-        tracing::warn!("Saved host '{name}' is shadowed by Elastic CLI context references; rename it to use it");
+        check_reserved_saved_name(name, existing.contains_key(name))?;
     }
     Ok(())
 }
@@ -2205,7 +2286,7 @@ mod tests {
             ..KnownHostCliUpdate::default()
         };
 
-        let merged = host.merge_cli_update(&update, None).expect("merge should succeed");
+        let merged = host.merge_cli_update(&update).expect("merge should succeed");
 
         assert!(merged.accept_invalid_certs, "certificate setting should be preserved");
         assert_eq!(
@@ -2230,7 +2311,7 @@ mod tests {
             ..KnownHostCliUpdate::default()
         };
 
-        let merged = host.merge_cli_update(&update, None).expect("merge should succeed");
+        let merged = host.merge_cli_update(&update).expect("merge should succeed");
 
         assert_eq!(merged.credential(), &Credential::runtime(Auth::apikey("new-key")));
         assert!(
@@ -2254,7 +2335,7 @@ mod tests {
             ..KnownHostCliUpdate::default()
         };
 
-        let merged = host.merge_cli_update(&update, None).expect("merge should succeed");
+        let merged = host.merge_cli_update(&update).expect("merge should succeed");
 
         assert!(
             !merged.accept_invalid_certs(),
@@ -2344,7 +2425,7 @@ mod tests {
             ..KnownHostCliUpdate::default()
         };
 
-        let err = match host.merge_cli_update(&update, None) {
+        let err = match host.merge_cli_update(&update) {
             Ok(_) => panic!("partial basic auth should be rejected"),
             Err(err) => err,
         };
@@ -2371,7 +2452,7 @@ mod tests {
             ..KnownHostCliUpdate::default()
         };
 
-        let err = match host.merge_cli_update(&update, None) {
+        let err = match host.merge_cli_update(&update) {
             Ok(_) => panic!("partial basic auth should be rejected"),
             Err(err) => err,
         };

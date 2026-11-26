@@ -48,6 +48,7 @@ pub use keystore::{
     resolve_secret_auth, rotate_keystore_password, update_secret, upsert_secret_auth,
     validate_existing_keystore_password, with_scoped_keystore_password, write_unlock_lease,
 };
+pub(crate) use known_host::PersistableHost;
 #[cfg(feature = "test-support")]
 pub use known_host::write_hosts_yml_for_tests;
 pub use known_host::{

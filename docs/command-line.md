@@ -255,7 +255,9 @@ Create a saved Elasticsearch host:
 esdiag host add prod-es https://es.example.com:9200 --roles send
 ```
 
-`host add` and `host update` test the full definition before saving it.
+`host add` and `host update` check that the record can be saved before
+contacting the host. Concrete hosts are connection-tested before saving;
+unresolved URL templates are not.
 `host auth <NAME>` tests an existing definition without changing it.
 
 Roles:
@@ -269,10 +271,10 @@ If you omit roles, the host gets `collect`. ESDiag infers the app from ports
 
 `host add` uses the keystore entry with the same name as the host when one
 exists. Use `--secret <SECRET_ID>` to reference a differently named entry.
-`--apikey` or
-`--user` with `--password` can supply credentials while you create or update
-the host. Keep certificate validation enabled unless the endpoint owner has
-approved an exception.
+The commands reject inline `--apikey` or `--user` with `--password` before
+contacting the host. Add those credentials with `esdiag keystore add` instead.
+Keep certificate validation enabled unless the endpoint owner has approved an
+exception.
 
 ## `keystore`
 
