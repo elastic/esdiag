@@ -4,11 +4,11 @@
 
 use super::host_result;
 use crate::{
-    cli_output::{CliOutcome, CommandOutcome},
+    cli_output::{CliOutcome, CommandOutcome, HostResult},
     client::Client,
     data::{
-        Application, Auth, HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate, SecretAuth, Settings, Uri,
-        keystore_exists, resolve_secret_auth, with_scoped_keystore_password,
+        Application, Auth, HostRole, KnownHost, KnownHostBuilder, KnownHostCliUpdate, PersistableHost, SecretAuth,
+        Settings, Uri, keystore_exists, resolve_secret_auth, with_scoped_keystore_password,
     },
     onboarding::clear_collection_deferral,
     receiver::Receiver,
@@ -43,36 +43,23 @@ pub struct HostUpdateInput {
 
 /// Saves a new host after validating its connection, unless it is a URL template.
 pub async fn host_add(input: HostAddInput) -> Result<CommandOutcome> {
-    let HostAddInput {
-        name,
-        app,
-        target,
-        url_template,
-        mut update,
-        keystore_password,
-    } = input;
+    let name = &input.name;
     tracing::info!("Adding host {name}");
-    if KnownHost::get_known(&name).is_some() {
+    let hosts = KnownHost::parse_hosts_yml()?;
+    if hosts.contains_key(name) {
         return Err(eyre!("Host '{name}' already exists"));
     }
-    // A host with an unsupported role or name is refused before a secret is read.
-    host_from_add_target(app, &target, url_template, &without_secret(&update), None)?.validate_shape(&name)?;
-    let mut lookup = resolve_add_host_secret_auth(&name, &mut update, keystore_password)?;
-    let unasked_source = lookup.unasked_source(keystore_password);
-    let secret_auth = lookup.auth.take();
-    let host = host_from_add_target(app, &target, url_template, &update, secret_auth)?;
-    save_host(
-        &name,
-        host.clone(),
-        "added",
-        !host.is_template(),
-        lookup.keystore_password,
-        unasked_source,
-    )
-    .await?;
-    Ok(CommandOutcome::Completed(CliOutcome::HostAdded {
-        host: host_result(name, &host),
-    }))
+
+    let host = input.build_host()?;
+    let mut draft = host.prepare_save(name.clone(), hosts)?;
+    let mut update = input.update;
+    let needs_default = update.secret.is_none();
+    let lookup = resolve_add_host_secret_auth(name, &mut update, input.keystore_password)?;
+    if needs_default && let Some(secret) = update.secret {
+        draft.set_default_secret(secret);
+    }
+    let host = save_host(input.name, draft.into_persistable()?, lookup, input.keystore_password).await?;
+    Ok(CommandOutcome::Completed(CliOutcome::HostAdded { host }))
 }
 
 pub async fn host_update(input: HostUpdateInput) -> Result<CommandOutcome> {
@@ -87,26 +74,13 @@ pub async fn host_update(input: HostUpdateInput) -> Result<CommandOutcome> {
             "No host update fields were provided. Use `esdiag host auth {name}` to test the saved host without modifying it."
         ));
     }
-    let existing = KnownHost::get_known(&name).ok_or_else(|| eyre!("Host '{name}' not found"))?;
-    // A host with an unsupported role is refused before a secret is read.
-    existing
-        .merge_cli_update(&without_secret(&update), None)?
-        .validate_shape(&name)?;
-    let mut lookup = resolve_host_secret_auth(update.secret.as_deref(), keystore_password)?;
-    let unasked_source = lookup.unasked_source(keystore_password);
-    let host = existing.merge_cli_update(&update, lookup.auth.take())?;
-    save_host(
-        &name,
-        host.clone(),
-        "updated",
-        !host.is_template(),
-        lookup.keystore_password,
-        unasked_source,
-    )
-    .await?;
-    Ok(CommandOutcome::Completed(CliOutcome::HostUpdated {
-        host: host_result(name, &host),
-    }))
+    let hosts = KnownHost::parse_hosts_yml()?;
+    let existing = hosts.get(&name).ok_or_else(|| eyre!("Host '{name}' not found"))?;
+    let host = existing.merge_cli_update(&update)?;
+    let host = host.prepare_save(name.clone(), hosts)?.into_persistable()?;
+    let lookup = resolve_host_secret_auth(update.secret.as_deref(), keystore_password)?;
+    let host = save_host(name, host, lookup, keystore_password).await?;
+    Ok(CommandOutcome::Completed(CliOutcome::HostUpdated { host }))
 }
 
 pub fn host_remove(name: String) -> Result<CommandOutcome> {
@@ -156,28 +130,43 @@ pub async fn host_auth(target: String) -> Result<CommandOutcome> {
     }))
 }
 
-/// The host that `host add` defines from `target`.
-fn host_from_add_target(
-    app: Option<Application>,
-    target: &str,
-    url_template: bool,
-    update: &KnownHostCliUpdate,
-    secret_auth: Option<SecretAuth>,
-) -> Result<KnownHost> {
-    if url_template {
-        build_host_from_definition(app, target, true, update, secret_auth)
-    } else if let Some(host) = KnownHost::resolve_template_reference(target)? {
-        host.merge_cli_update(update, secret_auth)
-    } else {
-        build_host_from_definition(app, target, false, update, secret_auth)
-    }
-}
+impl HostAddInput {
+    fn build_host(&self) -> Result<KnownHost> {
+        if !self.url_template
+            && let Some(host) = KnownHost::resolve_template_reference(&self.target)?
+        {
+            return host.merge_cli_update(&self.update);
+        }
 
-/// `update` without its secret reference, for checks made before the secret is read.
-fn without_secret(update: &KnownHostCliUpdate) -> KnownHostCliUpdate {
-    KnownHostCliUpdate {
-        secret: None,
-        ..update.clone()
+        let mut builder = if self.url_template {
+            KnownHostBuilder::new_template(self.target.clone())
+        } else {
+            let url = Url::parse(&self.target).map_err(|err| eyre!("Invalid host target URL: {err}"))?;
+            let app = self.app.or_else(|| infer_product_from_url(&url)).ok_or_else(|| {
+                eyre!(
+                    "Target '{}' does not determine the app. Rerun with `--app <app>`.",
+                    self.target
+                )
+            })?;
+            KnownHostBuilder::new(url).application(app)
+        }
+        .accept_invalid_certs(self.update.accept_invalid_certs.unwrap_or(false))
+        .auth(
+            Auth::from_parts(
+                self.update.apikey.clone(),
+                self.update.username.clone(),
+                self.update.password.clone(),
+            )
+            .map_err(|err| eyre!("Invalid KnownHost configuration: {err}"))?,
+        )
+        .secret(self.update.secret.clone());
+        if let Some(app) = self.app {
+            builder = builder.application(app);
+        }
+        if let Some(roles) = &self.update.roles {
+            builder = builder.roles(roles.clone());
+        }
+        builder.build()
     }
 }
 
@@ -200,93 +189,33 @@ fn infer_product_from_url(url: &Url) -> Option<Application> {
     }
 }
 
-fn build_host_from_definition(
-    app: Option<Application>,
-    target: &str,
-    use_url_template: bool,
-    update: &KnownHostCliUpdate,
-    secret_auth: Option<SecretAuth>,
-) -> Result<KnownHost> {
-    let mut builder = if use_url_template {
-        KnownHostBuilder::new_template(target.to_string())
-    } else {
-        let url = Url::parse(target).map_err(|err| eyre!("Invalid host target URL: {err}"))?;
-        let inferred_app = infer_product_from_url(&url);
-        let app = app
-            .or(inferred_app)
-            .ok_or_else(|| eyre!("Target '{target}' does not determine the app. Rerun with `--app <app>`."))?;
-        KnownHostBuilder::new(url).application(app)
-    }
-    .accept_invalid_certs(update.accept_invalid_certs.unwrap_or(false))
-    .auth(
-        Auth::from_parts(update.apikey.clone(), update.username.clone(), update.password.clone())
-            .map_err(|err| eyre!("Invalid KnownHost configuration: {err}"))?,
-    )
-    .secret(update.secret.clone());
-    if let Some(app) = app {
-        builder = builder.application(app);
-    }
-    if let Some(roles) = update.roles.clone() {
-        builder = builder.roles(roles);
-    }
-    match secret_auth {
-        Some(secret_auth) => builder.build_with_secret_auth(secret_auth),
-        None => builder.build(),
-    }
-}
-
-/// A host that cannot be saved is refused before its password is asked for or
-/// its connection is tested, so its credential is never sent.
-///
-/// Connection validation reads the host's secret again, so the password is
-/// scoped over it: the one already obtained while building the host, otherwise
-/// one asked of `unasked_source` when validation will read an inherited or
-/// template secret. `unasked_source` is `None` once the source has been asked.
 async fn save_host(
-    name: &str,
-    host: KnownHost,
-    action: &str,
-    validate_connection: bool,
-    resolved_password: Option<Secret<String>>,
-    unasked_source: Option<KeystorePasswordSource>,
-) -> Result<String> {
-    let host = host.into_persistable(name)?;
-    let keystore_password = match (resolved_password, unasked_source) {
-        (Some(password), _) => Some(password),
-        // On failure, validation reports the missing password itself.
-        (None, Some(source)) if validate_connection && host.requires_keystore_secret() => source().ok(),
-        (None, _) => None,
-    };
-    let save = validate_and_save_host(name, host, action, validate_connection);
-    match keystore_password {
-        Some(keystore_password) => with_scoped_keystore_password(keystore_password, save).await,
-        None => save.await,
+    name: String,
+    host: PersistableHost,
+    lookup: SecretLookup,
+    password_source: KeystorePasswordSource,
+) -> Result<HostResult> {
+    if !host.host().is_template() {
+        let unasked_source = lookup.unasked_source(password_source);
+        let password = lookup.keystore_password.or_else(|| {
+            // On failure, validation reports the missing password itself.
+            let source = unasked_source.filter(|_| host.host().requires_keystore_secret())?;
+            source().ok()
+        });
+        let validation = validate_host_connection(&name, Uri::try_from(host.host().clone())?);
+        match password {
+            Some(password) => with_scoped_keystore_password(password, validation).await?,
+            None => validation.await?,
+        };
     }
-}
-
-async fn validate_and_save_host(
-    name: &str,
-    host: KnownHost,
-    action: &str,
-    validate_connection: bool,
-) -> Result<String> {
-    let is_collect_host = host.has_role(HostRole::Collect);
-    if validate_connection {
-        let uri = Uri::try_from(host.clone())?;
-        let validation_summary = validate_host_connection(name, uri).await?;
-        let hostfile = host.save(name)?;
-        if is_collect_host {
-            clear_collection_deferral()?;
-        }
-        tracing::info!("Host {name} successfully saved to {hostfile}");
-        return Ok(format!("{validation_summary}\nHost '{name}' {action} in {hostfile}"));
-    }
-    let hostfile = host.save(name)?;
+    let is_collect_host = host.host().has_role(HostRole::Collect);
+    let result = host_result(name, host.host());
+    let hostfile = host.save()?;
     if is_collect_host {
         clear_collection_deferral()?;
     }
-    tracing::info!("Host {name} successfully saved to {hostfile}");
-    Ok(format!("Host '{name}' {action} in {hostfile}"))
+    tracing::info!("Host {} successfully saved to {hostfile}", result.name);
+    Ok(result)
 }
 
 fn cleanup_settings_after_host_delete(name: &str) -> Result<()> {
@@ -550,6 +479,8 @@ mod tests {
             name: "explicit".to_string(),
             update: KnownHostCliUpdate {
                 secret: Some("rotated".to_string()),
+                // Direct callers can supply both; an explicit secret still takes precedence.
+                username: Some("unused".to_string()),
                 ..Default::default()
             },
             keystore_password: source,
@@ -611,6 +542,7 @@ mod tests {
         .await
         .expect_err("add with an inline key");
         assert!(error.to_string().contains(secret_error), "{error}");
+        assert!(error.to_string().contains("esdiag keystore add <id>"), "{error}");
 
         let updates = [
             (inline_key(), secret_error),
@@ -646,15 +578,17 @@ mod tests {
         assert_eq!(KnownHost::get_known(&"prod-es".to_string()), Some(saved));
     }
 
+    static PASSWORD_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    fn counting_source() -> Result<Secret<String>> {
+        PASSWORD_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(Secret::new("pw".to_string()))
+    }
+
     #[tokio::test]
     async fn host_that_cannot_be_saved_is_refused_before_the_password_is_asked() {
-        static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-        fn counting_source() -> Result<Secret<String>> {
-            CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(Secret::new("pw".to_string()))
-        }
-
         let _env = TestEnv::new();
+        PASSWORD_CALLS.store(0, std::sync::atomic::Ordering::SeqCst);
         let (url, requests) = serve_counting_cluster().await;
         KnownHost::new(
             Application::Elasticsearch,
@@ -716,18 +650,77 @@ mod tests {
             "{error}"
         );
 
-        assert_eq!(CALLS.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(PASSWORD_CALLS.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
-    async fn template_host_add_asks_the_password_source_once() {
-        static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-        fn counting_source() -> Result<Secret<String>> {
-            CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(Secret::new("pw".to_string()))
-        }
+    async fn reserved_names_and_invalid_viewer_links_are_rejected_without_a_request() {
+        let _env = setup_env();
+        let (url, requests) = serve_counting_cluster().await;
+        PASSWORD_CALLS.store(0, std::sync::atomic::Ordering::SeqCst);
+        let target = Url::parse(&url).expect("valid URL");
+        upsert_secret_auth("prod-secret", SecretAuth::apikey("prod-key"), "pw").expect("save secret");
+        KnownHostBuilder::new(target.clone())
+            .application(Application::Kibana)
+            .roles(vec![HostRole::View])
+            .build()
+            .expect("build viewer host")
+            .save("viewer")
+            .expect("save viewer host");
+        KnownHostBuilder::new(target)
+            .application(Application::Elasticsearch)
+            .roles(vec![HostRole::Send])
+            .viewer(Some("viewer".into()))
+            .secret(Some("prod-secret".into()))
+            .build()
+            .expect("build output host")
+            .save("prod")
+            .expect("save output host");
+        let before = KnownHost::parse_hosts_yml().unwrap();
 
+        let error = host_update(HostUpdateInput {
+            name: "prod".into(),
+            update: KnownHostCliUpdate {
+                roles: Some(vec![HostRole::Collect]),
+                ..Default::default()
+            },
+            keystore_password: counting_source,
+        })
+        .await
+        .expect_err("the viewer link requires the send role");
+        assert!(
+            error.to_string().contains("does not have required role 'send'"),
+            "{error}"
+        );
+
+        let error = host_add(HostAddInput {
+            name: ".prod.es".into(),
+            app: Some(Application::Elasticsearch),
+            target: url,
+            url_template: false,
+            update: KnownHostCliUpdate {
+                secret: Some("prod-secret".into()),
+                ..Default::default()
+            },
+            keystore_password: counting_source,
+        })
+        .await
+        .expect_err("Elastic CLI context references are reserved");
+        assert!(
+            error
+                .to_string()
+                .contains("reserved for Elastic CLI context references"),
+            "{error}"
+        );
+
+        assert_eq!(PASSWORD_CALLS.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(KnownHost::parse_hosts_yml().unwrap(), before);
+    }
+
+    #[tokio::test]
+    async fn template_host_add_asks_the_password_source_once() {
         let _env = TestEnv::new();
         upsert_secret_auth("tmpl-secret", SecretAuth::apikey("tmpl-key"), "pw").expect("save secret");
         let mock = ElasticsearchMock::new()
@@ -748,7 +741,7 @@ mod tests {
         .await
         .expect("save template host");
 
-        CALLS.store(0, std::sync::atomic::Ordering::SeqCst);
+        PASSWORD_CALLS.store(0, std::sync::atomic::Ordering::SeqCst);
         host_add(HostAddInput {
             name: "dep-host".to_string(),
             app: None,
@@ -759,6 +752,6 @@ mod tests {
         })
         .await
         .expect("add a concrete host from the template");
-        assert_eq!(CALLS.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(PASSWORD_CALLS.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }

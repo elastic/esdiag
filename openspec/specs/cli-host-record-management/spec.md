@@ -104,7 +104,7 @@ The system SHALL preserve saved host fields that are not explicitly overridden b
 - **AND** the persisted role set becomes `collect,view`
 
 ### Requirement: Mutable Saved Host Override Support
-The system SHALL support in-place `esdiag host update <name>` overrides for saved host authentication fields, role assignments, and certificate validation settings without requiring the user to resupply the full host definition. For certificate validation settings, the system SHALL update the saved value only when `--accept-invalid-certs <bool>` is provided, SHALL preserve the saved value when the flag is omitted, SHALL enable invalid certificate acceptance when the value is `true`, and SHALL remove a previously enabled invalid-certificate override when the value is `false`.
+The system SHALL support in-place `esdiag host update <name>` overrides for the keystore secret reference (`--secret`), role assignments, and certificate validation settings without requiring the user to resupply the full host definition. It MUST NOT accept inline API keys or inline basic credentials as saved auth overrides. For certificate validation settings, the system SHALL update the saved value only when `--accept-invalid-certs <bool>` is provided, SHALL preserve the saved value when the flag is omitted, SHALL enable invalid certificate acceptance when the value is `true`, and SHALL remove a previously enabled invalid-certificate override when the value is `false`.
 
 #### Scenario: Reject an inline API key override
 - **GIVEN** a saved host named `prod-es` currently references secret-backed authentication
@@ -132,7 +132,7 @@ The system SHALL support in-place `esdiag host update <name>` overrides for save
 - **AND** preserves the host's existing `app`, `url`, and auth configuration unless other overrides are supplied
 
 ### Requirement: Saved Host Checks Precede Connection Testing
-`esdiag host add` and `esdiag host update` SHALL check that the resulting host record can be saved before asking for the keystore password to test the connection and before making any network call. The check SHALL cover the secret reference, the role assignments, and the template host name. A host that cannot be saved MUST fail with the reason, and its credential MUST NOT be sent.
+`esdiag host add` and `esdiag host update` SHALL validate the proposed saved configuration against the current host records before making a network request. The checks SHALL cover secret-reference policy, role assignments, template host names, reserved names, and viewer links. Name, role, and viewer-link checks SHALL also precede any keystore password prompt, including one for an explicit or same-name secret lookup. A configuration that fails these checks MUST be rejected with the reason without sending its credential or changing `hosts.yml`.
 
 #### Scenario: Reject inline credentials before contacting the host
 - **GIVEN** no saved host named `prod-es` exists
@@ -147,6 +147,18 @@ The system SHALL support in-place `esdiag host update <name>` overrides for save
 - **THEN** the command fails with an explicit error indicating that the role is only valid for Kibana hosts
 - **AND** the system makes no request to the saved host
 - **AND** the saved `prod-es` record remains unchanged
+
+#### Scenario: Reject a role update that invalidates a viewer link
+- **GIVEN** a saved Elasticsearch host named `prod-es` has the `send` role and links to a saved Kibana viewer
+- **WHEN** the user runs `esdiag host update prod-es --roles collect`
+- **THEN** the command fails because the viewer link requires the `send` role
+- **AND** the system makes no request to the saved host and leaves the saved records unchanged
+
+#### Scenario: Reject a new concrete host with a reserved name
+- **GIVEN** no saved host named `.prod.es` exists
+- **WHEN** the user runs `esdiag host add .prod.es http://localhost:9200 --secret prod-es`
+- **THEN** the command reports that `.prod.es` is reserved without prompting for the keystore password
+- **AND** the system makes no request and does not create the saved host
 
 ### Requirement: Missing Host Update Guardrail
 The system SHALL reject `esdiag host update <name>` invocations for unknown host names rather than inferring a create flow.

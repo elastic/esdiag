@@ -82,8 +82,10 @@ reference with `host update`:
 esdiag host add prod-es http://localhost:9200 --secret prod-es-apikey --roles collect,send
 ```
 
-The stored host entry keeps `secret` and omits plaintext auth values. Passing
-`--apikey` or `--user` with `--password` skips the same-name lookup.
+The stored host entry keeps `secret` and omits plaintext auth values. `host add`
+and `host update` reject inline `--apikey` and `--user` with `--password`
+before contacting the host. Use those options with `esdiag keystore add`, then
+reference the resulting entry from the host.
 
 Role values are `collect`, `send`, and `view`.
 
