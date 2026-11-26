@@ -125,7 +125,7 @@ impl Receive for DirectoryReceiver {
         let (tx, rx) = mpsc::channel(100);
 
         let tx_err = tx.clone();
-        let handle = tokio::task::spawn_blocking(move || match File::open(&filename_clone) {
+        let handle = crate::job::context::spawn_blocking(move || match File::open(&filename_clone) {
             Ok(file) => {
                 let result = with_normalized_json_reader(
                     &source_path_for_scrub,
@@ -314,7 +314,7 @@ impl DirectoryReceiver {
         let file = File::open(&path)?;
         let (tx, rx) = mpsc::channel(256);
         let producer_tx = tx.clone();
-        let handle = tokio::task::spawn_blocking(move || {
+        let handle = crate::job::context::spawn_blocking(move || {
             crate::receiver::send_bundle_lines(BufReader::new(file), &producer_tx);
         });
         Ok(crate::receiver::bundle_line_stream(rx, handle, tx))

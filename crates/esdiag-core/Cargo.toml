@@ -16,7 +16,7 @@ setup = ["dep:elasticrc", "dep:dotenvy"]
 server = []
 keystore = []
 elasticrc = ["dep:elasticrc"]
-mcp = ["dep:rmcp"]
+mcp = ["dep:rmcp", "dep:http"]
 test-support = ["dep:axum", "dep:flate2"]
 
 [dependencies]
@@ -33,6 +33,7 @@ elasticsearch.workspace = true
 flate2 = { workspace = true, optional = true }
 eyre.workspace = true
 futures.workspace = true
+http = { workspace = true, optional = true }
 indexmap = { version = "2.14.2", features = ["serde"] }
 json-patch = "4.2"
 kibana-sync.workspace = true

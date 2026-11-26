@@ -625,6 +625,21 @@ onboarding state.
 `ESDIAG_SERVICE_JOB_CAP` sets the global job cap.
 `ESDIAG_SERVICE_OWNER_JOB_CAP` sets the per-user cap.
 
+`--web-features <FEATURES>` or `ESDIAG_WEB_FEATURES` replaces the mode's
+default optional web features with a comma-separated list of `advanced`,
+`job-builder`, and `mcp`. The command-line value takes precedence, and an empty
+list turns all of them off. `mcp` is off by default in both modes. Listing it
+serves MCP tools over HTTP at `/mcp`, behind the same request authentication as
+the web UI; the binary must be built with the `mcp` feature, or startup fails.
+The desktop app ignores `mcp` with a warning.
+
+`/mcp` accepts only requests whose `Host` header, and `Origin` header when
+present, names an allowed host. The default is `localhost`, `127.0.0.1`, and
+`::1`. `--mcp-allowed-hosts <HOSTS>`, then `ESDIAG_MCP_ALLOWED_HOSTS`, replaces
+it with a comma-separated list of host names or `host:port` authorities, such
+as the public name of a shared service. Other requests receive 403. See
+[Serve MCP over HTTP](setup/mcp.md#serve-mcp-over-http).
+
 See [Use a shared ESDiag service](setup/shared-service.md).
 
 ## `mcp`

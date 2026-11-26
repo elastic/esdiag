@@ -162,9 +162,16 @@ enum Commands {
             help = "Identity header for authenticated service requests"
         )]
         identity_header: Option<String>,
-        /// Optional comma-separated web feature allowlist (advanced, job-builder)
+        /// Optional comma-separated web feature allowlist (advanced, job-builder, mcp)
         #[arg(long, value_name = "FEATURES")]
         web_features: Option<String>,
+        /// Comma-separated Host allowlist for the /mcp endpoint
+        #[arg(
+            long,
+            value_name = "HOSTS",
+            long_help = "Comma-separated host names or host:port authorities accepted in the Host header of /mcp requests. Defaults to ESDIAG_MCP_ALLOWED_HOSTS, then localhost,127.0.0.1,::1."
+        )]
+        mcp_allowed_hosts: Option<String>,
         /// Open the user-mode web onboarding flow on startup
         #[arg(long, hide = true)]
         onboarding: bool,
@@ -909,8 +916,8 @@ fn init_tracing(cli: &Cli) -> esdiag::logging::LogsGuard {
         eprintln!("tracing log bridge already initialized: {err}");
     }
 
-    let terminal_filter = resolve_tracing_filter(cli);
-    let sink_filter = resolve_sink_filter(cli);
+    let terminal_filter = without_mcp_payloads(resolve_tracing_filter(cli));
+    let sink_filter = without_mcp_payloads(resolve_sink_filter(cli));
 
     let terminal = fmt::layer()
         .with_ansi(std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none())
@@ -1016,6 +1023,13 @@ fn is_mcp(cli: &Cli) -> bool {
     }
 }
 
+/// rmcp logs whole MCP requests at debug and trace, and tool arguments can
+/// carry an Elastic Upload Service download token, so its target stays at
+/// info in every sink.
+fn without_mcp_payloads(filter: EnvFilter) -> EnvFilter {
+    filter.add_directive("rmcp=info".parse().expect("valid directive"))
+}
+
 fn resolve_tracing_filter(cli: &Cli) -> EnvFilter {
     if cli.debug {
         EnvFilter::new("debug")
@@ -1087,6 +1101,7 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandOutcome> {
                 auth_provider,
                 identity_header,
                 web_features,
+                mcp_allowed_hosts,
                 onboarding,
                 kibana,
             } => {
@@ -1142,6 +1157,8 @@ async fn run(cli: Cli, format: OutputFormat) -> Result<CommandOutcome> {
                         identity_header: identity_header.as_deref(),
                         web_features: web_features.as_deref(),
                         onboarding,
+                        mcp_endpoint: true,
+                        mcp_allowed_hosts: mcp_allowed_hosts.as_deref(),
                         ..ServerStartOptions::default()
                     },
                 )
@@ -1417,7 +1434,8 @@ async fn serve_mcp() -> Result<CommandOutcome> {
     use rmcp::ServiceExt;
 
     tracing::info!("Starting ESDiag MCP server on stdio");
-    let service = esdiag::mcp::EsdiagMcp::new(esdiag::mcp::McpPolicy::Local)
+    let host = std::sync::Arc::new(esdiag::mcp::host::StdioHost);
+    let service = esdiag::mcp::EsdiagMcp::new(esdiag::mcp::McpPolicy::Local(host))
         .serve(rmcp::transport::stdio_pipes())
         .await
         .map_err(|err| eyre!("MCP session initialization failed: {err}"))?;
@@ -4001,6 +4019,29 @@ mod tests {
         assert_eq!(resolve_sink_filter(&debug).to_string(), "debug");
     }
 
+    #[test]
+    fn mcp_request_payloads_stay_out_of_debug_logs() {
+        use tracing_subscriber::{EnvFilter, Layer as _, fmt, layer::SubscriberExt as _};
+        for directives in ["debug", "trace", "debug,rmcp=trace"] {
+            let filter = super::without_mcp_payloads(EnvFilter::new(directives));
+            let subscriber = tracing_subscriber::registry().with(fmt::layer().with_filter(filter));
+            tracing::subscriber::with_default(subscriber, || {
+                assert!(
+                    !tracing::enabled!(target: "rmcp::service", tracing::Level::DEBUG),
+                    "{directives}"
+                );
+                assert!(
+                    tracing::enabled!(target: "rmcp::service", tracing::Level::INFO),
+                    "{directives}"
+                );
+                assert!(
+                    tracing::enabled!(target: "esdiag", tracing::Level::DEBUG),
+                    "{directives}"
+                );
+            });
+        }
+    }
+
     #[cfg(feature = "server")]
     #[test]
     fn serve_uses_info_filter_for_optional_sinks() {
@@ -4082,6 +4123,19 @@ mod tests {
         match cli.command {
             Some(Commands::Serve { web_features, .. }) => {
                 assert_eq!(web_features.as_deref(), Some("advanced,job-builder"));
+            }
+            other => panic!("expected serve command, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn serve_parses_mcp_allowed_hosts_flag() {
+        let cli = Cli::parse_from(["esdiag", "serve", "--mcp-allowed-hosts", "esdiag.example.com"]);
+
+        match cli.command {
+            Some(Commands::Serve { mcp_allowed_hosts, .. }) => {
+                assert_eq!(mcp_allowed_hosts.as_deref(), Some("esdiag.example.com"));
             }
             other => panic!("expected serve command, got {other:?}"),
         }

@@ -1,7 +1,7 @@
 ---
 type: Guide
 title: Use ESDiag as an MCP server
-description: Register the esdiag stdio MCP server with Claude Code, Codex, or another MCP client, and the tools it offers.
+description: Register the esdiag stdio MCP server or the serve /mcp HTTP endpoint with Claude Code, Codex, or another MCP client, and the tools each offers.
 tags: [setup, mcp, agents]
 ---
 
@@ -100,8 +100,57 @@ setup tools need `setup`. Release builds include all of them.
 Tools reject output `-`, and `job_run` rejects saved jobs that export to
 stdout, because stdout belongs to the protocol. Choose a directory or a saved
 output host instead. Logs go to stderr; set `LOG_LEVEL` or pass
-`esdiag --debug mcp` for more detail.
+`esdiag --debug mcp` for more detail. MCP protocol messages are never logged
+in full at any level, because tool arguments can carry a download token.
+
+`codex exec` cannot ask for approval, so it refuses tools that are not read
+only unless you approve them in advance, for example with
+`-c 'mcp_servers.esdiag.tools.process.approval_mode="approve"'`.
 
 Commands that need a terminal or start long-lived services are not tools:
 `serve`, `init`, `local`, `keystore add`, `keystore update`,
 `keystore remove`, and `setup skills`, `completions`, `env`, and `context`.
+
+## Serve MCP over HTTP
+
+`esdiag serve` can also serve the tools over the MCP Streamable HTTP transport
+at `/mcp`. Enable it with the `mcp` web feature:
+
+```sh
+esdiag serve --web-features advanced,mcp
+claude mcp add --transport http esdiag http://127.0.0.1:2501/mcp
+codex mcp add esdiag --url http://127.0.0.1:2501/mcp
+```
+
+The endpoint keeps no MCP session, so any server instance can answer any
+request. Calls that report progress stream server-sent events; other responses
+are JSON. Closing the connection or stopping the server cancels a running call:
+its download stops, no further export requests are sent, and the call is not
+reported as successful.
+
+Requests go through the server's request authentication, and each job records
+the request's user and account. `/mcp` also rejects, with 403, a `Host` or
+`Origin` header that names a host outside `--mcp-allowed-hosts`, which defaults
+to `localhost`, `127.0.0.1`, and `::1`. Add the public name of a shared
+service, such as `--mcp-allowed-hosts esdiag.example.com`.
+
+In `--mode user` the endpoint offers the same tools as `esdiag mcp` and uses
+the same configuration. Tools that change hosts, jobs, or the output run one
+at a time across all requests.
+
+In `--mode service` the endpoint offers only `process`, which takes two
+required inputs:
+
+- `url`: an Elastic Upload Service download URL, `https://upload.elastic.co/...`,
+  without a token, query, or fragment. Paths, saved host names, and other URLs
+  fail with `invalid_input`.
+- `token`: the download token for that URL. Upload Service tokens are
+  short-lived. The server never returns, logs, or saves the token.
+
+Processed documents go to the service's startup output, and each call counts
+against `ESDIAG_SERVICE_JOB_CAP` and `ESDIAG_SERVICE_OWNER_JOB_CAP`. A call
+over a cap fails with an error naming that cap. No service-mode tool reads or
+writes hosts, jobs, the keystore, or the output context.
+
+The desktop app never serves `/mcp`, even when `ESDIAG_WEB_FEATURES` lists
+`mcp`.

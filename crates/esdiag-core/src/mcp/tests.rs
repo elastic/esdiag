@@ -28,13 +28,26 @@ impl ClientHandler for TestClient {
     }
 }
 
+fn local() -> McpPolicy {
+    McpPolicy::Local(Arc::new(host::StdioHost))
+}
+
 async fn connect() -> (
+    RunningService<RoleClient, TestClient>,
+    UnboundedReceiver<ProgressNotificationParam>,
+) {
+    connect_with(local()).await
+}
+
+async fn connect_with(
+    policy: McpPolicy,
+) -> (
     RunningService<RoleClient, TestClient>,
     UnboundedReceiver<ProgressNotificationParam>,
 ) {
     let (server_io, client_io) = tokio::io::duplex(1 << 20);
     tokio::spawn(async move {
-        let server = EsdiagMcp::new(McpPolicy::Local).serve(server_io).await.expect("serve");
+        let server = EsdiagMcp::new(policy).serve(server_io).await.expect("serve");
         let _ = server.waiting().await;
     });
     let (progress, progress_rx) = mpsc::unbounded_channel();
@@ -89,7 +102,7 @@ fn failure_result_keeps_the_cli_failure() {
 
 #[test]
 fn server_reports_esdiag_and_its_version() {
-    let info = EsdiagMcp::new(McpPolicy::Local).get_info();
+    let info = EsdiagMcp::new(local()).get_info();
 
     assert_eq!(info.server_info.name, "esdiag");
     assert_eq!(info.server_info.version, env!("CARGO_PKG_VERSION"));
@@ -126,7 +139,7 @@ fn tools_follow_features_with_catalog_annotations() {
         expected.insert("setup_kibana", (false, false, true, true));
     }
 
-    let listed = EsdiagMcp::new(McpPolicy::Local)
+    let listed = EsdiagMcp::new(local())
         .tool_router
         .list_all()
         .into_iter()
@@ -152,7 +165,7 @@ fn tools_follow_features_with_catalog_annotations() {
 
 #[test]
 fn schemas_accept_secret_references_but_no_credentials_or_sources() {
-    let tools = EsdiagMcp::new(McpPolicy::Local).tool_router.list_all();
+    let tools = EsdiagMcp::new(local()).tool_router.list_all();
     let properties = |name: &str| {
         let tool = tools.iter().find(|tool| tool.name == name).expect("tool listed");
         tool.input_schema["properties"]
@@ -494,5 +507,326 @@ async fn cancelled_collect_stops_and_the_server_keeps_serving() {
     assert!(closed.is_ok(), "the cancelled collection kept its connection open");
     let result = call(&client, "host_list", json!({})).await;
     assert_ne!(result.is_error, Some(true));
+    let _ = client.cancel().await;
+}
+
+#[derive(Default)]
+struct FakeHost {
+    identity: Option<RequestIdentity>,
+    cap: usize,
+    output: Option<std::path::PathBuf>,
+    active: Arc<std::sync::Mutex<usize>>,
+    owners: std::sync::Mutex<Vec<String>>,
+    released: Arc<std::sync::Mutex<Vec<AdmissionRecord>>>,
+}
+
+impl FakeHost {
+    fn new(identity: Option<RequestIdentity>) -> Self {
+        Self {
+            identity,
+            cap: 1,
+            ..Self::default()
+        }
+    }
+
+    fn active(&self) -> usize {
+        *self.active.lock().unwrap()
+    }
+
+    fn owners(&self) -> Vec<String> {
+        self.owners.lock().unwrap().clone()
+    }
+
+    async fn wait_released(&self) -> AdmissionRecord {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                if let Some(record) = self.released.lock().unwrap().last().copied() {
+                    return record;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("slot released")
+    }
+}
+
+impl McpHost for FakeHost {
+    fn identity(&self, _headers: &http::HeaderMap) -> eyre::Result<Option<RequestIdentity>> {
+        Ok(self.identity.clone())
+    }
+
+    fn admit(
+        &self,
+        owner: String,
+    ) -> futures::future::BoxFuture<'_, Result<host::AdmissionGuard, crate::job::admission::JobAdmissionError>> {
+        Box::pin(async move {
+            let mut active = self.active.lock().unwrap();
+            if *active >= self.cap {
+                return Err(crate::job::admission::JobAdmissionError::OwnerCapReached {
+                    owner,
+                    active: *active,
+                    cap: self.cap,
+                });
+            }
+            *active += 1;
+            self.owners.lock().unwrap().push(owner);
+            let (slots, released) = (Arc::clone(&self.active), Arc::clone(&self.released));
+            Ok(host::AdmissionGuard::new(move |record| async move {
+                *slots.lock().unwrap() -= 1;
+                released.lock().unwrap().push(record);
+            }))
+        })
+    }
+
+    fn exporter(&self) -> futures::future::BoxFuture<'_, eyre::Result<crate::exporter::Exporter>> {
+        Box::pin(async move {
+            let output = self.output.clone().ok_or_else(|| eyre::eyre!("no exporter"))?;
+            crate::exporter::Exporter::try_from(Uri::Directory(output))
+        })
+    }
+}
+
+fn operator() -> Option<RequestIdentity> {
+    Some(RequestIdentity {
+        user: "operator@example.com".to_string(),
+        account: Some("acme".to_string()),
+    })
+}
+
+#[test]
+fn the_request_identity_is_the_report_user() {
+    let (user, account) = super::identified(&operator(), Some("mallory".into()), None);
+    assert_eq!(user.as_deref(), Some("operator@example.com"));
+    assert_eq!(account.as_deref(), Some("acme"));
+
+    let (user, account) = super::identified(&operator(), Some("mallory".into()), Some("globex".into()));
+    assert_eq!(user.as_deref(), Some("operator@example.com"));
+    assert_eq!(account.as_deref(), Some("globex"), "a supplied account is kept");
+
+    let (user, account) = super::identified(&None, Some("alice".into()), None);
+    assert_eq!(user.as_deref(), Some("alice"), "stdio keeps the supplied user");
+    assert_eq!(account, None);
+}
+
+#[tokio::test]
+async fn a_completed_call_releases_its_slot_after_tracked_tasks_end() {
+    let host = FakeHost::new(None);
+    let mut guard = host.admit("a".to_string()).await.expect("admitted");
+    let in_flight = Arc::new(tokio::sync::Notify::new());
+    let task = Arc::clone(&in_flight);
+    guard.scope().tracker().spawn(async move { task.notified().await });
+    let record = AdmissionRecord::Finished {
+        outcome: crate::processor::DiagnosticOutcome::Complete,
+        docs: 3,
+        errors: 0,
+    };
+    guard.finish(record);
+    drop(guard);
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(host.active(), 1, "the slot is held while a tracked task runs");
+    in_flight.notify_one();
+    assert_eq!(host.wait_released().await, record);
+    assert_eq!(host.active(), 0);
+}
+
+#[tokio::test]
+async fn a_dropped_call_releases_its_slot_after_tracked_tasks_end() {
+    let host = Arc::new(FakeHost::new(None));
+    let in_flight = Arc::new(tokio::sync::Notify::new());
+    let (started_tx, started) = tokio::sync::oneshot::channel();
+    let call = {
+        let (host, in_flight) = (Arc::clone(&host), Arc::clone(&in_flight));
+        tokio::spawn(async move {
+            let guard = host.admit("a".to_string()).await.expect("admitted");
+            let scope = guard.scope();
+            with_scoped_execution(scope.clone(), async move {
+                scope.tracker().spawn(async move { in_flight.notified().await });
+                let _ = started_tx.send(());
+                std::future::pending::<()>().await;
+            })
+            .await;
+            drop(guard);
+        })
+    };
+    started.await.expect("call started");
+    call.abort();
+    let _ = call.await;
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(host.active(), 1, "the slot is held while a tracked task runs");
+    in_flight.notify_one();
+    assert_eq!(host.wait_released().await, AdmissionRecord::Failed);
+    assert_eq!(host.active(), 0);
+}
+
+#[test]
+fn service_mode_lists_only_process_with_url_and_token() {
+    let tools = EsdiagMcp::new(McpPolicy::Service(Arc::new(FakeHost::new(operator()))))
+        .tool_router
+        .list_all();
+
+    assert_eq!(
+        tools.iter().map(|tool| tool.name.to_string()).collect::<Vec<_>>(),
+        ["process"]
+    );
+    let mut properties = tools[0].input_schema["properties"]
+        .as_object()
+        .expect("properties")
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    properties.sort();
+    assert_eq!(properties, ["token", "url"]);
+}
+
+#[test]
+fn the_local_catalog_offers_no_token_parameter() {
+    for tool in EsdiagMcp::new(local()).tool_router.list_all() {
+        let properties = tool.input_schema["properties"].as_object().cloned().unwrap_or_default();
+        assert!(!properties.contains_key("token"), "{}", tool.name);
+    }
+}
+
+#[tokio::test]
+async fn service_process_rejects_local_inputs_before_admission() {
+    let env = TestEnv::new();
+    save_host("prod", "http://127.0.0.1:9", vec![HostRole::Collect], Credential::None);
+    let archive = fixture("logstash-api-diagnostics-9.3.3.zip");
+    let token = "s3cr3t-download-token";
+    let embedded = format!("https://token:{token}@upload.elastic.co/d/abc");
+    let host = Arc::new(FakeHost::new(operator()));
+    let (client, _) = connect_with(McpPolicy::Service(host.clone())).await;
+
+    for url in [
+        archive.as_str(),
+        "prod",
+        &env.tmp.path().display().to_string(),
+        &embedded,
+    ] {
+        let result = call(&client, "process", json!({ "url": url, "token": token })).await;
+
+        assert_eq!(result.is_error, Some(true), "{url}");
+        assert_eq!(structured(&result)["category"], "invalid_input", "{url}");
+        let text = serde_json::to_string(&result).expect("result json");
+        assert!(!text.contains(token), "{url}: {text}");
+    }
+    assert!(host.owners().is_empty(), "no call was admitted");
+    let _ = client.cancel().await;
+}
+
+#[tokio::test]
+async fn service_process_reports_the_cap_it_would_exceed() {
+    let host = Arc::new(FakeHost {
+        cap: 0,
+        ..FakeHost::new(operator())
+    });
+    let (client, _) = connect_with(McpPolicy::Service(host)).await;
+
+    let result = call(
+        &client,
+        "process",
+        json!({ "url": "https://upload.elastic.co/d/abc", "token": "t" }),
+    )
+    .await;
+
+    assert_eq!(result.is_error, Some(true));
+    let message = structured(&result)["message"].as_str().expect("message").to_string();
+    assert!(message.contains("per-owner concurrent job cap"), "{message}");
+    let _ = client.cancel().await;
+}
+
+#[tokio::test]
+async fn service_process_requires_a_request_identity() {
+    let (client, _) = connect_with(McpPolicy::Service(Arc::new(FakeHost::new(None)))).await;
+
+    let result = call(
+        &client,
+        "process",
+        json!({ "url": "https://upload.elastic.co/d/abc", "token": "t" }),
+    )
+    .await;
+
+    assert_eq!(result.is_error, Some(true));
+    assert_eq!(structured(&result)["category"], "authentication_failed");
+    let _ = client.cancel().await;
+}
+
+#[tokio::test]
+async fn local_process_records_the_request_identity() {
+    let env = TestEnv::new();
+    let output = env.tmp.path().join("processed");
+    std::fs::create_dir_all(&output).expect("output dir");
+    let host = Arc::new(FakeHost::new(operator()));
+    let (client, _) = connect_with(McpPolicy::Local(host.clone())).await;
+
+    let result = call(
+        &client,
+        "process",
+        json!({
+            "input": fixture("logstash-api-diagnostics-9.3.3.zip"),
+            "output": output.display().to_string(),
+        }),
+    )
+    .await;
+
+    assert_ne!(result.is_error, Some(true), "{:?}", result.structured_content);
+    let report = std::fs::read_to_string(output.join("metrics-diagnostic-esdiag.ndjson")).expect("report");
+    assert!(report.contains("\"user\":\"operator@example.com\""), "{report}");
+    assert!(report.contains("\"account\":\"acme\""), "{report}");
+    assert_eq!(host.owners(), ["operator@example.com"]);
+    assert!(matches!(host.wait_released().await, AdmissionRecord::Finished { .. }));
+    let _ = client.cancel().await;
+}
+
+async fn serve_upload(token: &'static str, archive: Vec<u8>) -> Url {
+    let app = axum::Router::new().fallback(move |headers: axum::http::HeaderMap| {
+        let archive = archive.clone();
+        async move {
+            match headers.get("Authorization").and_then(|value| value.to_str().ok()) {
+                Some(value) if value == token => (axum::http::StatusCode::OK, archive),
+                _ => (axum::http::StatusCode::UNAUTHORIZED, Vec::new()),
+            }
+        }
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let url = Url::parse(&format!("http://{}/", listener.local_addr().expect("addr"))).expect("url");
+    tokio::spawn(async move { axum::serve(listener, app).await.expect("serve upload") });
+    url
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn service_process_exports_an_upload_with_the_request_identity() {
+    let env = TestEnv::new();
+    let output = env.tmp.path().join("processed");
+    std::fs::create_dir_all(&output).expect("output dir");
+    let token = "s3cr3t-download-token";
+    let archive = std::fs::read(fixture("logstash-api-diagnostics-9.3.3.zip")).expect("archive");
+    let upload = serve_upload(token, archive).await;
+    upload_link::allow_test_origin(Some(&upload));
+    let host = Arc::new(FakeHost {
+        output: Some(output.clone()),
+        ..FakeHost::new(operator())
+    });
+    let (client, _) = connect_with(McpPolicy::Service(host.clone())).await;
+
+    let result = call(
+        &client,
+        "process",
+        json!({ "url": upload.join("d/abc").expect("upload url").to_string(), "token": token }),
+    )
+    .await;
+    upload_link::allow_test_origin(None);
+
+    assert_ne!(result.is_error, Some(true), "{:?}", result.structured_content);
+    assert_eq!(structured(&result)["result"], "diagnostic_processed");
+    let text = serde_json::to_string(&result).expect("result json");
+    assert!(!text.contains(token), "{text}");
+    let report = std::fs::read_to_string(output.join("metrics-diagnostic-esdiag.ndjson")).expect("report");
+    assert!(report.contains("\"user\":\"operator@example.com\""), "{report}");
+    assert!(report.contains("\"account\":\"acme\""), "{report}");
+    assert_eq!(host.owners(), ["operator@example.com"]);
+    assert!(matches!(host.wait_released().await, AdmissionRecord::Finished { .. }));
     let _ = client.cancel().await;
 }

@@ -15,6 +15,7 @@ use crate::{
 };
 use eyre::{Result, eyre};
 use std::{collections::HashMap, sync::Arc};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExecutionIdentity {
@@ -51,8 +52,29 @@ impl ExecutionObserver for NoopObserver {
     fn observe(&self, _event: &ExecutionEvent) {}
 }
 
+/// Work an execution runs outside its own future, such as the bulk requests
+/// its exporter spawns, and the token that tells that work to stop. Dropping
+/// the execution's future cannot reach these tasks or wait for them, so the
+/// owner cancels the token and waits on the tracker instead. Clones share both.
+#[derive(Clone, Debug, Default)]
+pub struct ExecutionScope {
+    tracker: TaskTracker,
+    token: CancellationToken,
+}
+
+impl ExecutionScope {
+    pub fn tracker(&self) -> &TaskTracker {
+        &self.tracker
+    }
+
+    pub fn token(&self) -> &CancellationToken {
+        &self.token
+    }
+}
+
 tokio::task_local! {
     static SCOPED_OBSERVER: Arc<dyn ExecutionObserver>;
+    static SCOPED_EXECUTION: ExecutionScope;
 }
 
 /// Runs `future` so every [`ExecutionContext::default`] created on its task
@@ -60,6 +82,56 @@ tokio::task_local! {
 /// their own context.
 pub async fn with_scoped_observer<F: Future>(observer: Arc<dyn ExecutionObserver>, future: F) -> F::Output {
     SCOPED_OBSERVER.scope(observer, future).await
+}
+
+/// Runs `future` so every [`ExecutionContext::default`] created on its task
+/// tracks its work in `scope`, letting a caller stop and wait for operations
+/// that build their own context.
+pub async fn with_scoped_execution<F: Future>(scope: ExecutionScope, future: F) -> F::Output {
+    SCOPED_EXECUTION.scope(scope, future).await
+}
+
+/// The scope set by [`with_scoped_execution`] for the current task, if any.
+pub(crate) fn current_scope() -> Option<ExecutionScope> {
+    SCOPED_EXECUTION.try_with(Clone::clone).ok()
+}
+
+std::thread_local! {
+    static BLOCKING_TOKEN: std::cell::RefCell<Option<CancellationToken>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Spawns blocking `work`, tracked in the current scope when there is one so
+/// the scope waits for it; `work` can poll [`blocking_cancelled`].
+pub(crate) fn spawn_blocking<F, R>(work: F) -> tokio::task::JoinHandle<R>
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    let Some(scope) = current_scope() else {
+        return tokio::task::spawn_blocking(work);
+    };
+    let token = scope.token().clone();
+    scope.tracker().spawn_blocking(move || {
+        BLOCKING_TOKEN.with(|slot| *slot.borrow_mut() = Some(token));
+        let _clear = ClearBlockingToken;
+        work()
+    })
+}
+
+/// Clears the thread's token even when the work panics, since blocking-pool
+/// threads are reused.
+struct ClearBlockingToken;
+
+impl Drop for ClearBlockingToken {
+    fn drop(&mut self) {
+        BLOCKING_TOKEN.with(|slot| *slot.borrow_mut() = None);
+    }
+}
+
+/// Whether the scope of the [`spawn_blocking`] work running on this thread
+/// has been cancelled.
+pub(crate) fn blocking_cancelled() -> bool {
+    BLOCKING_TOKEN.with(|slot| slot.borrow().as_ref().is_some_and(CancellationToken::is_cancelled))
 }
 
 #[derive(Clone)]
@@ -72,6 +144,7 @@ pub struct ExecutionContext {
     pub inherited_platform: Option<Platform>,
     pub child_depth: u8,
     observer: Arc<dyn ExecutionObserver>,
+    scope: Option<ExecutionScope>,
 }
 
 impl Default for ExecutionContext {
@@ -87,6 +160,7 @@ impl Default for ExecutionContext {
             observer: SCOPED_OBSERVER
                 .try_with(Arc::clone)
                 .unwrap_or_else(|_| Arc::new(NoopObserver)),
+            scope: current_scope(),
         }
     }
 }
@@ -121,6 +195,14 @@ impl ExecutionContext {
     }
 
     pub(crate) fn resolve_document_exporter(&self, target: &ExportTarget) -> Result<DocumentExporter> {
+        let exporter = self.resolve_unscoped_document_exporter(target)?;
+        Ok(match &self.scope {
+            Some(scope) => exporter.with_scope(scope.clone()),
+            None => exporter,
+        })
+    }
+
+    fn resolve_unscoped_document_exporter(&self, target: &ExportTarget) -> Result<DocumentExporter> {
         match target {
             ExportTarget::Binding { binding } => self.document_exporters.get(binding).cloned().ok_or_else(|| {
                 eyre!(

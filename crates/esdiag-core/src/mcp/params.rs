@@ -4,7 +4,8 @@
 
 //! Tool parameters. Names match the CLI options. No struct accepts a raw
 //! credential or the process-wide `sources` override, and unknown fields are
-//! rejected so a client cannot pass either.
+//! rejected so a client cannot pass either. The one exception is the
+//! service-mode download token in [`ServiceProcessParams`].
 
 use rmcp::schemars::JsonSchema;
 use serde::Deserialize;
@@ -62,6 +63,25 @@ pub struct ProcessParams {
     /// Save the effective invocation as a named job before processing
     #[cfg(feature = "keystore")]
     pub save_job: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+#[serde(deny_unknown_fields)]
+pub struct ServiceProcessParams {
+    /// Elastic Upload Service download URL: `https://upload.elastic.co/...` without an embedded token
+    pub url: String,
+    /// Elastic Upload Service download token for `url`
+    pub token: String,
+}
+
+impl std::fmt::Debug for ServiceProcessParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServiceProcessParams")
+            .field("url", &self.url)
+            .field("token", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

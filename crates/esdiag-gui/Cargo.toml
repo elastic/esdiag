@@ -15,6 +15,7 @@ setup = ["esdiag-core/setup"]
 keystore = ["esdiag-core/keystore"]
 elasticrc = ["esdiag-core/elasticrc"]
 desktop = ["dep:tauri", "dep:tauri-plugin-opener"]
+mcp = ["esdiag-core/mcp", "dep:rmcp", "dep:tokio-util"]
 
 [dependencies]
 esdiag-core = { workspace = true, features = ["server"] }
@@ -32,6 +33,7 @@ pulldown-cmark = "0.13.4"
 redact.workspace = true
 regex.workspace = true
 reqwest.workspace = true
+rmcp = { workspace = true, optional = true, features = ["server", "transport-streamable-http-server"] }
 rust-embed.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -39,6 +41,7 @@ tauri = { workspace = true, optional = true }
 tauri-plugin-opener = { workspace = true, optional = true }
 tempfile.workspace = true
 tokio.workspace = true
+tokio-util = { workspace = true, optional = true }
 tracing.workspace = true
 url.workspace = true
 urlencoding.workspace = true
@@ -48,4 +51,5 @@ yaml_serde.workspace = true
 [dev-dependencies]
 esdiag-core = { workspace = true, features = ["server", "test-support"] }
 parking_lot.workspace = true
+rmcp = { workspace = true, features = ["client", "transport-async-rw"] }
 tokio = { workspace = true, features = ["fs", "test-util"] }

@@ -37,12 +37,18 @@ use url::Url;
 
 /// Spawns a [`Exporter::document_channel`] consumer that is aborted when its
 /// handle drops, so an abandoned export stops starting queued bulk requests.
+/// Within a scoped execution the consumer is tracked, because an abort only
+/// takes effect at the consumer's next await.
 pub fn spawn_consumer<F>(consumer: F) -> AbortOnDropHandle<F::Output>
 where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
 {
-    AbortOnDropHandle::new(tokio::spawn(consumer))
+    let handle = match crate::job::context::current_scope() {
+        Some(scope) => scope.tracker().spawn(consumer),
+        None => tokio::spawn(consumer),
+    };
+    AbortOnDropHandle::new(handle)
 }
 
 trait Export {
@@ -279,6 +285,15 @@ impl Exporter {
         self.clone()
     }
 
+    /// Only the Elasticsearch exporter sends requests outside the caller's
+    /// future, so the others ignore the scope.
+    fn with_scope(self, scope: crate::job::context::ExecutionScope) -> Self {
+        match self {
+            Exporter::Elasticsearch(exporter) => Exporter::Elasticsearch(exporter.with_scope(scope)),
+            other => other,
+        }
+    }
+
     pub fn target_uri(&self) -> String {
         match self {
             Exporter::Archive(exporter) => path_to_file_uri(Path::new(&exporter.to_string()), false),
@@ -398,6 +413,17 @@ impl TryFrom<Uri> for Exporter {
             Uri::KnownHost(host) => Ok(Exporter::Elasticsearch(ElasticsearchExporter::try_from(host)?)),
             Uri::Stream => Ok(Exporter::Stream(StreamExporter::new())),
             _ => Err(eyre!("Unsupported URI")),
+        }
+    }
+}
+
+impl Exporter {
+    /// The [`Display`](std::fmt::Display) form without any credentials an
+    /// Elasticsearch output URL embeds, for callers outside the server.
+    pub fn safe_display(&self) -> String {
+        match self {
+            Exporter::Elasticsearch(exporter) => format!("Elasticsearch {}", exporter.safe_url()),
+            other => other.to_string(),
         }
     }
 }
@@ -1004,5 +1030,41 @@ mod tests {
             panic!("expected the environment viewer");
         };
         assert_eq!(viewer.concrete_url().map(Url::password), Some(Some("hunter2")));
+    }
+
+    #[test]
+    fn safe_display_omits_output_url_credentials() {
+        let url = Url::parse("https://elastic:hunter2@es.example:9200/?apikey=k#f").unwrap();
+        let exporter = Exporter::Elasticsearch(
+            super::ElasticsearchExporter::try_new(url, crate::data::Auth::None).expect("exporter"),
+        );
+        assert_eq!(exporter.safe_display(), "Elasticsearch https://es.example:9200/");
+    }
+
+    #[tokio::test]
+    async fn a_scoped_consumer_stays_tracked_until_it_ends() {
+        let scope = crate::job::context::ExecutionScope::default();
+        let tracked = scope.clone();
+        crate::job::context::with_scoped_execution(scope, async move {
+            let running = std::sync::Arc::new(tokio::sync::Notify::new());
+            let started = std::sync::Arc::clone(&running);
+            let consumer = super::spawn_consumer(async move {
+                started.notify_one();
+                std::future::pending::<()>().await
+            });
+            running.notified().await;
+            tracked.tracker().close();
+
+            let wait = std::time::Duration::from_millis(100);
+            assert!(
+                tokio::time::timeout(wait, tracked.tracker().wait()).await.is_err(),
+                "a running consumer is tracked"
+            );
+            drop(consumer);
+            tokio::time::timeout(std::time::Duration::from_secs(5), tracked.tracker().wait())
+                .await
+                .expect("the aborted consumer leaves the tracker");
+        })
+        .await;
     }
 }

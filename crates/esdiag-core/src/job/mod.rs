@@ -7,6 +7,8 @@
 //! saved-job command handlers shared by the CLI (`esdiag job run`) and the
 //! web server.
 
+/// Concurrency-cap admission failures shared by the web server and MCP.
+pub mod admission;
 /// Execution-only resources, identity, retention policy, and observers.
 pub mod context;
 /// The one executor: derives staged vs streaming and drives the stages.

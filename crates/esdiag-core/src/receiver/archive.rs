@@ -333,7 +333,7 @@ where
     let (tx, rx) = mpsc::channel(100);
 
     let tx_err = tx.clone();
-    let handle = tokio::task::spawn_blocking(move || {
+    let handle = crate::job::context::spawn_blocking(move || {
         let source_path = match T::resolve_source_file_path(&ctx) {
             Ok(s) => s,
             Err(e) => {
@@ -426,7 +426,7 @@ where
     tracing::debug!("Streaming lines from archive: {}", path);
     let (tx, rx) = mpsc::channel(256);
     let producer_tx = tx.clone();
-    let handle = tokio::task::spawn_blocking(move || match archive.by_name(&path) {
+    let handle = crate::job::context::spawn_blocking(move || match archive.by_name(&path) {
         Ok(file) => crate::receiver::send_bundle_lines(BufReader::new(file), &producer_tx),
         Err(err) => {
             let _ = producer_tx.blocking_send(Err(eyre::eyre!(err)));

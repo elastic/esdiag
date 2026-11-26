@@ -10,11 +10,13 @@ use crate::data::OutputDeployment;
 use crate::{
     cli_output::{CliOutcome, CommandOutcome, DiagnosticResult},
     data::{Application, ApplicationConfig, HostReference, HostRole, Uri},
+    exporter::{DocumentExporter, Exporter},
     job::{
         FailedStage, JobExecutionFailure, JobOutcome,
         context::ExecutionContext,
         executor::execute_with_context,
         model::{BindingKey, ExportTarget, Input, Job, Process},
+        outcome::ExecutionOutcome,
     },
     processor::Identifiers,
     receiver::Receiver,
@@ -101,8 +103,20 @@ struct Processed {
 }
 
 async fn execute(input: ProcessInput) -> Result<Processed> {
+    #[cfg(feature = "agent")]
+    if input.ask.is_some() && input.output.as_deref() == Some("-") {
+        return Err(eyre!(ProcessAskStdoutConflict));
+    }
+    let input_uri = Uri::try_from(input.input.as_str())?;
+    execute_uri(input, input_uri).await
+}
+
+async fn execute_uri(input: ProcessInput, input_uri: Uri) -> Result<Processed> {
     let ProcessInput {
+        #[cfg(feature = "keystore")]
         input,
+        #[cfg(not(feature = "keystore"))]
+            input: _,
         output,
         #[cfg(feature = "agent")]
         ask,
@@ -116,11 +130,6 @@ async fn execute(input: ProcessInput) -> Result<Processed> {
         save_job,
     } = input;
     let has_explicit_output = output.is_some();
-    #[cfg(feature = "agent")]
-    if ask.is_some() && output.as_deref() == Some("-") {
-        return Err(eyre!(ProcessAskStdoutConflict));
-    }
-    let input_uri = Uri::try_from(input.as_str())?;
     #[cfg(feature = "agent")]
     let (output_uri, ask_deployment) = if ask.is_some() {
         let deployment = OutputDeployment::resolve(output.as_deref(), true)?;
@@ -163,7 +172,7 @@ async fn execute(input: ProcessInput) -> Result<Processed> {
     }
     tracing::info!("input: {}", input_uri);
 
-    let receiver = Receiver::try_from_with_scrub(input_uri.clone(), scrubbed, None)?;
+    let receiver = Receiver::prepare(input_uri.clone(), scrubbed, None).await?;
     if let Some(sources) = sources {
         let application = detect_sources_application(&input_uri, &receiver).await?;
         crate::processor::init_sources(sources_application_key(application)?, sources)?;
@@ -203,10 +212,7 @@ async fn execute(input: ProcessInput) -> Result<Processed> {
         Uri::Stream => ExportTarget::Stdout,
         _ => {
             let binding = BindingKey::try_new("cli-process-output")?;
-            context.bind_document_exporter(
-                binding.clone(),
-                crate::exporter::DocumentExporter::try_from(output_uri)?,
-            );
+            context.bind_document_exporter(binding.clone(), DocumentExporter::try_from(output_uri)?);
             ExportTarget::Binding { binding }
         }
     };
@@ -220,7 +226,47 @@ async fn execute(input: ProcessInput) -> Result<Processed> {
         }),
         None,
     )?;
-    let mut outcome = execute_with_context(job, context).await;
+    let diagnostic = processed_diagnostic(execute_with_context(job, context).await)?;
+    let diagnostic = if stdout_owned {
+        None
+    } else {
+        let mut diagnostic = diagnostic.ok_or_else(|| eyre!("Process completed without a diagnostic report"))?;
+        diagnostic.output = output_display;
+        Some(diagnostic)
+    };
+    Ok(Processed {
+        diagnostic,
+        #[cfg(feature = "agent")]
+        ask: ask.zip(ask_deployment),
+    })
+}
+
+/// Processes an already-built `input` into `exporter`. Resolves no local
+/// defaults: the input bindings, identity, and observer come from `context`.
+pub async fn process_prepared(
+    input: Input,
+    exporter: Exporter,
+    identifiers: Identifiers,
+    mut context: ExecutionContext,
+) -> Result<ExecutionOutcome> {
+    let binding = BindingKey::try_new("prepared-output")?;
+    context.bind_document_exporter(binding.clone(), DocumentExporter::try_from(exporter)?);
+    let job = Job::try_new(
+        identifiers,
+        input,
+        None,
+        Some(Process {
+            selection: None,
+            export: ExportTarget::Binding { binding },
+        }),
+        None,
+    )?;
+    Ok(execute_with_context(job, context).await)
+}
+
+/// The primary diagnostic of a finished process execution, or the
+/// execution's failure. `None` when the execution produced no report.
+pub fn processed_diagnostic(mut outcome: ExecutionOutcome) -> Result<Option<DiagnosticResult>> {
     let process = execution_process_result(&outcome);
     if outcome.failed() {
         let source = outcome.failure_error(format_execution_failure(&outcome));
@@ -235,20 +281,7 @@ async fn execute(input: ProcessInput) -> Result<Processed> {
         )
         .into());
     }
-    let diagnostic = if stdout_owned {
-        None
-    } else {
-        let mut diagnostic = process
-            .map(|result| result.diagnostic)
-            .ok_or_else(|| eyre!("Process completed without a diagnostic report"))?;
-        diagnostic.output = output_display;
-        Some(diagnostic)
-    };
-    Ok(Processed {
-        diagnostic,
-        #[cfg(feature = "agent")]
-        ask: ask.zip(ask_deployment),
-    })
+    Ok(process.map(|result| result.diagnostic))
 }
 
 pub(crate) fn sources_application_key(application: Application) -> Result<&'static str> {
@@ -309,5 +342,49 @@ mod tests {
             };
             assert_eq!(input.writes_stdout(), expected, "{output:?}");
         }
+    }
+
+    async fn serve_upload(token: &'static str, bytes: Vec<u8>) -> std::net::SocketAddr {
+        let app = axum::Router::new().fallback(move |headers: axum::http::HeaderMap| {
+            let bytes = bytes.clone();
+            async move {
+                match headers.get("Authorization").and_then(|value| value.to_str().ok()) {
+                    Some(value) if value == token => (axum::http::StatusCode::OK, bytes),
+                    _ => (axum::http::StatusCode::UNAUTHORIZED, Vec::new()),
+                }
+            }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        addr
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn processes_an_upload_link_with_its_filename_in_the_report() {
+        let archive = std::fs::read(format!(
+            "{}/../../tests/archives/elasticsearch-api-diagnostics-9.3.3.zip",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
+        let mut env = crate::TestEnv::new();
+        env.set_path("ESDIAG_HOME", env.tmp.path().join("home"));
+        let addr = serve_upload("mock-token", archive).await;
+        let output = env.tmp.path().join("out.ndjson");
+        let url = url::Url::parse(&format!("http://token:mock-token@{addr}/d/mock-upload-diagnostic.zip")).unwrap();
+        let input = ProcessInput {
+            input: url.to_string(),
+            output: Some(output.display().to_string()),
+            ..ProcessInput::default()
+        };
+
+        let processed = execute_uri(input, Uri::ServiceLink(url)).await.expect("processed");
+
+        assert!(processed.diagnostic.is_some_and(|diagnostic| diagnostic.documents > 0));
+        let report = std::fs::read_to_string(crate::data::last_run_path("report.json").unwrap()).unwrap();
+        assert!(
+            report.contains("\"filename\":\"mock-upload-diagnostic.zip\""),
+            "the upload filename is recorded in the report"
+        );
     }
 }

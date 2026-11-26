@@ -15,6 +15,8 @@ mod job_runner;
 #[cfg(feature = "keystore")]
 mod keystore;
 mod known_host;
+#[cfg(feature = "mcp")]
+mod mcp;
 #[cfg(feature = "keystore")]
 mod saved_jobs;
 mod service_link;
@@ -29,6 +31,7 @@ use super::processor::{DiagnosticOutcome, Identifiers};
 use crate::{
     data::{ApplicationConfig, KnownHost, Settings, Uri},
     exporter::Exporter,
+    job::admission::JobAdmissionError,
 };
 use askama::Template;
 #[cfg(feature = "keystore")]
@@ -58,7 +61,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{
     collections::{HashMap, HashSet},
     convert::Infallible,
-    fmt,
     net::SocketAddr,
     path::{Path, PathBuf},
     sync::Arc,
@@ -175,30 +177,6 @@ pub struct JobConcurrencyCaps {
     pub per_owner: usize,
 }
 
-#[derive(Debug)]
-pub enum JobAdmissionError {
-    GlobalCapReached { active: usize, cap: usize },
-    OwnerCapReached { owner: Owner, active: usize, cap: usize },
-}
-
-impl fmt::Display for JobAdmissionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::GlobalCapReached { active, cap } => {
-                write!(f, "Service mode concurrent job cap reached ({active}/{cap})")
-            }
-            Self::OwnerCapReached { owner, active, cap } => {
-                write!(
-                    f,
-                    "Service mode per-owner concurrent job cap reached for {owner} ({active}/{cap})"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for JobAdmissionError {}
-
 impl Default for JobConcurrencyCaps {
     fn default() -> Self {
         Self {
@@ -271,17 +249,20 @@ impl ServerPolicy {
         job_caps: Option<JobConcurrencyCaps>,
         web_features: Option<&str>,
     ) -> Result<Self> {
-        Self::new_with_identity_options(mode, auth_provider, None, job_caps, web_features)
+        Self::new_with_identity_options(mode, auth_provider, None, job_caps, web_features, false)
     }
 
+    /// `mcp_endpoint` is whether this host can mount `/mcp`; when it cannot,
+    /// the `mcp` web feature is dropped with a warning.
     fn new_with_identity_options(
         mode: RuntimeMode,
         auth_provider: Option<AuthProvider>,
         identity_header: Option<&str>,
         job_caps: Option<JobConcurrencyCaps>,
         web_features: Option<&str>,
+        mcp_endpoint: bool,
     ) -> Result<Self> {
-        let web_features = match web_features {
+        let mut web_features = match web_features {
             Some(value) => WebFeatureSet::parse(value)?,
             None => match std::env::var("ESDIAG_WEB_FEATURES") {
                 Ok(value) => WebFeatureSet::parse(&value)?,
@@ -290,10 +271,19 @@ impl ServerPolicy {
             },
         };
 
-        #[cfg(not(feature = "keystore"))]
-        if web_features.contains(WebFeature::JobBuilder) {
+        if !mcp_endpoint && web_features.remove(WebFeature::Mcp) {
+            tracing::warn!("Web feature 'mcp' ignored: the MCP endpoint is not available in this server host");
+        }
+
+        if let Some(feature) = WebFeature::ALL
+            .into_iter()
+            .find(|&feature| web_features.contains(feature) && !feature.supported())
+        {
             return Err(eyre!(
-                "Web feature 'job-builder' requires a build with keystore support; supported feature names in this build: advanced"
+                "Web feature '{}' requires a build with {} support; supported feature names in this build: {}",
+                feature.as_str(),
+                feature.build_requirement(),
+                WebFeature::supported_values()
             ));
         }
 
@@ -380,6 +370,10 @@ impl ServerPolicy {
             && self.allows_local_runtime_features()
             && self.web_features.contains(WebFeature::JobBuilder)
     }
+
+    pub fn allows_mcp(&self) -> bool {
+        cfg!(feature = "mcp") && self.web_features.contains(WebFeature::Mcp)
+    }
 }
 
 fn default_auth_provider(mode: RuntimeMode) -> AuthProvider {
@@ -403,15 +397,17 @@ fn validate_identity_header(value: String) -> Result<String> {
 pub enum WebFeature {
     Advanced,
     JobBuilder,
+    Mcp,
 }
 
 impl WebFeature {
-    const ALL: [Self; 2] = [Self::Advanced, Self::JobBuilder];
+    const ALL: [Self; 3] = [Self::Advanced, Self::JobBuilder, Self::Mcp];
 
     fn parse(value: &str) -> Result<Self> {
         match value {
             "advanced" => Ok(Self::Advanced),
             "job-builder" => Ok(Self::JobBuilder),
+            "mcp" => Ok(Self::Mcp),
             other => Err(eyre!(
                 "Invalid web feature '{other}', expected one of: {}",
                 Self::known_values()
@@ -423,12 +419,40 @@ impl WebFeature {
         match self {
             Self::Advanced => "advanced",
             Self::JobBuilder => "job-builder",
+            Self::Mcp => "mcp",
         }
     }
 
     fn known_values() -> String {
         Self::ALL
             .iter()
+            .map(|feature| feature.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    /// Whether this build can serve the feature.
+    fn supported(self) -> bool {
+        match self {
+            Self::Advanced => true,
+            Self::JobBuilder => cfg!(feature = "keystore"),
+            Self::Mcp => cfg!(feature = "mcp"),
+        }
+    }
+
+    /// The build support a feature needs, named in its startup error.
+    fn build_requirement(self) -> &'static str {
+        match self {
+            Self::Advanced => "default",
+            Self::JobBuilder => "keystore",
+            Self::Mcp => "MCP",
+        }
+    }
+
+    fn supported_values() -> String {
+        Self::ALL
+            .iter()
+            .filter(|feature| feature.supported())
             .map(|feature| feature.as_str())
             .collect::<Vec<_>>()
             .join(", ")
@@ -470,6 +494,10 @@ impl WebFeatureSet {
     fn contains(&self, feature: WebFeature) -> bool {
         self.features.contains(&feature)
     }
+
+    fn remove(&mut self, feature: WebFeature) -> bool {
+        self.features.remove(&feature)
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -503,6 +531,8 @@ pub struct Server {
     server_handle: Option<Arc<tokio::task::JoinHandle<()>>>,
     pub rx: Option<UploadReceiver>,
     shutdown_tx: Option<watch::Sender<bool>>,
+    #[cfg(test)]
+    state: Arc<ServerState>,
 }
 
 #[derive(Default)]
@@ -512,6 +542,11 @@ pub struct ServerStartOptions<'a> {
     pub job_caps: Option<JobConcurrencyCaps>,
     pub web_features: Option<&'a str>,
     pub onboarding: bool,
+    /// Whether this host may mount `/mcp`; only `esdiag serve` sets it.
+    pub mcp_endpoint: bool,
+    /// Comma-separated `Host` allowlist for `/mcp`; `None` falls back to
+    /// `ESDIAG_MCP_ALLOWED_HOSTS`, then loopback.
+    pub mcp_allowed_hosts: Option<&'a str>,
 }
 
 impl Server {
@@ -568,6 +603,7 @@ impl Server {
             options.identity_header,
             options.job_caps,
             options.web_features,
+            options.mcp_endpoint,
         )?;
         if runtime_mode == RuntimeMode::User {
             match Settings::migrate_to_application_config() {
@@ -606,8 +642,27 @@ impl Server {
 
         stats::spawn_stats_publisher(state.clone(), state.event_sender());
 
+        #[cfg(feature = "mcp")]
+        let mcp_route = if server_policy.allows_mcp() {
+            let allowed = mcp::AllowedHosts::resolve(options.mcp_allowed_hosts)?;
+            allowed.warn_if_unreachable(bind_addr);
+            let shutdown = tokio_util::sync::CancellationToken::new();
+            let mut stopping = state.shutdown.clone();
+            let cancel = shutdown.clone();
+            tokio::spawn(async move {
+                let _ = stopping.wait_for(|stopped| *stopped).await;
+                cancel.cancel();
+            });
+            let route = mcp::router(state.clone(), &allowed, shutdown);
+            Some((route, Arc::new(allowed)))
+        } else {
+            None
+        };
+
         let handle = axum_server::Handle::new();
         let handle_clone = handle.clone();
+        #[cfg(test)]
+        let test_state = Arc::clone(&state);
 
         // Start the Axum server
         let server_handle = tokio::spawn(async move {
@@ -716,6 +771,12 @@ impl Server {
                 app
             };
 
+            #[cfg(feature = "mcp")]
+            let (app, mcp_allowed_hosts) = match mcp_route {
+                Some((route, allowed)) => (app.merge(route), Some(allowed)),
+                None => (app, None),
+            };
+
             let app = if route_policy.requires_authentication() {
                 app.layer(middleware::from_fn_with_state(
                     state.clone(),
@@ -723,6 +784,12 @@ impl Server {
                 ))
             } else {
                 app
+            };
+
+            #[cfg(feature = "mcp")]
+            let app = match mcp_allowed_hosts {
+                Some(allowed) => app.layer(middleware::from_fn_with_state(allowed, mcp::host_guard)),
+                None => app,
             };
 
             let app = app
@@ -766,6 +833,8 @@ impl Server {
                 server_handle: Some(Arc::new(server_handle)),
                 rx: Some(rx_clone),
                 shutdown_tx: Some(shutdown_tx),
+                #[cfg(test)]
+                state: test_state,
             },
             bound_addr,
         ))
@@ -861,6 +930,11 @@ impl ServerState {
             })
             .to_string(),
         )
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn active_jobs_for(&self, owner: &str) -> usize {
+        self.active_jobs_by_owner.lock().await.get(owner).copied().unwrap_or(0)
     }
 
     pub async fn record_job_started(&self, owner: &str) -> std::result::Result<(), JobAdmissionError> {
@@ -2265,6 +2339,72 @@ mod tests {
         assert!(message.contains("unknown-feature"));
         assert!(message.contains("advanced"));
         assert!(message.contains("job-builder"));
+        assert!(message.contains("mcp"));
+    }
+
+    #[test]
+    fn mcp_web_feature_is_off_by_default() {
+        with_web_features_env(None, || {
+            for mode in [RuntimeMode::User, RuntimeMode::Service] {
+                let policy = ServerPolicy::new_with_identity_options(
+                    mode,
+                    Some(super::AuthProvider::None),
+                    None,
+                    None,
+                    None,
+                    true,
+                )
+                .expect("default policy");
+                assert!(!policy.allows_mcp(), "{mode:?}");
+            }
+        });
+    }
+
+    #[test]
+    #[cfg(feature = "mcp")]
+    fn explicit_mcp_web_feature_enables_the_endpoint_in_service_mode() {
+        let policy = ServerPolicy::new_with_identity_options(
+            RuntimeMode::Service,
+            Some(super::AuthProvider::None),
+            None,
+            None,
+            Some("mcp"),
+            true,
+        )
+        .expect("service policy");
+
+        assert!(policy.allows_mcp());
+    }
+
+    #[test]
+    fn mcp_web_feature_is_dropped_without_an_endpoint() {
+        let policy = ServerPolicy::with_web_features(RuntimeMode::User, Some("advanced,mcp"))
+            .expect("mcp is dropped, not rejected");
+
+        assert!(!policy.allows_mcp());
+        assert!(policy.allows_advanced());
+    }
+
+    #[test]
+    #[cfg(not(feature = "mcp"))]
+    fn mcp_web_feature_requires_mcp_support() {
+        let err = ServerPolicy::new_with_identity_options(
+            RuntimeMode::User,
+            Some(super::AuthProvider::None),
+            None,
+            None,
+            Some("advanced,mcp"),
+            true,
+        )
+        .expect_err("mcp should fail without MCP support");
+
+        let message = err.to_string();
+        let (_, supported) = message
+            .split_once("supported feature names in this build: ")
+            .expect("supported names are listed");
+        assert!(message.contains("requires a build with MCP support"));
+        assert!(supported.contains("advanced"));
+        assert!(!supported.contains("mcp"));
     }
 
     #[test]
@@ -2501,6 +2641,7 @@ mod tests {
             Some("X-Authenticated-User"),
             None,
             None,
+            false,
         )
         .expect("custom identity header policy");
         let mut headers = HeaderMap::new();
@@ -2524,6 +2665,7 @@ mod tests {
             Some("invalid header"),
             None,
             None,
+            false,
         )
         .expect_err("invalid identity header");
 
@@ -2541,6 +2683,7 @@ mod tests {
             None,
             None,
             None,
+            false,
         )
         .expect("environment identity header policy");
 
@@ -2552,6 +2695,7 @@ mod tests {
             Some("X-Explicit-User"),
             None,
             None,
+            false,
         )
         .expect("explicit identity header policy");
 
@@ -2913,5 +3057,33 @@ mod tests {
                 .is_none(),
             "secret should be removed by delete-by-id route"
         );
+    }
+
+    #[tokio::test]
+    async fn embedded_servers_drop_the_mcp_web_feature_and_keep_the_rest() {
+        let mut env = crate::TestEnv::new();
+        env.set("ESDIAG_WEB_FEATURES", "advanced,mcp");
+        let (mut server, bound_addr) =
+            Server::start([127, 0, 0, 1], 0, Exporter::default(), String::new(), RuntimeMode::User)
+                .await
+                .expect("server starts without the mcp endpoint");
+
+        let client = reqwest::Client::new();
+        let advanced = client
+            .get(format!("http://{bound_addr}/advanced"))
+            .send()
+            .await
+            .expect("advanced request");
+        let mcp = client
+            .post(format!("http://{bound_addr}/mcp"))
+            .header(reqwest::header::ACCEPT, "application/json, text/event-stream")
+            .json(&serde_json::json!({ "jsonrpc": "2.0", "id": 1, "method": "ping" }))
+            .send()
+            .await
+            .expect("mcp request");
+        server.shutdown().await;
+
+        assert_ne!(advanced.status(), reqwest::StatusCode::NOT_FOUND, "advanced is kept");
+        assert_eq!(mcp.status(), reqwest::StatusCode::NOT_FOUND);
     }
 }

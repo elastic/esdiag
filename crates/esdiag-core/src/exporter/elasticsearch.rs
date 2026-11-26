@@ -6,6 +6,7 @@ use super::Export;
 use crate::{
     client::{ElasticsearchBuilder, ElasticsearchClient, elasticsearch_client_from_output_host},
     data::{self, Auth, CredentialDirection, KnownHost},
+    job::context::ExecutionScope,
     processor::{BatchResponse, DiagnosticReport},
 };
 use elasticsearch::{
@@ -99,9 +100,42 @@ pub struct ElasticsearchExporter {
     kibana_base_url: Option<String>,
     pub(super) kibana_viewer: Option<Box<crate::data::Uri>>,
     url: Url,
+    /// The execution this exporter sends for; `None` outside an execution.
+    scope: Option<ExecutionScope>,
+}
+
+/// The export was stopped because its execution was cancelled.
+fn cancelled_export() -> eyre::Report {
+    eyre!("export cancelled")
 }
 
 impl ElasticsearchExporter {
+    pub(super) fn with_scope(mut self, scope: ExecutionScope) -> Self {
+        self.scope = Some(scope);
+        self
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.scope.as_ref().is_some_and(|scope| scope.token().is_cancelled())
+    }
+
+    /// Waits out a retry backoff. Returns `false`, at once, if the execution
+    /// is or becomes cancelled, and checks again as the wait ends, so no
+    /// resend starts after cancellation.
+    async fn backoff(&self, sleep_ms: u64) -> bool {
+        let sleep = tokio::time::sleep(Duration::from_millis(sleep_ms));
+        match &self.scope {
+            Some(scope) => tokio::select! {
+                biased;
+                _ = scope.token().cancelled() => false,
+                _ = sleep => !scope.token().is_cancelled(),
+            },
+            None => {
+                sleep.await;
+                true
+            }
+        }
+    }
     fn request_timeout() -> Duration {
         Duration::from_millis(
             std::env::var("ESDIAG_REQUEST_TIMEOUT_MS")
@@ -134,6 +168,7 @@ impl ElasticsearchExporter {
             url,
             docs_tx: None,
             requires_secret,
+            scope: None,
         })
     }
 
@@ -178,13 +213,13 @@ impl ElasticsearchExporter {
         values: Vec<Arc<Value>>,
     ) -> Result<(BatchResponse, Option<eyre::Report>)> {
         let config = RetryConfig::from_env();
-        let mut retries: u16 = 0;
         // The documents still to send: the whole batch, then only those Elasticsearch throttled per item.
         let mut pending = values;
         // What the documents already answered for came to, across resends of the throttled ones.
         let mut answered: Option<BatchResponse> = None;
 
         for attempt in 0..=config.max_retries {
+            let retries = attempt;
             let can_retry = attempt < config.max_retries;
             let batch: Vec<BulkOperation<Arc<Value>>> = pending
                 .iter()
@@ -202,7 +237,7 @@ impl ElasticsearchExporter {
                 Err(e) => return finish_after_failure(&index, answered, pending.len(), None, e, retries),
             };
 
-            match parse_response(index.clone(), response, retries, can_retry).await {
+            let sleep_ms = match parse_response(index.clone(), response, retries, can_retry).await {
                 Ok((batch_response, throttled)) => {
                     match answered.as_mut() {
                         Some(answered) => answered.merge_resend(batch_response),
@@ -225,8 +260,7 @@ impl ElasticsearchExporter {
                         .iter()
                         .filter_map(|&item| pending.get(item).cloned())
                         .collect();
-                    tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
-                    retries += 1;
+                    sleep_ms
                 }
                 Err(ExporterError::RateLimited) if can_retry => {
                     let sleep_ms = backoff_ms(attempt, &config);
@@ -235,8 +269,7 @@ impl ElasticsearchExporter {
                         u32::from(attempt) + 1,
                         config.max_retries,
                     );
-                    tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
-                    retries += 1;
+                    sleep_ms
                 }
                 Err(ExporterError::RateLimited) => {
                     tracing::error!(
@@ -258,10 +291,98 @@ impl ElasticsearchExporter {
                 Err(ExporterError::Fatal { status, error }) => {
                     return finish_after_failure(&index, answered, pending.len(), status, error, retries);
                 }
+            };
+            if !self.backoff(sleep_ms).await {
+                return finish_after_failure(&index, answered, pending.len(), None, cancelled_export(), retries);
             }
         }
 
         unreachable!("retry loop always returns within attempt bounds")
+    }
+
+    /// Splits serialized documents into bulk sub-batches and sends them in turn,
+    /// starting none once the execution is cancelled.
+    async fn send_values(&self, index: String, values: Vec<Arc<Value>>) -> Result<BatchResponse> {
+        let bulk_size = crate::env::get_int("ESDIAG_ES_BULK_SIZE")
+            .unwrap_or(crate::env::ESDIAG_ES_BULK_SIZE)
+            .max(1);
+        let bulk_bytes = elasticsearch_bulk_bytes_limit();
+        let batch_capacity = bulk_size.min(values.len());
+        let mut batches = Vec::new();
+        let mut batch = Vec::with_capacity(batch_capacity);
+        let mut batch_bytes = 0usize;
+
+        for value in values {
+            let doc_bytes = bulk_bytes
+                .map(|_| estimated_bulk_value_bytes(&index, value.as_ref()))
+                .unwrap_or(0);
+            let would_exceed_count = batch.len() >= bulk_size;
+            let would_exceed_bytes = bulk_bytes
+                .is_some_and(|max_bytes| !batch.is_empty() && batch_bytes.saturating_add(doc_bytes) > max_bytes);
+
+            if would_exceed_count || would_exceed_bytes {
+                batches.push(std::mem::take(&mut batch));
+                batch = Vec::with_capacity(batch_capacity);
+                batch_bytes = 0;
+            }
+
+            batch_bytes = batch_bytes.saturating_add(doc_bytes);
+            batch.push(value);
+        }
+
+        if !batch.is_empty() {
+            batches.push(batch);
+        }
+
+        let mut summary = BatchResponse::aggregate();
+        for batch_index in 0..batches.len() {
+            if self.is_cancelled() {
+                if summary.batch_count == 0 {
+                    return Err(cancelled_export());
+                }
+                let unsent_docs = doc_count(&batches[batch_index..]);
+                tracing::warn!("{index} - export cancelled; recording {unsent_docs} unsent docs as failed");
+                summary.merge(BatchResponse::failed(
+                    unsent_docs,
+                    BatchResponse::HTTP_REQUEST_NOT_COMPLETED,
+                ));
+                return Ok(summary);
+            }
+            let batch_doc_count = batches[batch_index].len() as u32;
+            let batch = std::mem::take(&mut batches[batch_index]);
+            match self.send_value_batch(index.clone(), batch).await {
+                Ok((response, None)) => summary.merge(response),
+                Ok((response, Some(err))) => {
+                    summary.merge(response);
+                    let unsent_docs = doc_count(&batches[batch_index + 1..]);
+                    if unsent_docs > 0 {
+                        tracing::warn!(
+                            "{index} - stopping after a failed resend; recording {unsent_docs} unsent docs as failed: {err}"
+                        );
+                        summary.merge(BatchResponse::failed(
+                            unsent_docs,
+                            BatchResponse::HTTP_REQUEST_NOT_COMPLETED,
+                        ));
+                    }
+                    return Ok(summary);
+                }
+                Err(err) if summary.batch_count == 0 => return Err(err),
+                Err(err) => {
+                    let unsent_docs = doc_count(&batches[batch_index + 1..]);
+                    let failed_docs = batch_doc_count.saturating_add(unsent_docs);
+                    tracing::warn!(
+                        "{index} - bulk sub-batch failed after partial success; recording {failed_docs} failed docs: {err}"
+                    );
+                    summary.merge(BatchResponse::failed(
+                        failed_docs,
+                        BatchResponse::HTTP_REQUEST_NOT_COMPLETED,
+                    ));
+                    return Ok(summary);
+                }
+            }
+        }
+
+        Ok(summary)
     }
 }
 
@@ -290,6 +411,7 @@ impl TryFrom<KnownHost> for ElasticsearchExporter {
             url,
             docs_tx: None,
             requires_secret,
+            scope: None,
         })
     }
 }
@@ -345,74 +467,18 @@ impl Export for ElasticsearchExporter {
             return Ok(response);
         }
 
-        let bulk_size = crate::env::get_int("ESDIAG_ES_BULK_SIZE")
-            .unwrap_or(crate::env::ESDIAG_ES_BULK_SIZE)
-            .max(1);
-        let bulk_bytes = elasticsearch_bulk_bytes_limit();
-        let batch_capacity = bulk_size.min(values.len());
-        let mut batches = Vec::new();
-        let mut batch = Vec::with_capacity(batch_capacity);
-        let mut batch_bytes = 0usize;
-
-        for value in values {
-            let doc_bytes = bulk_bytes
-                .map(|_| estimated_bulk_value_bytes(&index, value.as_ref()))
-                .unwrap_or(0);
-            let would_exceed_count = batch.len() >= bulk_size;
-            let would_exceed_bytes = bulk_bytes
-                .is_some_and(|max_bytes| !batch.is_empty() && batch_bytes.saturating_add(doc_bytes) > max_bytes);
-
-            if would_exceed_count || would_exceed_bytes {
-                batches.push(std::mem::take(&mut batch));
-                batch = Vec::with_capacity(batch_capacity);
-                batch_bytes = 0;
+        // A tracked request outlives a dropped caller, so the scope ends only once it has.
+        match self.scope.clone() {
+            Some(scope) => {
+                let exporter = self.clone();
+                scope
+                    .tracker()
+                    .spawn(async move { exporter.send_values(index, values).await })
+                    .await
+                    .map_err(|e| eyre!("Bulk export task failed: {e}"))?
             }
-
-            batch_bytes = batch_bytes.saturating_add(doc_bytes);
-            batch.push(value);
+            None => self.send_values(index, values).await,
         }
-
-        if !batch.is_empty() {
-            batches.push(batch);
-        }
-
-        let mut summary = BatchResponse::aggregate();
-        for batch_index in 0..batches.len() {
-            let batch_doc_count = batches[batch_index].len() as u32;
-            let batch = std::mem::take(&mut batches[batch_index]);
-            match self.send_value_batch(index.clone(), batch).await {
-                Ok((response, None)) => summary.merge(response),
-                Ok((response, Some(err))) => {
-                    summary.merge(response);
-                    let unsent_docs = doc_count(&batches[batch_index + 1..]);
-                    if unsent_docs > 0 {
-                        tracing::warn!(
-                            "{index} - stopping after a failed resend; recording {unsent_docs} unsent docs as failed: {err}"
-                        );
-                        summary.merge(BatchResponse::failed(
-                            unsent_docs,
-                            BatchResponse::HTTP_REQUEST_NOT_COMPLETED,
-                        ));
-                    }
-                    return Ok(summary);
-                }
-                Err(err) if summary.batch_count == 0 => return Err(err),
-                Err(err) => {
-                    let unsent_docs = doc_count(&batches[batch_index + 1..]);
-                    let failed_docs = batch_doc_count.saturating_add(unsent_docs);
-                    tracing::warn!(
-                        "{index} - bulk sub-batch failed after partial success; recording {failed_docs} failed docs: {err}"
-                    );
-                    summary.merge(BatchResponse::failed(
-                        failed_docs,
-                        BatchResponse::HTTP_REQUEST_NOT_COMPLETED,
-                    ));
-                    return Ok(summary);
-                }
-            }
-        }
-
-        Ok(summary)
     }
 
     /// Transmits a single batch of documents with semaphore-based connection limiting.
@@ -426,10 +492,22 @@ impl Export for ElasticsearchExporter {
         let semaphore = self.tx_limit.clone();
         let docs_tx = self.docs_tx.clone();
         let doc_count = docs.len();
+        let scope = self.scope.clone();
 
-        tokio::spawn(async move {
+        let token = scope.as_ref().map(|scope| scope.token().clone());
+        let task = async move {
             // Acquire semaphore permit inside task - blocks if at limit (backpressure)
-            let _permit = semaphore.acquire().await.expect("Failed to acquire semaphore permit");
+            let acquire = semaphore.acquire();
+            let _permit = match &token {
+                // Other executions sharing this exporter may hold every permit.
+                Some(token) => tokio::select! {
+                    biased;
+                    _ = token.cancelled() => return,
+                    permit = acquire => permit,
+                },
+                None => acquire.await,
+            }
+            .expect("Failed to acquire semaphore permit");
             // A dropped receiver means the export was abandoned, such as a cancelled request.
             if tx.is_closed() {
                 return;
@@ -456,7 +534,11 @@ impl Export for ElasticsearchExporter {
                     }
                 }
             }
-        });
+        };
+        match scope {
+            Some(scope) => scope.tracker().spawn(task),
+            None => tokio::spawn(task),
+        };
 
         Ok(rx)
     }
@@ -519,6 +601,18 @@ impl Export for ElasticsearchExporter {
 impl std::fmt::Display for ElasticsearchExporter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.url)
+    }
+}
+
+impl ElasticsearchExporter {
+    /// The output URL without userinfo, query, or fragment.
+    pub(super) fn safe_url(&self) -> String {
+        let mut url = self.url.clone();
+        let _ = url.set_username("");
+        let _ = url.set_password(None);
+        url.set_query(None);
+        url.set_fragment(None);
+        url.to_string()
     }
 }
 
@@ -919,13 +1013,17 @@ mod tests {
 
     impl RetryEnvGuard {
         fn set(max_retries: &str) -> Self {
+            Self::with_backoff(max_retries, "1", "5")
+        }
+
+        fn with_backoff(max_retries: &str, initial_ms: &str, max_ms: &str) -> Self {
             let prev_max = std::env::var("ESDIAG_EXPORT_RETRY_MAX").ok();
             let prev_initial = std::env::var("ESDIAG_EXPORT_RETRY_INITIAL_MS").ok();
             let prev_max_ms = std::env::var("ESDIAG_EXPORT_RETRY_MAX_MS").ok();
             unsafe {
                 std::env::set_var("ESDIAG_EXPORT_RETRY_MAX", max_retries);
-                std::env::set_var("ESDIAG_EXPORT_RETRY_INITIAL_MS", "1");
-                std::env::set_var("ESDIAG_EXPORT_RETRY_MAX_MS", "5");
+                std::env::set_var("ESDIAG_EXPORT_RETRY_INITIAL_MS", initial_ms);
+                std::env::set_var("ESDIAG_EXPORT_RETRY_MAX_MS", max_ms);
             }
             Self {
                 prev_max,
@@ -1397,5 +1495,185 @@ mod tests {
         assert_eq!(response.batch_count, 1);
         assert_eq!(response.status_code, BatchResponse::HTTP_REQUEST_NOT_COMPLETED);
         assert_eq!(mock.bulk_requests().len(), 1, "expected one bulk request");
+    }
+
+    async fn wait_for_bulk_requests(mock: &ElasticsearchMock, count: usize) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while mock.bulk_requests().len() < count {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("bulk request reached the mock");
+    }
+
+    fn scoped_exporter(url: Url, scope: &ExecutionScope) -> ElasticsearchExporter {
+        ElasticsearchExporter::try_new(url, Auth::None)
+            .unwrap()
+            .with_scope(scope.clone())
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_export_sends_no_further_sub_batch() {
+        let _lock = ENV_LOCK.lock().await;
+        let _env = BulkBytesEnvGuard::set("0");
+        let release = Arc::new(tokio::sync::Notify::new());
+        let (url, mock) = mock_bulk_server(vec![BulkReply::Held(release.clone())]).await;
+        let scope = ExecutionScope::default();
+        let exporter = scoped_exporter(url, &scope);
+        let docs = (0..=crate::env::ESDIAG_ES_BULK_SIZE)
+            .map(|id| json!({ "x": id }))
+            .collect::<Vec<_>>();
+
+        let send = tokio::spawn(async move { exporter.batch_send("test-index".to_string(), docs).await });
+        wait_for_bulk_requests(&mock, 1).await;
+        scope.token().cancel();
+        release.notify_one();
+        let response = send.await.unwrap().expect("the first sub-batch was answered");
+
+        assert_eq!(
+            mock.bulk_requests().len(),
+            1,
+            "no sub-batch may start after cancellation"
+        );
+        assert_eq!(response.docs as usize, crate::env::ESDIAG_ES_BULK_SIZE);
+        assert_eq!(response.errors, 1, "the unsent sub-batch counts as failed");
+    }
+
+    #[tokio::test]
+    async fn cancelling_during_a_request_429_backoff_sends_no_retry() {
+        let _lock = ENV_LOCK.lock().await;
+        let _env = RetryEnvGuard::with_backoff("5", "60000", "60000");
+        let (url, mock) = mock_bulk_server(vec![BulkReply::Status(429)]).await;
+        let scope = ExecutionScope::default();
+        let exporter = scoped_exporter(url, &scope);
+
+        let send = tokio::spawn(async move {
+            exporter
+                .batch_send("test-index".to_string(), vec![json!({"x": 1})])
+                .await
+        });
+        wait_for_bulk_requests(&mock, 1).await;
+        scope.token().cancel();
+        let result = tokio::time::timeout(Duration::from_secs(5), send)
+            .await
+            .expect("cancellation ends the backoff")
+            .unwrap();
+
+        assert!(result.is_err(), "nothing was answered, so the batch fails");
+        assert_eq!(mock.bulk_requests().len(), 1, "no retry after cancellation");
+    }
+
+    #[tokio::test]
+    async fn cancelling_before_a_resend_keeps_created_documents() {
+        let _lock = ENV_LOCK.lock().await;
+        let _env = RetryEnvGuard::with_backoff("5", "60000", "60000");
+        let mut test_env = crate::TestEnv::new();
+        test_env.set_path("ESDIAG_HOME", test_env.tmp.path().to_path_buf());
+        std::fs::create_dir_all(test_env.tmp.path().join("last_run")).unwrap();
+        let first = BulkReply::Items(vec![created_item("a"), throttled_item()]);
+        let (url, mock) = mock_bulk_server(vec![first]).await;
+        let scope = ExecutionScope::default();
+        let exporter = scoped_exporter(url, &scope);
+        let docs = vec![json!({"n": 1}), json!({"n": 2})];
+
+        let send = tokio::spawn(async move { exporter.batch_send("test-esdiag".to_string(), docs).await });
+        wait_for_bulk_requests(&mock, 1).await;
+        scope.token().cancel();
+        let response = tokio::time::timeout(Duration::from_secs(5), send)
+            .await
+            .expect("cancellation ends the backoff")
+            .unwrap()
+            .expect("a document was created");
+
+        assert_eq!((response.docs, response.errors), (1, 1));
+        assert_eq!(mock.bulk_requests().len(), 1, "no resend after cancellation");
+    }
+
+    #[tokio::test]
+    async fn the_tracker_waits_for_a_request_in_flight() {
+        let _lock = ENV_LOCK.lock().await;
+        let release = Arc::new(tokio::sync::Notify::new());
+        let (url, mock) = mock_bulk_server(vec![BulkReply::Held(release.clone())]).await;
+        let scope = ExecutionScope::default();
+        let exporter = scoped_exporter(url, &scope);
+
+        let response = exporter
+            .batch_tx("test-index".to_string(), vec![json!({"x": 1})])
+            .await
+            .expect("batch queued");
+        wait_for_bulk_requests(&mock, 1).await;
+        scope.token().cancel();
+        scope.tracker().close();
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), scope.tracker().wait())
+                .await
+                .is_err(),
+            "the request is still in flight"
+        );
+        release.notify_one();
+        tokio::time::timeout(Duration::from_secs(5), scope.tracker().wait())
+            .await
+            .expect("the tracker empties once the request ends");
+        assert_eq!(response.await.expect("batch answered").docs, 1);
+    }
+
+    #[tokio::test]
+    async fn a_dropped_send_keeps_its_request_in_the_tracker() {
+        let _lock = ENV_LOCK.lock().await;
+        let release = Arc::new(tokio::sync::Notify::new());
+        let (url, mock) = mock_bulk_server(vec![BulkReply::Held(release.clone())]).await;
+        let scope = ExecutionScope::default();
+        let exporter = scoped_exporter(url, &scope);
+
+        let send = tokio::spawn(async move {
+            exporter
+                .batch_send("test-index".to_string(), vec![json!({"x": 1})])
+                .await
+        });
+        wait_for_bulk_requests(&mock, 1).await;
+        send.abort();
+        let _ = send.await;
+        scope.token().cancel();
+        scope.tracker().close();
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), scope.tracker().wait())
+                .await
+                .is_err(),
+            "the request outlives its dropped caller"
+        );
+        release.notify_one();
+        tokio::time::timeout(Duration::from_secs(5), scope.tracker().wait())
+            .await
+            .expect("the tracker empties once the request ends");
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_batch_stops_waiting_for_a_permit() {
+        let _lock = ENV_LOCK.lock().await;
+        let (url, mock) = mock_bulk_server(vec![]).await;
+        let scope = ExecutionScope::default();
+        let exporter = scoped_exporter(url, &scope);
+        let _held = exporter
+            .tx_limit
+            .clone()
+            .acquire_many_owned(exporter.tx_limit.available_permits() as u32)
+            .await
+            .expect("hold every permit");
+
+        let response = exporter
+            .batch_tx("test-index".to_string(), vec![json!({"x": 1})])
+            .await
+            .expect("batch queued");
+        scope.token().cancel();
+        scope.tracker().close();
+
+        tokio::time::timeout(Duration::from_secs(5), scope.tracker().wait())
+            .await
+            .expect("the queued batch leaves the tracker without a permit");
+        assert!(response.await.is_err(), "the batch was never answered");
+        assert!(mock.bulk_requests().is_empty());
     }
 }
