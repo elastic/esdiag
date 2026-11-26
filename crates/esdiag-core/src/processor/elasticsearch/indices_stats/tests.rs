@@ -279,6 +279,7 @@ async fn process_index_propagates_alias_write_index_and_persistent_doc_rate_to_s
         index_settings: index_settings_lookup,
         mapping_stats: Lookup::new(),
         node: Lookup::new(),
+        node_endpoints: Vec::new(),
         shared_cache: Lookup::new(),
     };
 

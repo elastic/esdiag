@@ -29,6 +29,8 @@ pub struct ApplicationConfig {
     pub output: OutputConfig,
     #[serde(default, skip_serializing_if = "JobConfig::is_empty")]
     pub job: JobConfig,
+    #[serde(default, skip_serializing_if = "LogsConfig::is_empty")]
+    pub logs: LogsConfig,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -101,6 +103,23 @@ pub struct JobConfig {
 impl JobConfig {
     fn is_empty(&self) -> bool {
         self.default.is_none()
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LogsConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retention_days: Option<u32>,
+}
+
+impl LogsConfig {
+    fn is_empty(&self) -> bool {
+        self.host.is_none() && self.path.is_none() && self.retention_days.is_none()
     }
 }
 
@@ -199,6 +218,22 @@ impl ApplicationConfig {
             }
         }
 
+        if let Some(logs_host_name) = &self.logs.host {
+            let logs_host = hosts
+                .get(logs_host_name)
+                .ok_or_else(|| eyre!("Configured logs host '{logs_host_name}' was not found"))?;
+            if !logs_host.has_role(HostRole::Send) {
+                return Err(eyre!(
+                    "Configured logs host '{logs_host_name}' must include role 'send'"
+                ));
+            }
+            if logs_host.app() != Some(Application::Elasticsearch) {
+                return Err(eyre!(
+                    "Configured logs host '{logs_host_name}' must be an Elasticsearch host"
+                ));
+            }
+        }
+
         Ok(())
     }
 
@@ -215,9 +250,9 @@ impl ApplicationConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{ApplicationConfig, JobConfig, OnboardingWorkflow, OutputConfig};
+    use super::{ApplicationConfig, JobConfig, LogsConfig, OnboardingWorkflow, OutputConfig};
     use crate::data::{Application, ElasticOutputContext, HostRole, KnownHostBuilder};
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, path::PathBuf};
     use url::Url;
 
     fn linked_output_hosts() -> BTreeMap<String, crate::data::KnownHost> {
@@ -253,6 +288,11 @@ mod tests {
             job: JobConfig {
                 default: Some("production-standard".to_string()),
             },
+            logs: LogsConfig {
+                host: Some("output-elasticsearch".to_string()),
+                path: Some(PathBuf::from("/var/log/esdiag")),
+                retention_days: Some(14),
+            },
         };
 
         config.save().expect("save configuration");
@@ -264,6 +304,9 @@ mod tests {
         assert!(written.contains("default: production-standard"));
         assert!(written.contains("workflow: collect-and-process"));
         assert!(written.contains("collection_deferred: true"));
+        assert!(written.contains("host: output-elasticsearch"));
+        assert!(written.contains("path: /var/log/esdiag"));
+        assert!(written.contains("retention_days: 14"));
         for forbidden in ["apikey", "password", "authorization", "https://es.example"] {
             assert!(!written.contains(forbidden), "{forbidden} must not be serialized");
         }
@@ -339,6 +382,7 @@ mod tests {
 
         assert_eq!(config.user.as_deref(), Some("existing@example.com"));
         assert_eq!(config.workflow, None);
+        assert_eq!(config.logs, LogsConfig::default());
     }
 
     #[test]
@@ -394,5 +438,70 @@ mod tests {
             err.to_string()
                 .contains("Configured default job 'missing-job' was not found")
         );
+    }
+
+    #[test]
+    fn reference_validation_accepts_logs_host_without_kibana_viewer() {
+        let _env = crate::TestEnv::new();
+        let logs_host = KnownHostBuilder::new(Url::parse("https://logs.example:9200").expect("url"))
+            .application(Application::Elasticsearch)
+            .roles(vec![HostRole::Send])
+            .build()
+            .expect("logs host");
+        crate::data::KnownHost::write_hosts_yml(&BTreeMap::from([("logs-es".to_string(), logs_host)]))
+            .expect("write hosts");
+
+        let config = ApplicationConfig {
+            version: 1,
+            logs: LogsConfig {
+                host: Some("logs-es".to_string()),
+                ..LogsConfig::default()
+            },
+            ..ApplicationConfig::new()
+        };
+
+        config
+            .validate_references()
+            .expect("logs host with send role and no viewer must validate");
+    }
+
+    #[test]
+    fn reference_validation_rejects_invalid_logs_host() {
+        let _env = crate::TestEnv::new();
+        let collect_only = KnownHostBuilder::new(Url::parse("https://es.example:9200").expect("url"))
+            .application(Application::Elasticsearch)
+            .roles(vec![HostRole::Collect])
+            .build()
+            .expect("collect host");
+        let kibana = KnownHostBuilder::new(Url::parse("https://kb.example:5601").expect("url"))
+            .application(Application::Kibana)
+            .roles(vec![HostRole::View])
+            .build()
+            .expect("kibana host");
+        crate::data::KnownHost::write_hosts_yml(&BTreeMap::from([
+            ("collect-es".to_string(), collect_only),
+            ("viewer-kb".to_string(), kibana),
+        ]))
+        .expect("write hosts");
+
+        for (host, expected) in [
+            ("missing", "Configured logs host 'missing' was not found"),
+            (
+                "collect-es",
+                "Configured logs host 'collect-es' must include role 'send'",
+            ),
+            ("viewer-kb", "Configured logs host 'viewer-kb' must include role 'send'"),
+        ] {
+            let config = ApplicationConfig {
+                version: 1,
+                logs: LogsConfig {
+                    host: Some(host.to_string()),
+                    ..LogsConfig::default()
+                },
+                ..ApplicationConfig::new()
+            };
+            let err = config.validate_references().expect_err("invalid logs host must fail");
+            assert!(err.to_string().contains(expected), "got: {err}");
+        }
     }
 }

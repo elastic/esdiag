@@ -85,6 +85,7 @@ clap.workspace = true
 clap_complete = "4.6"
 elasticsearch.workspace = true
 eyre.workspace = true
+flate2.workspace = true
 kibana-sync.workspace = true
 mimalloc = "0.1.52"
 redact.workspace = true
@@ -109,9 +110,9 @@ yaml_serde.workspace = true
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Threading"] }
 
 [dev-dependencies]
+esdiag-core = { workspace = true, features = ["test-support"] }
 axum.workspace = true
 bytes.workspace = true
-flate2.workspace = true
 futures.workspace = true
 parking_lot.workspace = true
 portpicker = "0.1.1"
