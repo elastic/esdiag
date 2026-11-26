@@ -20,6 +20,7 @@ pub struct ElasticsearchBuilder {
     cert_validation: CertificateValidation,
     connection_pool: SingleNodeConnectionPool,
     headers: headers::HeaderMap,
+    header_error: Option<String>,
 }
 
 /// A builder for the official Elasticsearch client
@@ -32,16 +33,26 @@ impl ElasticsearchBuilder {
             cert_validation: CertificateValidation::Default,
             connection_pool: SingleNodeConnectionPool::new(url),
             headers,
+            header_error: None,
         }
     }
 
     pub fn apikey(self, apikey: String) -> Self {
         let mut headers = self.headers;
-        headers.append(
-            headers::AUTHORIZATION,
-            format!("ApiKey {}", apikey).parse().expect("Invalid API key"),
-        );
-        Self { headers, ..self }
+        let mut header_error = self.header_error;
+        match format!("ApiKey {}", apikey).parse() {
+            Ok(value) => {
+                headers.append(headers::AUTHORIZATION, value);
+            }
+            Err(_) => {
+                header_error = Some("Invalid API key: contains invalid HTTP header characters".to_string());
+            }
+        }
+        Self {
+            headers,
+            header_error,
+            ..self
+        }
     }
 
     /// The transport boundary, where credential material has to become bytes on
@@ -69,6 +80,9 @@ impl ElasticsearchBuilder {
     }
 
     pub fn build(self) -> Result<ElasticsearchClient> {
+        if let Some(err) = self.header_error {
+            return Err(eyre::eyre!(err));
+        }
         let transport = TransportBuilder::new(self.connection_pool)
             .headers(self.headers)
             .cert_validation(self.cert_validation)

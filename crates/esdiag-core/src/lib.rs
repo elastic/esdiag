@@ -42,8 +42,8 @@ pub mod setup;
 pub mod system_integration;
 
 /// Elasticsearch mock shared with the integration tests.
-#[cfg(test)]
-pub(crate) mod es_mock;
+#[cfg(any(test, feature = "test-support"))]
+pub mod es_mock;
 
 /// Private to `TestEnv`, which is the only supported way to take it. Callers
 /// that locked it directly used `.expect()`, so a panicking test poisoned the
