@@ -15,6 +15,14 @@ use std::{
 
 use url::Url;
 
+/// Sets `token` as the password of an Elastic Upload Service link. The token
+/// is fully percent-encoded because `Url::set_password` leaves `%` as is, and
+/// the downloader percent-decodes the password back into the token.
+pub fn set_upload_token(url: &mut Url, token: &str) -> Result<()> {
+    url.set_password(Some(&urlencoding::encode(token)))
+        .map_err(|()| eyre!("URL cannot carry a download token"))
+}
+
 /// Whether `value` starts with a Windows drive letter, such as `C:\diag.zip`,
 /// `C:/diag.zip`, or `C:`. `Url::parse` accepts these with the drive letter as
 /// the scheme, so they must be classified as paths before URL parsing. The

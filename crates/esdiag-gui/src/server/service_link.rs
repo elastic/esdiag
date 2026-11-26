@@ -148,7 +148,7 @@ pub(super) async fn run_service_link_form(
             send_event(&tx, signal_event(r#"{"loading":false}"#)).await;
             return;
         }
-        if url.set_password(Some(&service_link.token)).is_err() {
+        if crate::data::set_upload_token(&mut url, &service_link.token).is_err() {
             state
                 .reject_retained_bundle(
                     &download_token,

@@ -100,7 +100,8 @@ setup tools need `setup`. Release builds include all of them.
 Tools reject output `-`, and `job_run` rejects saved jobs that export to
 stdout, because stdout belongs to the protocol. Choose a directory or a saved
 output host instead. Logs go to stderr; set `LOG_LEVEL` or pass
-`esdiag --debug mcp` for more detail.
+`esdiag --debug mcp` for more detail. MCP protocol messages are never logged
+in full at any level, because tool arguments can carry a download token.
 
 `codex exec` cannot ask for approval, so it refuses tools that are not read
 only unless you approve them in advance, for example with

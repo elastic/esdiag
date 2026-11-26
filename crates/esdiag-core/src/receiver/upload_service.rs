@@ -71,11 +71,12 @@ mod tests {
 
     #[test]
     fn the_header_token_is_the_decoded_url_password() {
+        let token = "a/b:c=d@e%41f+g%";
         let mut url = url::Url::parse("https://upload.elastic.co/d/abc").unwrap();
         url.set_username("token").unwrap();
-        url.set_password(Some("a/b:c=d@e%f+g")).unwrap();
+        crate::data::set_upload_token(&mut url, token).unwrap();
         let downloader = UploadServiceDownloader::try_from(url).expect("downloader");
-        assert_eq!(downloader.token, "a/b:c=d@e%f+g");
+        assert_eq!(downloader.token, token);
         assert_eq!(downloader.url.as_str(), "https://upload.elastic.co/d/abc");
     }
 }

@@ -35,7 +35,7 @@ impl UploadLink {
         if matches!(url.path(), "" | "/") {
             return Err("url must name an upload");
         }
-        if url.set_username("token").is_err() || url.set_password(Some(token)).is_err() {
+        if url.set_username("token").is_err() || crate::data::set_upload_token(&mut url, token).is_err() {
             return Err(NOT_UPLOAD);
         }
         Ok(Self(Uri::ServiceLink(url)))

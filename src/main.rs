@@ -916,8 +916,8 @@ fn init_tracing(cli: &Cli) -> esdiag::logging::LogsGuard {
         eprintln!("tracing log bridge already initialized: {err}");
     }
 
-    let terminal_filter = resolve_tracing_filter(cli);
-    let sink_filter = resolve_sink_filter(cli);
+    let terminal_filter = without_mcp_payloads(resolve_tracing_filter(cli));
+    let sink_filter = without_mcp_payloads(resolve_sink_filter(cli));
 
     let terminal = fmt::layer()
         .with_ansi(std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none())
@@ -1021,6 +1021,13 @@ fn is_mcp(cli: &Cli) -> bool {
         let _ = cli;
         false
     }
+}
+
+/// rmcp logs whole MCP requests at debug and trace, and tool arguments can
+/// carry an Elastic Upload Service download token, so its target stays at
+/// info in every sink.
+fn without_mcp_payloads(filter: EnvFilter) -> EnvFilter {
+    filter.add_directive("rmcp=info".parse().expect("valid directive"))
 }
 
 fn resolve_tracing_filter(cli: &Cli) -> EnvFilter {
@@ -4010,6 +4017,29 @@ mod tests {
             assert_eq!(resolve_sink_filter(&cli).to_string(), "info");
         }
         assert_eq!(resolve_sink_filter(&debug).to_string(), "debug");
+    }
+
+    #[test]
+    fn mcp_request_payloads_stay_out_of_debug_logs() {
+        use tracing_subscriber::{EnvFilter, Layer as _, fmt, layer::SubscriberExt as _};
+        for directives in ["debug", "trace", "debug,rmcp=trace"] {
+            let filter = super::without_mcp_payloads(EnvFilter::new(directives));
+            let subscriber = tracing_subscriber::registry().with(fmt::layer().with_filter(filter));
+            tracing::subscriber::with_default(subscriber, || {
+                assert!(
+                    !tracing::enabled!(target: "rmcp::service", tracing::Level::DEBUG),
+                    "{directives}"
+                );
+                assert!(
+                    tracing::enabled!(target: "rmcp::service", tracing::Level::INFO),
+                    "{directives}"
+                );
+                assert!(
+                    tracing::enabled!(target: "esdiag", tracing::Level::DEBUG),
+                    "{directives}"
+                );
+            });
+        }
     }
 
     #[cfg(feature = "server")]

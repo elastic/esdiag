@@ -63,7 +63,7 @@ pub use saved_jobs::{
     save_saved_jobs, with_saved_jobs_async,
 };
 pub use settings::{LegacySettingsMigration, Settings};
-pub use uri::Uri;
+pub use uri::{Uri, set_upload_token};
 
 use crate::env;
 use eyre::{Result, eyre};

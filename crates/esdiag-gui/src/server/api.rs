@@ -97,7 +97,7 @@ pub async fn service_link(
                     })),
                 );
             }
-            if url.set_password(Some(&payload.token)).is_err() {
+            if crate::data::set_upload_token(&mut url, &payload.token).is_err() {
                 return (
                     StatusCode::BAD_REQUEST,
                     Json(json!({
