@@ -566,7 +566,10 @@ pub fn classify_failure(error: &eyre::Report) -> CliFailureCategory {
             _ => CliFailureCategory::InvalidInput,
         };
     }
-    if let Some(failure) = error.downcast_ref::<JobExecutionFailure>() {
+    if let Some(failure) = error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<JobExecutionFailure>())
+    {
         return failure.stage.failure_category();
     }
     if error.chain().any(|cause| cause.is::<crate::data::KeystoreLocked>()) {
@@ -577,9 +580,31 @@ pub fn classify_failure(error: &eyre::Report) -> CliFailureCategory {
     }
     error
         .chain()
-        .filter_map(|cause| cause.downcast_ref::<CategorizedError>())
+        .filter_map(cause_category)
         .last()
-        .map_or(CliFailureCategory::InvalidInput, |failure| failure.category)
+        .unwrap_or(CliFailureCategory::InvalidInput)
+}
+
+/// The category that one error of a chain names, if any. The innermost one is
+/// the most specific.
+fn cause_category(cause: &(dyn std::error::Error + 'static)) -> Option<CliFailureCategory> {
+    if let Some(failure) = cause.downcast_ref::<CategorizedError>() {
+        return Some(failure.category);
+    }
+    if cause
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+    {
+        return Some(CliFailureCategory::NotFound);
+    }
+    #[cfg(any(feature = "elasticrc", feature = "setup"))]
+    if matches!(
+        cause.downcast_ref::<elasticrc::Error>(),
+        Some(elasticrc::Error::ConfigNotFound { .. } | elasticrc::Error::MissingContext { .. })
+    ) {
+        return Some(CliFailureCategory::NotFound);
+    }
+    None
 }
 
 pub fn safe_failure_message(error: &eyre::Report) -> String {
@@ -1102,6 +1127,31 @@ mod tests {
     }
 
     #[test]
+    fn typed_not_found_errors_are_not_found() {
+        let missing_file = eyre::Report::new(std::io::Error::from(std::io::ErrorKind::NotFound))
+            .wrap_err("Failed to open /data/process/diag.zip");
+        assert_eq!(classify_failure(&missing_file), CliFailureCategory::NotFound);
+
+        let unreadable = eyre::Report::new(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+            .wrap_err("Failed to open /data/not found/diag.zip");
+        assert_eq!(classify_failure(&unreadable), CliFailureCategory::InvalidInput);
+
+        #[cfg(any(feature = "elasticrc", feature = "setup"))]
+        {
+            let missing_context = eyre::Report::new(elasticrc::Error::MissingContext {
+                name: "diag".to_string(),
+                available: vec!["prod".to_string()],
+            });
+            assert_eq!(classify_failure(&missing_context), CliFailureCategory::NotFound);
+            let missing_service = eyre::Report::new(elasticrc::Error::MissingService {
+                context: "prod".to_string(),
+                service: "kibana",
+            });
+            assert_eq!(classify_failure(&missing_service), CliFailureCategory::InvalidInput);
+        }
+    }
+
+    #[test]
     fn job_failures_report_the_failed_stage() {
         use crate::job::{FailedStage, JobExecutionFailure, JobOutcome};
         for (stage, category, message) in [
@@ -1125,6 +1175,15 @@ mod tests {
             assert_eq!(failure.category, category);
             assert_eq!(failure.message, message);
         }
+
+        let wrapped = Err::<(), _>(eyre::Report::new(JobExecutionFailure::new(
+            FailedStage::Process,
+            JobOutcome::default(),
+            eyre::eyre!("Unable to send /auth/diag.zip"),
+        )))
+        .categorize(CliFailureCategory::SendFailed)
+        .unwrap_err();
+        assert_eq!(classify_failure(&wrapped), CliFailureCategory::ProcessingFailed);
     }
 
     #[test]
