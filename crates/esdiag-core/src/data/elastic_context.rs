@@ -5,6 +5,8 @@
 use super::{Application, Auth, KnownHost};
 #[cfg(feature = "elasticrc")]
 use super::{CredentialDirection, HostRole, KnownHostBuilder};
+#[cfg(feature = "elasticrc")]
+use crate::cli_output::CategorizedError;
 use eyre::{Result, eyre};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "elasticrc")]
@@ -318,8 +320,11 @@ fn resolve_service(target: &ElasticContextTarget, kind: ServiceKind) -> Result<C
         return Ok(service);
     }
 
-    let config = load_config_cached(None)?
-        .ok_or_else(|| eyre!("Elastic CLI config was not found for context target '{target}'"))?;
+    let config = load_config_cached(None)?.ok_or_else(|| {
+        CategorizedError::not_found(format!(
+            "Elastic CLI config was not found for context target '{target}'"
+        ))
+    })?;
     resolve_config_service(&config, target.context.as_deref(), kind).map_err(Into::into)
 }
 
@@ -409,8 +414,9 @@ fn resolve_output_hosts(
         return Ok((elasticsearch, elasticsearch_auth, kibana, kibana_auth));
     }
 
-    let config = load_config_cached(config_file)?
-        .ok_or_else(|| eyre!("Elastic CLI config was not found while resolving the output deployment"))?;
+    let config = load_config_cached(config_file)?.ok_or_else(|| {
+        CategorizedError::not_found("Elastic CLI config was not found while resolving the output deployment")
+    })?;
     let es = resolve_config_service(&config, context, ServiceKind::Elasticsearch)?;
     let elasticsearch = known_host_from_service(es, Application::Elasticsearch, vec![HostRole::Send])?;
     let elasticsearch_auth = elasticsearch.get_auth_for_direction(CredentialDirection::Output)?;

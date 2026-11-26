@@ -10,7 +10,7 @@ use std::{
 };
 
 use esdiag::{
-    cli_output::CliOutcome,
+    cli_output::{CategorizedError, CliFailureCategory, CliOutcome},
     data::{ApplicationConfig, SecretAuth, get_password_for_secret_commands},
     onboarding::{OutputDeploymentInput, save_output_deployment},
 };
@@ -1232,9 +1232,13 @@ impl LocalState {
                     return Ok(());
                 }
                 if !retry_auth && auth.is_some() && matches!(status.as_u16(), 401 | 403) {
-                    return Err(eyre!(
-                        "Authentication failed at {url} (HTTP {status}); check the retained local credentials."
-                    ));
+                    return Err(CategorizedError::new(
+                        CliFailureCategory::AuthenticationFailed,
+                        format!(
+                            "Authentication failed at {url} (HTTP {status}); check the retained local credentials."
+                        ),
+                    )
+                    .into());
                 }
             }
             tokio::time::sleep(Duration::from_secs(2)).await;
@@ -1243,10 +1247,14 @@ impl LocalState {
             self.check_native_child(child)?;
         }
         if auth.is_some() && last_status.is_some_and(|status| matches!(status.as_u16(), 401 | 403)) {
-            return Err(eyre!(
-                "Timed out waiting for {url}: authentication was still rejected (HTTP {}); check the retained local credentials.",
-                last_status.unwrap()
-            ));
+            return Err(CategorizedError::new(
+                CliFailureCategory::AuthenticationFailed,
+                format!(
+                    "Timed out waiting for {url}: authentication was still rejected (HTTP {}); check the retained local credentials.",
+                    last_status.unwrap()
+                ),
+            )
+            .into());
         }
         Err(eyre!("Timed out waiting for {url}"))
     }

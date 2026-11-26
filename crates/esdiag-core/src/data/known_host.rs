@@ -5,6 +5,7 @@
 use super::HostReference;
 use super::credential::PersistError;
 use super::keystore::upsert_secret_auth_batch;
+use crate::cli_output::CategorizedError;
 use crate::data::{Application, Auth, Credential, Platform, SecretAuth};
 use eyre::{Result, eyre};
 use redact::Secret;
@@ -978,7 +979,8 @@ impl KnownHost {
             return Ok(None);
         };
         let template_name = parsed.template_name.clone();
-        let host = Self::get_known(&template_name).ok_or_else(|| eyre!("Template host '{template_name}' not found"))?;
+        let host = Self::get_known(&template_name)
+            .ok_or_else(|| CategorizedError::not_found(format!("Template host '{template_name}' not found")))?;
         if !host.is_template() {
             return Err(eyre!("Saved host '{template_name}' is not template-backed"));
         }
@@ -1103,7 +1105,7 @@ impl KnownHost {
     pub fn remove_saved(name: &str) -> Result<String> {
         let mut hosts = Self::parse_hosts_yml()?;
         if hosts.remove(name).is_none() {
-            return Err(eyre!("Host '{name}' not found"));
+            return Err(CategorizedError::not_found(format!("Host '{name}' not found")).into());
         }
         Self::write_hosts_yml(&hosts)
     }

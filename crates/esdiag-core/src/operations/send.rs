@@ -3,7 +3,7 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 use crate::{
-    cli_output::{CliOutcome, CommandOutcome},
+    cli_output::{CategorizeFailure, CliFailureCategory, CliOutcome, CommandOutcome},
     elastic_upload_service,
 };
 use eyre::Result;
@@ -26,7 +26,8 @@ pub async fn send(input: SendInput) -> Result<CommandOutcome> {
     );
     let response = elastic_upload_service::BundleSender::new(input.api_url.clone())
         .send(&file_path, &input.upload_id)
-        .await?;
+        .await
+        .categorize(CliFailureCategory::SendFailed)?;
     tracing::info!("Elastic Upload Service send complete for slug {}", response.slug);
     Ok(CommandOutcome::Completed(CliOutcome::DiagnosticSent {
         destination: format!("{}/g/{}", input.api_url.trim_end_matches('/'), response.slug),

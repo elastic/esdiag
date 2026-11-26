@@ -87,6 +87,12 @@ After a finite command begins execution, a terminal failure SHALL emit one struc
 - **AND** it includes the response `status`, `type`, and `reason` values
 - **AND** it exits non-zero
 
+#### Scenario: Category does not depend on the error message
+- **GIVEN** a command fails with a message that contains a path or name chosen by the user, such as `/data/auth/collect.zip`
+- **WHEN** the command emits its structured failure
+- **THEN** the `category` is that of the failing operation or of a typed error
+- **AND** it is the same for any path or name in the message
+
 #### Scenario: Unknown saved job returns structured failure
 - **WHEN** the user runs `esdiag job run unknown-name`
 - **THEN** the process exits non-zero

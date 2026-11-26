@@ -17,6 +17,7 @@ use super::{
     outcome::{ChildExecutionOutcome, ExecutionEvent, ExecutionOutcome, Lifecycle, SendResult, Stage, StageStatus},
 };
 use crate::{
+    cli_output::CliFailureCategory,
     data::{Application, KeystoreLocked, Platform, Uri},
     exporter::BundleExporter,
     processor::{
@@ -57,6 +58,16 @@ pub enum FailedStage {
     Collect,
     Process,
     Send,
+}
+
+impl FailedStage {
+    pub const fn failure_category(self) -> CliFailureCategory {
+        match self {
+            Self::Collect => CliFailureCategory::CollectionFailed,
+            Self::Process => CliFailureCategory::ProcessingFailed,
+            Self::Send => CliFailureCategory::SendFailed,
+        }
+    }
 }
 
 /// Preserves the safe, completed portion of a failed saved-job execution.
@@ -111,7 +122,7 @@ fn job_outcome(outcome: ExecutionOutcome) -> JobOutcome {
     }
 }
 
-fn failed_stage(outcome: &ExecutionOutcome) -> FailedStage {
+pub(crate) fn failed_stage(outcome: &ExecutionOutcome) -> FailedStage {
     outcome
         .stages
         .iter()

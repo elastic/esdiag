@@ -4,7 +4,8 @@
 
 use super::keystore::{KeystoreLocked, get_keystore_password, resolve_secret_auth};
 use super::{Auth, SecretAuth};
-use eyre::{Result, eyre};
+use crate::cli_output::{CategorizedError, CliFailureCategory};
+use eyre::Result;
 
 /// Where a host's credential comes from.
 ///
@@ -146,10 +147,14 @@ fn resolve_keystore_secret(secret_id: &str) -> Result<Auth> {
         Ok(_) => eyre::Report::new(KeystoreLocked {
             secret_id: Some(secret_id.to_string()),
         }),
-        Err(err) => eyre!("Host references secret '{secret_id}' but {err}"),
+        Err(err) => CategorizedError::new(
+            CliFailureCategory::KeystoreFailed,
+            format!("Host references secret '{secret_id}' but {err}"),
+        )
+        .into(),
     })?;
     let secret = resolve_secret_auth(secret_id, keystore_password.expose_secret())?
-        .ok_or_else(|| eyre!("Secret '{secret_id}' was not found in keystore"))?;
+        .ok_or_else(|| CategorizedError::not_found(format!("Secret '{secret_id}' was not found in keystore")))?;
     Ok(secret.into())
 }
 
