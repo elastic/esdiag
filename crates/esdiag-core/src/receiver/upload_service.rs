@@ -7,6 +7,11 @@ use url::Url;
 
 use crate::receiver::archive::ArchiveBytesReceiver;
 use bytes::Bytes;
+use std::time::Duration;
+
+/// Bounds a whole download, body included, so a stalled Upload Service
+/// connection fails instead of holding its caller indefinitely.
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
 pub struct UploadServiceDownloader {
@@ -25,7 +30,8 @@ impl UploadServiceDownloader {
     pub async fn download_bytes(self) -> Result<Bytes> {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert("Authorization", reqwest::header::HeaderValue::from_str(&self.token)?);
-        let response = reqwest::Client::new().get(self.url).headers(headers).send().await?;
+        let client = reqwest::Client::builder().timeout(DOWNLOAD_TIMEOUT).build()?;
+        let response = client.get(self.url).headers(headers).send().await?;
         let bytes = response.bytes().await?;
         tracing::debug!("Downloaded archive size: {} bytes", bytes.len());
         match bytes.len() {

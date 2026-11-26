@@ -96,6 +96,44 @@ pub(crate) fn current_scope() -> Option<ExecutionScope> {
     SCOPED_EXECUTION.try_with(Clone::clone).ok()
 }
 
+std::thread_local! {
+    static BLOCKING_TOKEN: std::cell::RefCell<Option<CancellationToken>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Spawns blocking `work`, tracked in the current scope when there is one so
+/// the scope waits for it; `work` can poll [`blocking_cancelled`].
+pub(crate) fn spawn_blocking<F, R>(work: F) -> tokio::task::JoinHandle<R>
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    let Some(scope) = current_scope() else {
+        return tokio::task::spawn_blocking(work);
+    };
+    let token = scope.token().clone();
+    scope.tracker().spawn_blocking(move || {
+        BLOCKING_TOKEN.with(|slot| *slot.borrow_mut() = Some(token));
+        let _clear = ClearBlockingToken;
+        work()
+    })
+}
+
+/// Clears the thread's token even when the work panics, since blocking-pool
+/// threads are reused.
+struct ClearBlockingToken;
+
+impl Drop for ClearBlockingToken {
+    fn drop(&mut self) {
+        BLOCKING_TOKEN.with(|slot| *slot.borrow_mut() = None);
+    }
+}
+
+/// Whether the scope of the [`spawn_blocking`] work running on this thread
+/// has been cancelled.
+pub(crate) fn blocking_cancelled() -> bool {
+    BLOCKING_TOKEN.with(|slot| slot.borrow().as_ref().is_some_and(CancellationToken::is_cancelled))
+}
+
 #[derive(Clone)]
 pub struct ExecutionContext {
     pub inputs: InputResolver,

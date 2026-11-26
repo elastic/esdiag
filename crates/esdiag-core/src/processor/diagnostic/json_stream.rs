@@ -415,8 +415,24 @@ where
     V: DeserializeOwned + Send + 'static,
 {
     let mut scanner = JsonScanner::new(reader);
-    stream_map_body(&mut scanner, &sender)?;
-    scanner.expect_eof()
+    match stream_map_body(&mut scanner, &sender)? {
+        Body::Ended => scanner.expect_eof(),
+        Body::Cancelled => Ok(()),
+    }
+}
+
+/// How a collection body scan stopped.
+enum Body {
+    Ended,
+    /// The receiver closed and the execution was cancelled, so the rest of
+    /// the input is left unscanned.
+    Cancelled,
+}
+
+/// After the receiver closes, the remaining entries are still validated
+/// unless the execution has been cancelled.
+fn abandoned() -> bool {
+    crate::job::context::blocking_cancelled()
 }
 
 /// Stream entries `(String, V)` from a named map field inside a top-level JSON object:
@@ -451,7 +467,9 @@ where
         let key = scanner.read_string(&mut key_buf)?;
         scanner.expect_byte(b':')?;
         if key == field {
-            stream_map_body(&mut scanner, &sender)?;
+            if let Body::Cancelled = stream_map_body(&mut scanner, &sender)? {
+                return Ok(());
+            }
         } else {
             scanner.skip_value()?;
         }
@@ -492,14 +510,16 @@ where
         let key = scanner.read_string(&mut key_buf)?;
         scanner.expect_byte(b':')?;
         if key == field {
-            stream_array_body(&mut scanner, &sender)?;
+            if let Body::Cancelled = stream_array_body(&mut scanner, &sender)? {
+                return Ok(());
+            }
         } else {
             scanner.skip_value()?;
         }
     }
 }
 
-fn stream_map_body<R, V>(scanner: &mut JsonScanner<R>, sender: &Sender<Result<(String, V)>>) -> Result<()>
+fn stream_map_body<R, V>(scanner: &mut JsonScanner<R>, sender: &Sender<Result<(String, V)>>) -> Result<Body>
 where
     R: BufRead,
     V: DeserializeOwned + Send + 'static,
@@ -514,7 +534,7 @@ where
         match scanner.peek_non_ws()? {
             Some(b'}') => {
                 scanner.consume_byte()?;
-                return Ok(());
+                return Ok(Body::Ended);
             }
             Some(b',') if !first => {
                 scanner.consume_byte()?;
@@ -532,6 +552,9 @@ where
         scanner.expect_byte(b':')?;
 
         if sender_closed {
+            if abandoned() {
+                return Ok(Body::Cancelled);
+            }
             scanner.skip_value()?;
             continue;
         }
@@ -549,7 +572,7 @@ where
     }
 }
 
-fn stream_array_body<R, V>(scanner: &mut JsonScanner<R>, sender: &Sender<Result<V>>) -> Result<()>
+fn stream_array_body<R, V>(scanner: &mut JsonScanner<R>, sender: &Sender<Result<V>>) -> Result<Body>
 where
     R: BufRead,
     V: DeserializeOwned + Send + 'static,
@@ -563,7 +586,7 @@ where
         match scanner.peek_non_ws()? {
             Some(b']') => {
                 scanner.consume_byte()?;
-                return Ok(());
+                return Ok(Body::Ended);
             }
             Some(b',') if !first => {
                 scanner.consume_byte()?;
@@ -579,6 +602,9 @@ where
         first = false;
 
         if sender_closed {
+            if abandoned() {
+                return Ok(Body::Cancelled);
+            }
             scanner.skip_value()?;
             continue;
         }
@@ -722,6 +748,35 @@ mod tests {
         let (tx, rx) = tokio::sync::mpsc::channel::<Result<(String, Entry)>>(1);
         drop(rx);
         assert!(stream_root_map(std::io::Cursor::new(&json[..]), tx).is_err());
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_execution_stops_scanning_once_its_receiver_closes() {
+        let json = br#"{
+            "a": {"name": "ok", "count": 1},
+            "b": {"name": "malformed", trailing}
+        }"#;
+        let scope = crate::job::context::ExecutionScope::default();
+        scope.token().cancel();
+        let tracked = scope.clone();
+        crate::job::context::with_scoped_execution(scope, async move {
+            let (release, gate) = std::sync::mpsc::channel::<()>();
+            let (tx, rx) = tokio::sync::mpsc::channel::<Result<(String, Entry)>>(1);
+            drop(rx);
+            let worker = crate::job::context::spawn_blocking(move || {
+                gate.recv().expect("released");
+                stream_root_map(std::io::Cursor::new(&json[..]), tx)
+            });
+            tracked.tracker().close();
+            assert_eq!(tracked.tracker().len(), 1, "the worker is tracked in its scope");
+            release.send(()).expect("worker waiting");
+            worker
+                .await
+                .expect("worker")
+                .expect("the scan stops before the malformed entry");
+            tracked.tracker().wait().await;
+        })
+        .await;
     }
 
     #[test]
